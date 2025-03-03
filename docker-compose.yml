@@ -1,0 +1,17 @@
+services:
+  l4d2-dev:
+    image: ghcr.io/aoc-gamers/l4d2aoc:latest
+    container_name: l4d2-comp
+    pull_policy: always
+    volumes:
+      - comp_data:/data
+    environment:
+      - LINUXGSM_PASSWORD=${LINUXGSM_PASSWORD}
+      - LINUXGSM_SSHPORT=${LINUXGSM_SSHPORT}
+      - SSH_KEY=${SSH_KEY}
+      - L4D2_NO_INTALL=
+      - L4D2_NO_AUTOSTART=
+    network_mode: host
+
+volumes:
+  comp_data:

@@ -1,0 +1,22 @@
+services:
+  l4d2-dev:
+    build:
+      dockerfile: Dockerfile
+      context: .
+    container_name: l4d2-dev
+    pull_policy: always
+    volumes:
+      - dev_data:/data
+    environment:
+      - LINUXGSM_PASSWORD=${LINUXGSM_PASSWORD}
+      - LINUXGSM_SSHPORT=${LINUXGSM_SSHPORT}
+      - SSH_KEY=${SSH_KEY}
+      - L4D2_NO_INTALL=
+      - L4D2_NO_AUTOSTART=
+    ports:
+      - "27015:27015"
+      - "27115:27115"
+      - "422:422"
+
+volumes:
+  dev_data:
