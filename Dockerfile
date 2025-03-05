@@ -44,7 +44,7 @@ RUN dpkg --add-architecture i386 && \
     htop \
     git \
     p7zip-full \
-    p7zip-rar && \
+    p7zip-rar \
     gettext && \
     apt-get -y autoremove && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
