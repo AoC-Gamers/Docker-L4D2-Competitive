@@ -1,18 +1,18 @@
 #!/bin/bash
 set -euo pipefail
 
-# Verificar que DIR_SCRIPTING esté definida
-: "${DIR_SCRIPTING:?La variable DIR_SCRIPTING no está definida.}"
+# Ensure DIR_SCRIPTING is defined
+: "${DIR_SCRIPTING:?The DIR_SCRIPTING variable is not defined.}"
 
 ########################################
-# Función: create_symlinks
-# Crea enlaces simbólicos para todos los archivos en un directorio fuente,
-# copiándolos al directorio destino, aplicando filtros de exclusión para 'find'.
+# Function: create_symlinks
+# Creates symbolic links for all files in a source directory,
+# copying them to the destination directory, applying exclusion filters for 'find'.
 #
-# Parámetros:
-#   $1: Directorio fuente
-#   $2: Directorio destino
-#   $3...: Opciones adicionales para 'find' (filtros de exclusión)
+# Parameters:
+#   $1: Source directory
+#   $2: Destination directory
+#   $3...: Additional options for 'find' (exclusion filters)
 ########################################
 create_symlinks() {
     local src_dir="$1"
@@ -28,32 +28,34 @@ create_symlinks() {
         local target="$dest_dir/$filename"
         if [ ! -L "$target" ]; then
             ln -s "$src" "$target"
-            echo "Symlink creado: $target"
+            echo "Symlink created: $target"
         fi
     done
 }
 
 ########################################
-# Enlace especial para menu_gameserver.sh
+# Special symlink for menu_gameserver.sh
 ########################################
-echo "Creando symlink para menu_gameserver.sh (ubicado en /data)"
+echo "Creating symlink for menu_gameserver.sh (located in /data)"
 if [ ! -L "/data/menu_gameserver.sh" ]; then
     ln -s "/app/server-scripts/menu_gameserver.sh" "/data/menu_gameserver.sh"
-    echo "Symlink creado: /data/menu_gameserver.sh"
+    echo "Symlink created: /data/menu_gameserver.sh"
 fi
 
 ########################################
-# Enlaces para archivos en /app/server-scripts, excepto
-# menu_gameserver.sh y la subcarpeta git-gameserver
+# Symlinks for files in /app/server-scripts, except
+# menu_gameserver.sh and the git-gameserver subfolder
 ########################################
-echo "Creando symlinks para archivos en /app/server-scripts"
+echo ""
+echo "Creating symlinks for files in /app/server-scripts"
 mkdir -p "$DIR_SCRIPTING"
 create_symlinks "/app/server-scripts" "$DIR_SCRIPTING" ! -name "menu_gameserver.sh" ! -path "/app/server-scripts/git-gameserver/*"
 
 ########################################
-# Enlaces para archivos en /app/server-scripts/git-gameserver
+# Symlinks for files in /app/server-scripts/git-gameserver
 ########################################
-echo "Creando symlinks para archivos en /app/server-scripts/git-gameserver"
+echo ""
+echo "Creating symlinks for files in /app/server-scripts/git-gameserver"
 create_symlinks "/app/server-scripts/git-gameserver" "$DIR_SCRIPTING/git-gameserver"
 
-echo "Proceso de creación de symlinks completado."
+echo "Symlink creation process completed."

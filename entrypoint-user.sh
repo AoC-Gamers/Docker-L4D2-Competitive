@@ -15,7 +15,7 @@ trap exit_handler_user SIGQUIT SIGINT SIGTERM
 # Setup game server
 if [ ! -f "${GAMESERVER}" ]; then
   echo -e ""
-  echo -e "creating ${GAMESERVER}"
+  echo -e "Creating ${GAMESERVER}"
   echo -e "================================="
   ./linuxgsm.sh "${GAMESERVER}"
 fi
@@ -23,7 +23,7 @@ fi
 # Symlink LGSM_CONFIG to /app/lgsm/config-lgsm
 if [ ! -d "/app/lgsm/config-lgsm" ]; then
   echo -e ""
-  echo -e "creating symlink for ${LGSM_CONFIG}"
+  echo -e "Creating symlink for ${LGSM_CONFIG}"
   echo -e "================================="
   ln -s "${LGSM_CONFIG}" "/app/lgsm/config-lgsm"
 fi
@@ -31,7 +31,7 @@ fi
 # Symlink LGSM_SERVERFILES to /app/serverfiles
 if [ ! -d "/app/serverfiles" ]; then
   echo -e ""
-  echo -e "creating symlink for ${LGSM_SERVERFILES}"
+  echo -e "Creating symlink for ${LGSM_SERVERFILES}"
   echo -e "================================="
   ln -s "${LGSM_SERVERFILES}" "/app/serverfiles"
 fi
@@ -39,7 +39,7 @@ fi
 # Symlink LGSM_LOGDIR to /app/log
 if [ ! -d "/app/log" ]; then
   echo -e ""
-  echo -e "creating symlink for ${LGSM_LOGDIR}"
+  echo -e "Creating symlink for ${LGSM_LOGDIR}"
   echo -e "================================="
   ln -s "${LGSM_LOGDIR}" "/app/log"
 fi
@@ -47,7 +47,7 @@ fi
 # Symlink LGSM_DATADIR to /app/lgsm/data
 if [ ! -d "/app/lgsm/data" ]; then
   echo -e ""
-  echo -e "creating symlink for ${LGSM_DATADIR}"
+  echo -e "Creating symlink for ${LGSM_DATADIR}"
   echo -e "================================="
   ln -s "${LGSM_DATADIR}" "/app/lgsm/data"
 fi
@@ -55,7 +55,7 @@ fi
 # Create folder /data/server-scripts
 if [ ! -d "$DIR_SCRIPTING" ]; then
   echo -e ""
-  echo -e "creating $DIR_SCRIPTING"
+  echo -e "Creating $DIR_SCRIPTING"
   echo -e "================================="
   mkdir -p $DIR_SCRIPTING
 fi
@@ -63,7 +63,7 @@ fi
 # npm install in /app/lgsm
 if [ -f "/app/lgsm/package.json" ]; then
   echo -e ""
-  echo -e "npm install in /app/lgsm"
+  echo -e "Running npm install in /app/lgsm"
   echo -e "================================="
   cd /app/lgsm || exit
   npm install
@@ -72,17 +72,17 @@ fi
 
 # Clear modules directory if not master
 if [ "${LGSM_GITHUBBRANCH}" != "master" ]; then
-  echo -e "not master branch, clearing modules directory"
+  echo -e "Not master branch, clearing modules directory"
   rm -rf /app/lgsm/modules/*
   ./"${GAMESERVER}" update-lgsm
 elif [ -d "/app/lgsm/modules" ]; then
-  echo -e "ensure all modules are executable"
+  echo -e "Ensure all modules are executable"
   chmod +x /app/lgsm/modules/*
 fi
 
 # Enable developer mode
 if [ "${LGSM_DEV}" == "true" ]; then
-  echo -e "developer mode enabled"
+  echo -e "Developer mode enabled"
   ./"${GAMESERVER}" developer
 fi
 

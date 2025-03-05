@@ -6,8 +6,8 @@ services:
     volumes:
       - comp_data:/data
     environment:
-      - LINUXGSM_PASSWORD=${LINUXGSM_PASSWORD}
-      - LINUXGSM_SSHPORT=${LINUXGSM_SSHPORT}
+      - LGSM_PASSWORD=${LGSM_PASSWORD}
+      - SSH_PORT=${SSH_PORT}
       - SSH_KEY=${SSH_KEY}
       - L4D2_NO_INTALL=
       - L4D2_NO_AUTOSTART=

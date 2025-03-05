@@ -2,14 +2,14 @@
 set -euo pipefail
 
 #####################################################
-# Configuración básica
-: "${DIR_SCRIPTING:?Error: La variable DIR_SCRIPTING no está definida.}"
-: "${DIR_LEFT4DEAD2:?Error: La variable DIR_LEFT4DEAD2 no está definida.}"
-: "${DIR_CFG:?Error: La variable DIR_CFG no está definida.}"
+# Basic configuration
+: "${DIR_SCRIPTING:?Error: The DIR_SCRIPTING variable is not defined.}"
+: "${DIR_LEFT4DEAD2:?Error: The DIR_LEFT4DEAD2 variable is not defined.}"
+: "${DIR_CFG:?Error: The DIR_CFG variable is not defined.}"
 : "${REPOS_JSON:=$DIR_SCRIPTING/repos.json}"
 
 #####################################################
-# Biblioteca de funciones
+# Function library
 source "$DIR_SCRIPTING/git-gameserver/tools_gameserver.sh"
 
 #####################################################
@@ -20,44 +20,44 @@ LOG_FILE="$DIR_SCRIPTING/install_gameserver.log"
 CACHE_FILE="$DIR_TMP/cache_gameserver.log"
 
 #####################################################
-# Verificar existencia de repos.json
+# Check for repos.json existence
 if [[ ! -f "$REPOS_JSON" ]]; then
-    echo "Error: El archivo repos.json no se encontró en $DIR_SCRIPTING."
+    echo "Error: The repos.json file was not found in $DIR_SCRIPTING."
     exit 1
 fi
 
 #####################################################
-# Verificar si el script se ejecuta como el usuario TARGET_USER
-check_user "linuxgsm"
+# Verify if the script is run as the user ${USER}
+check_user "${USER}"
 
 #####################################################
-# Cargar variables desde .env
+# Load variables from .env
 if [[ -f "$DIR_SCRIPTING/.env" ]]; then
-    # Cargar las variables ignorando líneas comentadas
+    # Load variables ignoring commented lines
     export $(grep -v '^#' "$DIR_SCRIPTING/.env" | xargs)
 else
-    echo "El archivo .env no se encontró en $DIR_SCRIPTING."
+    echo "The .env file was not found in $DIR_SCRIPTING."
 fi
 
 #####################################################
-# Definir tipo de instalación (install/update)
+# Define installation type (install/update)
 if [[ -n "${1:-}" ]]; then
     case "$1" in
         install|0) INSTALL_TYPE="install" ;;
         update|1)  INSTALL_TYPE="update"  ;;
-        *) error_exit "Argumento inválido. Usa 'install' (o 0) para instalación limpia o 'update' (o 1) para actualización." ;;
+        *) error_exit "Invalid argument. Use 'install' (or 0) for clean installation or 'update' (or 1) for update." ;;
     esac
 else
-    read -rp "¿Instalación limpia (0) o actualización (1)? " OPTION
+    read -rp "Clean installation (0) or update (1)? " OPTION
     case "$OPTION" in
         0) INSTALL_TYPE="install" ;;
         1) INSTALL_TYPE="update" ;;
-        *) error_exit "Opción inválida. Usa '0' para instalación limpia o '1' para actualización." ;;
+        *) error_exit "Invalid option. Use '0' for clean installation or '1' for update." ;;
     esac
 fi
 
 #####################################################
-# Preparar librerías de 32 bits y eliminar duplicados
+# Prepare 32-bit libraries and remove duplicates
 if [ -d "$HOME/.steam/sdk32" ]; then
     rm -rf "$HOME/.steam/sdk32"
 fi
@@ -72,33 +72,33 @@ cp -v "$HOME/.local/share/Steam/steamcmd/linux64/steamclient.so" "$HOME/.steam/s
 
 if [[ -e "$LGSM_SERVERFILES/bin/libstdc++.so.6" ]]; then
     rm "$LGSM_SERVERFILES/bin/libstdc++.so.6" "$LGSM_SERVERFILES/bin/dedicated/libstdc++.so.6"
-    log "Se eliminó libstdc++.so.6 por compatibilidad con extensiones."
+    log "Removed libstdc++.so.6 for compatibility with extensions."
 else
-    log "libstdc++.so.6 no se detectó localmente."
+    log "libstdc++.so.6 not detected locally."
 fi
 
 if [[ -e "$LGSM_SERVERFILES/bin/libgcc_s.so.1" ]]; then
     rm "$LGSM_SERVERFILES/bin/libgcc_s.so.1" "$LGSM_SERVERFILES/bin/dedicated/libgcc_s.so.1"
-    log "Se eliminó libgcc_s.so.1 por compatibilidad con extensiones."
+    log "Removed libgcc_s.so.1 for compatibility with extensions."
 else
-    log "libgcc_s.so.1 no se detectó localmente."
+    log "libgcc_s.so.1 not detected locally."
 fi
 
 #####################################################
-# Directorio temporal
+# Temporary directory
 mkdir -p "$DIR_TMP"
-cd "$DIR_TMP" || error_exit "No se pudo acceder al directorio temporal $DIR_TMP."
+cd "$DIR_TMP" || error_exit "Could not access the temporary directory $DIR_TMP."
 
-# Crear archivo de cache si no existe
+# Create cache file if it does not exist
 if [[ ! -f "$CACHE_FILE" ]]; then
     touch "$CACHE_FILE"
 fi
 
 #####################################################
-# Funciones auxiliares para Git
+# Auxiliary functions for Git
 get_latest_commit_hash() {
     local repo_dir="$1"
-    git -C "$repo_dir" rev-parse HEAD || error_exit "No se pudo obtener el último hash en $repo_dir."
+    git -C "$repo_dir" rev-parse HEAD || error_exit "Could not get the latest hash in $repo_dir."
 }
 
 save_commit_hash() {
@@ -115,25 +115,25 @@ has_repo_changed() {
         local old_hash
         old_hash=$(grep "^${repo_name}:" "$CACHE_FILE" | cut -d':' -f2)
         if [[ "$old_hash" == "$new_hash" ]]; then
-            return 1  # Sin cambios
+            return 1  # No changes
         fi
     fi
-    return 0  # Con cambios o no encontrado
+    return 0  # Changes or not found
 }
 
 #####################################################
-# Limpieza de archivos en el servidor
-limpiar_logs_instancias() {
+# Clean server files
+clean_instance_logs() {
     local index=1
     while true; do
         local DIR_NEW_SOURCEMOD="${DIR_SOURCEMOD}${index}"
         if [ -d "$DIR_NEW_SOURCEMOD" ]; then
-            log "Limpiando logs en $DIR_NEW_SOURCEMOD..."
+            log "Cleaning logs in $DIR_NEW_SOURCEMOD..."
             if ls "$DIR_NEW_SOURCEMOD/logs/errors_"*.log &> /dev/null; then
                 rm "$DIR_NEW_SOURCEMOD/logs/errors_"*.log
             fi
         else
-            log "Directorio $DIR_NEW_SOURCEMOD no encontrado. Terminando limpieza de logs."
+            log "Directory $DIR_NEW_SOURCEMOD not found. Ending log cleaning."
             break
         fi
         ((index++))
@@ -141,7 +141,7 @@ limpiar_logs_instancias() {
 }
 
 #####################################################
-# Procesar limpieza en caso de actualización
+# Process cleaning in case of update
 if [ "$INSTALL_TYPE" == "update" ]; then
     verify_and_delete_dir "$DIR_SOURCEMOD/data"
     verify_and_delete_dir "$DIR_SOURCEMOD/extensions"
@@ -150,7 +150,7 @@ if [ "$INSTALL_TYPE" == "update" ]; then
     verify_and_delete_dir "$DIR_SOURCEMOD/plugins"
     verify_and_delete_dir "$DIR_SOURCEMOD/scripting"
     verify_and_delete_dir "$DIR_SOURCEMOD/translations"
-    limpiar_logs_instancias
+    clean_instance_logs
     mkdir -p "$DIR_SOURCEMOD/configs"
     verify_and_delete_dir "$DIR_CFG/cfgogl"
     verify_and_delete_dir "$DIR_CFG/sourcemod"
@@ -158,21 +158,21 @@ if [ "$INSTALL_TYPE" == "update" ]; then
 fi
 
 #####################################################
-# Instalación de repositorios
+# Repository installation
 jq -c '.[]' "$REPOS_JSON" | while IFS= read -r repo_item; do
-    # Extraer los valores del JSON
+    # Extract values from JSON
     repo_url=$(echo "$repo_item" | jq -r '.repo_url' | envsubst)
     folder=$(echo "$repo_item" | jq -r '.folder')
     branch=$(echo "$repo_item" | jq -r '.branch')
 
     GIT_DOWNLOAD=false
 
-    # Si se fuerza la descarga, o si la carpeta no existe, se clona
+    # If forced download, or if the folder does not exist, clone
     if [[ "${GIT_FORCE_DOWNLOAD:-false}" == "true" ]]; then
         GIT_DOWNLOAD=true
         rm -rf "$folder"
     elif [[ -d "$folder" ]]; then
-        echo "Verificando cambios en $folder..."
+        echo "Checking for changes in $folder..."
         if [[ "$branch" == "default" ]]; then
             remote_hash=$(git ls-remote "$repo_url" HEAD | awk '{print $1}')
         else
@@ -181,40 +181,40 @@ jq -c '.[]' "$REPOS_JSON" | while IFS= read -r repo_item; do
 
         if has_repo_changed "$folder" "$remote_hash"; then
             GIT_DOWNLOAD=true
-            echo "El repositorio $folder ha cambiado (se actualizará)."
+            echo "The repository $folder has changed (will be updated)."
             rm -rf "$folder"
         else
-            echo "El repositorio $folder no ha cambiado. Usando cache."
+            echo "The repository $folder has not changed. Using cache."
             GIT_DOWNLOAD=false
         fi
     else
         GIT_DOWNLOAD=true
     fi
 
-    # Clonar o actualizar el repositorio si es necesario
+    # Clone or update the repository if necessary
     if [[ "$GIT_DOWNLOAD" == "true" ]]; then
-        echo "Clonando $repo_url en la carpeta $folder (rama: $branch)..."
+        echo "Cloning $repo_url into folder $folder (branch: $branch)..."
         if [[ "$branch" == "default" ]]; then
-            git clone "$repo_url" "$folder" || { echo "Fallo la clonación de $repo_url"; exit 1; }
+            git clone "$repo_url" "$folder" || { echo "Failed to clone $repo_url"; exit 1; }
         else
-            git clone -b "$branch" "$repo_url" "$folder" || { echo "Fallo la clonación de $repo_url en la rama $branch"; exit 1; }
+            git clone -b "$branch" "$repo_url" "$folder" || { echo "Failed to clone $repo_url on branch $branch"; exit 1; }
         fi
         latest_hash=$(get_latest_commit_hash "$folder")
         save_commit_hash "$folder" "$latest_hash"
     fi
 
-    # Opcional: ejecutar un subscript de modificaciones para el repositorio
+    # Optional: execute a modification subscript for the repository
     subscript_file="$DIR_SCRIPTING/git-gameserver/${folder}.${branch}.sh"
     if [[ -f "$subscript_file" ]]; then
-        echo "Ejecutando subscript $subscript_file para $folder..."
+        echo "Executing subscript $subscript_file for $folder..."
         bash "$subscript_file" "$folder" "$INSTALL_TYPE" "$GIT_DOWNLOAD"
     else
-        echo "No se encontró subscript para $folder. Saltando..."
+        echo "No subscript found for $folder. Skipping..."
     fi
 
 done
 
 log "--------------------------------------"
-log "Instalación de modo competitivo de "
-log "L4D2 completa en modo: $INSTALL_TYPE"
+log "L4D2 competitive mode installation"
+log "complete in mode: $INSTALL_TYPE"
 log "--------------------------------------"

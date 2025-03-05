@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-SSH_PORT=${LINUXGSM_SSHPORT:-22}
+SSH_PORT=${SSH_PORT:-22}
 
 nc -zv localhost $SSH_PORT
 if [ $? -eq 0 ]; then

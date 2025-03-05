@@ -1,44 +1,44 @@
 #!/bin/bash
 # Script: rep_branch.sh
-# Descripción: Actualiza el campo "branch" en el archivo repos.json según las variables de entorno.
-#              Cada variable tiene el prefijo "BRANH_" seguido del nombre del folder en mayúsculas.
-#              Si la variable es "default", se omite la actualización para ese repositorio.
+# Description: Updates the "branch" field in the repos.json file according to environment variables.
+#              Each variable has the prefix "BRANCH_" followed by the folder name in uppercase.
+#              If the variable is "default", the update is skipped for that repository.
 
-# Ruta del archivo repos.json
+# Path to the repos.json file
 REPOS_FILE="/app/server-scripts/repos.json"
 
-# Verificar que el archivo exista
+# Check if the file exists
 if [ ! -f "$REPOS_FILE" ]; then
-    echo "El archivo $REPOS_FILE no existe."
+    echo "The file $REPOS_FILE does not exist."
     exit 1
 fi
 
-# Crear un archivo temporal para trabajar
+# Create a temporary file to work with
 TMP_FILE=$(mktemp)
 cp "$REPOS_FILE" "$TMP_FILE"
 
-# Obtener la cantidad de objetos en el array JSON
+# Get the number of objects in the JSON array
 NUM=$(jq length "$TMP_FILE")
 
-# Recorrer cada elemento del array
+# Iterate over each element in the array
 for ((i=0; i<NUM; i++)); do
-    # Obtener el valor del campo "folder"
+    # Get the value of the "folder" field
     FOLDER=$(jq -r ".[$i].folder" "$TMP_FILE")
-    # Construir el nombre de la variable de entorno (ejemplo: BRANCH_SIR)
+    # Construct the environment variable name (e.g., BRANCH_SIR)
     VAR_NAME="BRANCH_$(echo "$FOLDER" | tr '[:lower:]' '[:upper:]')"
-    # Obtener el valor de la variable; si no está definida, se usa "default"
+    # Get the value of the variable; if not defined, use "default"
     VALUE=${!VAR_NAME:-default}
 
-    # Verificar si el valor es "default"
+    # Check if the value is "default"
     if [ "$VALUE" != "default" ]; then
-        # Actualizar el campo "branch" con el valor obtenido
+        # Update the "branch" field with the obtained value
         jq --arg val "$VALUE" ".[$i].branch = \$val" "$TMP_FILE" > "${TMP_FILE}.tmp" && mv "${TMP_FILE}.tmp" "$TMP_FILE"
-        echo "Actualizado branch '$FOLDER' a '$VALUE'."
+        echo "Updated branch '$FOLDER' to '$VALUE'."
     fi
 done
 
-# Reemplazar el archivo original con la versión actualizada
+# Replace the original file with the updated version
 mv "$TMP_FILE" "$REPOS_FILE"
-echo "Archivo repos.json actualizado."
+echo "repos.json file updated."
 
 exit 0

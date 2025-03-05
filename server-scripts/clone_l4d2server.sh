@@ -2,75 +2,75 @@
 set -euo pipefail
 
 #####################################################
-# Verificar que las variables de entorno necesarias estén definidas
-: "${DIR_SCRIPTING:?La variable DIR_SCRIPTING no está definida.}"
-: "${DIR_SOURCEMOD:?La variable DIR_SOURCEMOD no está definida.}"
-: "${DIR_CFG:?La variable DIR_CFG no está definida.}"
+# Verify that the necessary environment variables are defined
+: "${DIR_SCRIPTING:?The DIR_SCRIPTING variable is not defined.}"
+: "${DIR_SOURCEMOD:?The DIR_SOURCEMOD variable is not defined.}"
+: "${DIR_CFG:?The DIR_CFG variable is not defined.}"
 
 #####################################################
-# Biblioteca de funciones
+# Function library
 source "$DIR_SCRIPTING/git-gameserver/tools_gameserver.sh"
 
 #####################################################
-# Verificar si el script se ejecuta como el usuario TARGET_USER
-check_user "linuxgsm"
+# Verify if the script is run as the user ${USER}
+check_user "${USER}"
 
 #####################################################
-# Variables y constantes
+# Variables and constants
 LGSM_L4D2SERVER="./linuxgsm.sh l4d2server"
-L4D2_DEFAULT_SERVERCFG="server.cfg"
+L4D2_DEFAULT_SERVERCFG="${L4D2_DEFAULT_SERVERCFG:-server.cfg}"
 CLONE_L4D2SERVER="$DIR_SCRIPTING/clone_l4d2server.json"
 
-# Archivo JSON con la lista de rutas que se deben copiar (relativas a DIR_SOURCEMOD)
+# JSON file with the list of paths to be copied (relative to DIR_SOURCEMOD)
 CLONE_EXCLUDE_JSON="$DIR_SCRIPTING/clone_exclude.json"
 
 #####################################################
-# Función para crear enlaces simbólicos o copiar según el JSON
+# Function to create symbolic links or copy according to the JSON
 create_sourcemod_links() {
     local dest_dir="$1"
-    # Lista de carpetas de primer nivel a procesar
+    # List of top-level folders to process
     local folders=("bin" "configs" "data" "extensions" "gamedata" "plugins" "translations")
     
     for folder in "${folders[@]}"; do
         local source_folder="${DIR_SOURCEMOD}/${folder}"
         local dest_folder="${dest_dir}/${folder}"
-        # Si el directorio origen no existe, saltar
+        # If the source directory does not exist, skip
         [ -d "$source_folder" ] || continue
 
-        # Si el archivo JSON existe, cargar la lista de elementos a copiar para esta carpeta,
-        # de lo contrario, se usa un array vacío.
+        # If the JSON file exists, load the list of items to copy for this folder,
+        # otherwise, use an empty array.
         local copy_items=()
         if [ -f "$CLONE_EXCLUDE_JSON" ]; then
             mapfile -t copy_items < <(jq -r --arg key "$folder" '.[$key][]' "$CLONE_EXCLUDE_JSON")
         fi
 
-        # Verificar que los elementos listados para copiar existan en el directorio origen
+        # Verify that the listed items to copy exist in the source directory
         for exclude in "${copy_items[@]}"; do
             if [ ! -e "${source_folder}/${exclude}" ]; then
-                echo "Advertencia: El elemento a copiar '$folder/$exclude' no existe en ${source_folder}"
+                echo "Warning: The item to copy '$folder/$exclude' does not exist in ${source_folder}"
             fi
         done
 
         if [ ${#copy_items[@]} -eq 0 ]; then
-            # Si no hay elementos para copiar, se crea un symlink del directorio completo
-            ln -s "$source_folder" "$dest_folder" || error_exit "Error al crear symlink para el folder $folder"
-            echo "Symlink creado para la carpeta completa: $folder"
+            # If there are no items to copy, create a symlink for the entire directory
+            ln -s "$source_folder" "$dest_folder" || error_exit "Error creating symlink for folder $folder"
+            echo "Symlink created for the entire folder: $folder"
         else
-            # Crear el directorio destino
+            # Create the destination directory
             mkdir -p "$dest_folder"
-            # Procesar cada elemento dentro del directorio origen
+            # Process each item within the source directory
             for item in "$source_folder"/*; do
                 [ -e "$item" ] || continue
                 local base_item
                 base_item=$(basename "$item")
                 local target="${dest_folder}/${base_item}"
-                # Si el nombre del elemento coincide exactamente con uno de los listados se copia
+                # If the item name exactly matches one of the listed items, copy it
                 if printf "%s\n" "${copy_items[@]}" | grep -qx "$base_item"; then
-                    cp -r "$item" "$target" || error_exit "Error al copiar $folder/$base_item a $target"
-                    echo "Copiado: $folder/$base_item"
+                    cp -r "$item" "$target" || error_exit "Error copying $folder/$base_item to $target"
+                    echo "Copied: $folder/$base_item"
                 else
-                    ln -s "$item" "$target" || error_exit "Error al crear symlink para $folder/$base_item en $target"
-                    echo "Symlink creado: $folder/$base_item"
+                    ln -s "$item" "$target" || error_exit "Error creating symlink for $folder/$base_item in $target"
+                    echo "Symlink created: $folder/$base_item"
                 fi
             done
         fi
@@ -78,80 +78,93 @@ create_sourcemod_links() {
 }
 
 #####################################################
-# Procesar parámetros y solicitar la cantidad de clones si no se proporciona
+# Process parameters and request the number of clones if not provided
 if [ $# -eq 1 ]; then
     AMOUNT_CLONES="$1"
-    if ! [[ "$AMOUNT_CLONES" =~ ^[2-9][0-9]*$ ]]; then
-        echo "Debe ser un número natural superior a 1."
+    if ! [[ "$AMOUNT_CLONES" =~ ^[0-9]+$ ]]; then
+        echo "Must be a natural number equal to or greater than 0."
         exit 1
     fi
 fi
 
 if [ -z "${AMOUNT_CLONES:-}" ]; then
-    read -rp "¿Cuántos clones de gameserver deseas crear? " AMOUNT_CLONES
+    read -rp "How many gameserver clones do you want to create? " AMOUNT_CLONES
 fi
 
-# Validar que AMOUNT_CLONES sea numérico
+# Validate that AMOUNT_CLONES is numeric
 if ! [[ "$AMOUNT_CLONES" =~ ^[0-9]+$ ]]; then
-    error_exit "El valor proporcionado no es un número válido."
+    error_exit "The provided value is not a valid number."
 fi
 
 #####################################################
-# Cambiar al directorio de instalación del servidor
-cd "$DIR_APP" || error_exit "No se pudo acceder al directorio $DIR_APP"
+# Change to the server installation directory
+cd "$DIR_APP" || error_exit "Could not access the directory $DIR_APP"
 
 #####################################################
-# Verificar y crear el servidor principal si no existe
-if [ ! -f "$DIR_APP/l4d2server" ]; then
-    echo "El archivo $DIR_APP/l4d2server no existe. Creando el primer servidor."
-    $LGSM_L4D2SERVER
-    ./l4d2server details > /dev/null
+# Create directories for the first server
+if [ "$AMOUNT_CLONES" -eq 0 ]; then
+
+    if [ ! -f "$DIR_APP/l4d2server" ]; then
+        echo "The file $DIR_APP/l4d2server does not exist. Creating the first server."
+        $LGSM_L4D2SERVER
+        ./l4d2server details > /dev/null
+    fi
+
+    if [ ! -d "${DIR_SOURCEMOD}1" ]; then
+        echo "Creating the subdirectory sourcemod1 for the first server..."
+        mkdir "${DIR_SOURCEMOD}1" || error_exit "Error creating the subdirectory sourcemod1"
+        create_sourcemod_links "${DIR_SOURCEMOD}1"
+    fi
+
+    if [ ! -f "$DIR_CFG/$L4D2_DEFAULT_SERVERCFG" ]; then
+        echo "The default configuration file does not exist: $DIR_CFG/$L4D2_DEFAULT_SERVERCFG"
+    elif [ ! -f "$DIR_CFG/$GAMESERVER.cfg" ]; then
+        echo "Copying server configuration for $GAMESERVER..."
+        cp "$DIR_CFG/$L4D2_DEFAULT_SERVERCFG" "$DIR_CFG/$GAMESERVER.cfg"
+    fi
 fi
 
 #####################################################
-# Crear el directorio sourcemod1 si no existe
-if [ ! -d "${DIR_SOURCEMOD}1" ]; then
-    echo "Creando el subdirectorio sourcemod1 para el primer servidor..."
-    mkdir "${DIR_SOURCEMOD}1" || error_exit "Error al crear el subdirectorio sourcemod1"
-    create_sourcemod_links "${DIR_SOURCEMOD}1"
-fi
-
-#####################################################
-# Bucle para crear clones de servidores
+# Loop to create server clones
 for (( i=2; i<=AMOUNT_CLONES+1; i++ )); do
-    SERVER_NAME="l4d2server-$i"
+
+    if [ "$AMOUNT_CLONES" -eq 0 ]; then
+        exit 0
+    fi
+
+    SERVER_NAME="${GAMESERVER}-$i"
     DIR_NEW_SOURCEMOD="${DIR_SOURCEMOD}${i}"
     
     if [ -f "$DIR_APP/$SERVER_NAME" ]; then
-        echo "El servidor $SERVER_NAME ya existe. Saltando..."
+        echo "The server $SERVER_NAME already exists. Skipping..."
     else
-        echo "Creando el servidor $SERVER_NAME..."
+        echo "Creating the server $SERVER_NAME..."
         $LGSM_L4D2SERVER
         ./"$SERVER_NAME" details > /dev/null
     fi
 
-    # Copiar configuración si no existe la copia específica para el servidor
+    # Copy configuration if the specific copy for the server does not exist
     if [ ! -f "$DIR_CFG/$L4D2_DEFAULT_SERVERCFG" ]; then
-        echo "El archivo de configuración predeterminado no existe: $DIR_CFG/$L4D2_DEFAULT_SERVERCFG"
+        echo "The default configuration file does not exist: $DIR_CFG/$L4D2_DEFAULT_SERVERCFG"
     elif [ ! -f "$DIR_CFG/${SERVER_NAME}.cfg" ]; then
-        echo "Copiando configuración de servidor para $SERVER_NAME..."
+        echo "Copying server configuration for $SERVER_NAME..."
         cp "$DIR_CFG/$L4D2_DEFAULT_SERVERCFG" "$DIR_CFG/${SERVER_NAME}.cfg"
     fi
 
-    # Crear el directorio SourceMod específico del servidor si no existe
+    # Create the server-specific SourceMod directory if it does not exist
     if [ -d "$DIR_NEW_SOURCEMOD" ]; then
-        echo "El directorio $DIR_NEW_SOURCEMOD ya existe..."
+        echo "The directory $DIR_NEW_SOURCEMOD already exists..."
         continue
     fi
     
-    echo "Creando el directorio: $DIR_NEW_SOURCEMOD"
-    mkdir "$DIR_NEW_SOURCEMOD" || error_exit "Error al crear el directorio $DIR_NEW_SOURCEMOD"
+    echo "Creating the directory: $DIR_NEW_SOURCEMOD"
+    mkdir "$DIR_NEW_SOURCEMOD" || error_exit "Error creating the directory $DIR_NEW_SOURCEMOD"
     create_sourcemod_links "$DIR_NEW_SOURCEMOD"
 done
 
-echo "Proceso de clonación completado."
+echo "Cloning process completed."
 
 #####################################################
-# Guardar la última ejecución en un archivo JSON
+# Save the last execution in a JSON file
 echo "{\"last_execution\": \"$(date)\", \"amount_clones\": $AMOUNT_CLONES}" > "$CLONE_L4D2SERVER"
-echo "Registro de la última ejecución guardado en $CLONE_L4D2SERVER."
+echo "Last execution record saved in $CLONE_L4D2SERVER."

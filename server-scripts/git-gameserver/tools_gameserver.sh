@@ -1,31 +1,31 @@
 #!/bin/bash
-# tools_gameserver.sh - Archivo de inclusión con funciones comunes para los scripts.
+# tools_gameserver.sh - Inclusion file with common functions for scripts.
 #
-# Uso:
+# Usage:
 #   source $DIR_SCRIPTING/git-gameserver/tools_gameserver.sh
 #
-# Este archivo incluye funciones de log, manejo de errores, utilidades para
-# la verificación y eliminación de archivos y directorios, y funciones para
-# buscar y modificar archivos de configuración compartida.
+# This file includes logging functions, error handling, utilities for
+# verifying and deleting files and directories, and functions for
+# searching and modifying shared configuration files.
 
 DIR_APP="/app"
 DIR_TMP="/app/tmp"
 
 #######################################
-# Función: log
-# Registra un mensaje con timestamp.
-# Parámetros:
-#   $1: Mensaje a registrar.
+# Function: log
+# Logs a message with a timestamp.
+# Parameters:
+#   $1: Message to log.
 #######################################
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
 
 #######################################
-# Función: error_exit
-# Registra un mensaje de error y finaliza el script.
-# Parámetros:
-#   $1: Mensaje de error.
+# Function: error_exit
+# Logs an error message and exits the script.
+# Parameters:
+#   $1: Error message.
 #######################################
 error_exit() {
     log "ERROR: $1"
@@ -33,47 +33,47 @@ error_exit() {
 }
 
 #######################################
-# Función: verify_and_delete_dir
-# Verifica si existe un directorio y lo elimina.
-# Parámetros:
-#   $1: Ruta del directorio.
+# Function: verify_and_delete_dir
+# Verifies if a directory exists and deletes it.
+# Parameters:
+#   $1: Directory path.
 #######################################
 verify_and_delete_dir() {
     if [ -d "$1" ]; then
         rm -rf "$1"
-        log "Directorio '$1' eliminado."
+        log "Directory '$1' deleted."
     else
-        log "Directorio '$1' no existe."
+        log "Directory '$1' does not exist."
     fi
 }
 
 #######################################
-# Función: verify_and_delete_file
-# Verifica si existe un archivo y lo elimina.
-# Parámetros:
-#   $1: Ruta del archivo.
+# Function: verify_and_delete_file
+# Verifies if a file exists and deletes it.
+# Parameters:
+#   $1: File path.
 #######################################
 verify_and_delete_file() {
     if [ -f "$1" ]; then
         rm "$1"
-        log "Archivo '$1' eliminado."
+        log "File '$1' deleted."
     else
-        log "Archivo '$1' no existe."
+        log "File '$1' does not exist."
     fi
 }
 
 #######################################
-# Función: check_user
-# Verifica si el script se está ejecutando como el usuario correcto.
-# Si se ejecuta como root, cambia al usuario TARGET_USER.
+# Function: check_user
+# Verifies if the script is running as the correct user.
+# If running as root, switches to the TARGET_USER.
 #######################################
 check_user() {
     if [ "$(whoami)" != "$1" ]; then
         if [ "$(whoami)" = "root" ]; then
-            log "El script se está ejecutando como root. Cambiando al usuario '$1'..."
+            log "The script is running as root. Switching to user '$1'..."
             exec su - "$1" -c "$0"
         else
-            error_exit "Debes ejecutar este script como usuario '$1' o como root."
+            error_exit "You must run this script as user '$1' or as root."
         fi
     fi
 }
