@@ -68,12 +68,12 @@ verify_and_delete_file() {
 # Si se ejecuta como root, cambia al usuario TARGET_USER.
 #######################################
 check_user() {
-if [ "$(whoami)" != "$1" ]; then
-    if [ "$(whoami)" = "root" ]; then
-        log "El script se está ejecutando como root. Cambiando al usuario '$1'..."
-        exec su - "$1" -c "$0"
-    else
-        error_exit "Debes ejecutar este script como usuario '$1' o como root."
+    if [ "$(whoami)" != "$1" ]; then
+        if [ "$(whoami)" = "root" ]; then
+            log "El script se está ejecutando como root. Cambiando al usuario '$1'..."
+            exec su - "$1" -c "$0"
+        else
+            error_exit "Debes ejecutar este script como usuario '$1' o como root."
+        fi
     fi
-fi
 }
