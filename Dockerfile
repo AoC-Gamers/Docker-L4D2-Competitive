@@ -45,6 +45,7 @@ RUN dpkg --add-architecture i386 && \
     git \
     p7zip-full \
     p7zip-rar && \
+    gettext && \
     apt-get -y autoremove && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Auto-install game server requirements y gdb

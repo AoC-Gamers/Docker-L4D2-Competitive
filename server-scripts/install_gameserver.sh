@@ -161,7 +161,7 @@ fi
 # Instalación de repositorios
 jq -c '.[]' "$REPOS_JSON" | while IFS= read -r repo_item; do
     # Extraer los valores del JSON
-    repo_url=$(echo "$repo_item" | jq -r '.repo_url')
+    repo_url=$(echo "$repo_item" | jq -r '.repo_url' | envsubst)
     folder=$(echo "$repo_item" | jq -r '.folder')
     branch=$(echo "$repo_item" | jq -r '.branch')
 
