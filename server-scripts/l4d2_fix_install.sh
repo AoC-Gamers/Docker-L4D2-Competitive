@@ -4,6 +4,10 @@ set -euo pipefail
 # Verify that the LGSM_SERVERFILES variable is defined
 : "${LGSM_SERVERFILES:?The LGSM_SERVERFILES variable is not defined.}"
 
+#####################################################
+# Function library
+source "$DIR_SCRIPTING/git-gameserver/tools_gameserver.sh"
+
 # Verify if the script is run as the user ${USER}
 check_user "${USER}"
 

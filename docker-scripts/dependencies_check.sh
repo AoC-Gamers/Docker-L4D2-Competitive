@@ -3,7 +3,7 @@ set -euo pipefail
 
 #####################################################
 # Define LOG_FILE based on whether running as root or not
-if [ "$(id -u)" -eq 0; then
+if [ "$(id -u)" -eq 0 ]; then
     LOG_FILE="/dev/null"
 else
     LOG_FILE="${DIR_SCRIPTING:-.}/dependencies.log"
