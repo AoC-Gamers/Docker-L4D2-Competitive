@@ -34,4 +34,4 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ghcr.io/aoc-gamers/l4d2:competitive
+          tags: ghcr.io/aoc-gamers/lgsm-l4d2-competitive
