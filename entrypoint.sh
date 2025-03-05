@@ -45,8 +45,17 @@ echo -e "=======================================================================
 
 # Add environment variables to /etc/environment to make them permanent
 echo -e "GAMESERVER=${GAMESERVER}" >> /etc/environment
+echo -e "DISTRO=${DISTRO}" >> /etc/environment
 echo -e "USER=${USER}" >> /etc/environment
+echo -e "UID=${UID}" >> /etc/environment
+echo -e "GID=${GID}" >> /etc/environment
+
+echo -e "LGSM_GITHUBUSER=${LGSM_GITHUBUSER}" >> /etc/environment
+echo -e "LGSM_GITHUBREPO=${LGSM_GITHUBREPO}" >> /etc/environment
+echo -e "LGSM_GITHUBBRANCH=${LGSM_GITHUBBRANCH}" >> /etc/environment
+echo -e "LGSM_LOGDIR=${LGSM_LOGDIR}" >> /etc/environment
 echo -e "LGSM_SERVERFILES=${LGSM_SERVERFILES}" >> /etc/environment
+echo -e "LGSM_DATADIR=${LGSM_DATADIR}" >> /etc/environment
 echo -e "LGSM_CONFIG=${LGSM_CONFIG}" >> /etc/environment
 
 echo -e "DIR_LEFT4DEAD2=${LGSM_SERVERFILES}/left4dead2" >> /etc/environment
