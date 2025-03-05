@@ -13,33 +13,26 @@ source "$DIR_SCRIPTING/git-gameserver/tools_gameserver.sh"
 # Variables and constants
 CLONE_L4D2SERVER="$DIR_SCRIPTING/clone_l4d2server.json"
 
-# Reinitialize the server counter
-SERVER_COUNT=0
-
-#####################################################
-# Count the main server (without hyphen) and the clones.
-if [[ -x "$DIR_APP/l4d2server" ]]; then
-    ((SERVER_COUNT++))
+CLONE_COUNT=0
+shopt -s nullglob
+clones=("$DIR_APP"/$GAMESERVER-*)
+if [[ ${#clones[@]} -gt 0 ]]; then
+    for file in "${clones[@]}"; do
+        if [[ -f "$file" ]]; then
+            ((CLONE_COUNT++))
+        fi
+    done
 fi
+shopt -u nullglob
 
-for file in "$DIR_APP"/l4d2server-*; do
-    if [[ -f "$file" ]]; then
-        ((SERVER_COUNT++))
-    fi
-done
-
-# If no server is found, an error message is displayed.
-if [[ $SERVER_COUNT -eq 0 ]]; then
-    echo "No servers found (file $DIR_APP/l4d2server or clones)."
-    exit 1
-fi
+TOTAL_SERVERS=$(( 1 + CLONE_COUNT ))
 
 #####################################################
 # If the JSON file exists, check consistency.
+# Compare the number of detected clones (CLONE_COUNT) with the value in JSON.
 if [[ -f "$CLONE_L4D2SERVER" ]]; then
     CLONED_SERVERS=$(jq '.amount_clones' "$CLONE_L4D2SERVER")
-    
-    if [[ $CLONED_SERVERS -ne $SERVER_COUNT ]]; then
+    if [[ $CLONED_SERVERS -ne $CLONE_COUNT ]]; then
         echo "Inconsistency detected. Running the server cloning script..."
         "$DIR_SCRIPTING/clone_l4d2server.sh" "$CLONED_SERVERS"
     fi
@@ -73,9 +66,9 @@ start_servers() {
     for (( i = start_range; i <= end_range; i++ )); do
         local executable
         if [[ $i -eq 1 ]]; then
-            executable="$DIR_APP/l4d2server"
+            executable="$DIR_APP/$GAMESERVER"
         else
-            executable="$DIR_APP/l4d2server-$i"
+            executable="$DIR_APP/$GAMESERVER-$i"
         fi
 
         if [[ -x "$executable" ]]; then
@@ -100,9 +93,9 @@ stop_servers() {
     for (( i = start_range; i <= end_range; i++ )); do
         local executable
         if [[ $i -eq 1 ]]; then
-            executable="$DIR_APP/l4d2server"
+            executable="$DIR_APP/$GAMESERVER"
         else
-            executable="$DIR_APP/l4d2server-$i"
+            executable="$DIR_APP/$GAMESERVER-$i"
         fi
 
         if [[ -x "$executable" ]]; then
@@ -124,13 +117,13 @@ restart_servers() {
     if [[ $end_range -eq 0 ]]; then
         end_range=1
     fi
-    
+
     for (( i = start_range; i <= end_range; i++ )); do
         local executable
         if [[ $i -eq 1 ]]; then
-            executable="$DIR_APP/l4d2server"
+            executable="$DIR_APP/$GAMESERVER"
         else
-            executable="$DIR_APP/l4d2server-$i"
+            executable="$DIR_APP/$GAMESERVER-$i"
         fi
 
         if [[ -x "$executable" ]]; then
@@ -145,33 +138,33 @@ restart_servers() {
 #####################################################
 # Function: update_servers
 # Updates the servers. If the update type is "automatic",
-# the servers are stopped and restarted.
+# they are stopped and restarted.
 update_servers() {
     local update_type=${1:-manual}
     if [[ $update_type == "automatic" ]]; then
-        stop_servers 1 "$SERVER_COUNT"
+        stop_servers 1 "$TOTAL_SERVERS"
     fi
     "$DIR_SCRIPTING/install_gameserver.sh" 1
     if [[ $update_type == "automatic" ]]; then
-        start_servers 1 "$SERVER_COUNT"
+        start_servers 1 "$TOTAL_SERVERS"
     fi
 }
 
 #####################################################
-# Command line arguments processing or interactive menu.
+# Argument processing or interactive menu.
 if [[ $# -eq 0 ]]; then
-    # No parameters: the interactive menu is displayed.
+    # No parameters: display the interactive menu.
     menu
     read -rp "Selection: " choice
     case $choice in
         1)
-            start_servers 1 "$SERVER_COUNT"
+            start_servers 1 "$TOTAL_SERVERS"
             ;;
         2)
-            stop_servers 1 "$SERVER_COUNT"
+            stop_servers 1 "$TOTAL_SERVERS"
             ;;
         3)
-            restart_servers 1 "$SERVER_COUNT"
+            restart_servers 1 "$TOTAL_SERVERS"
             ;;
         4)
             update_servers automatic
@@ -184,18 +177,18 @@ if [[ $# -eq 0 ]]; then
             ;;
     esac
 elif [[ $# -eq 1 ]]; then
-    # One parameter: applies the command to all gameservers.
+    # One parameter: apply the command to all servers.
     command=$1
     start_range=1
-    end_range=$SERVER_COUNT
+    end_range=$TOTAL_SERVERS
 elif [[ $# -eq 2 ]]; then
     # Two parameters: the first is the command and the second is the start range;
-    # the end range is defined as the maximum number of gameservers.
+    # the end range is defined as the total number of servers.
     command=$1
     start_range=$2
-    end_range=$SERVER_COUNT
+    end_range=$TOTAL_SERVERS
 elif [[ $# -eq 3 ]]; then
-    # Three parameters: the command, the start range, and the end range are explicitly defined.
+    # Three parameters: explicitly define the command, start range, and end range.
     command=$1
     start_range=$2
     end_range=$3
@@ -204,9 +197,9 @@ else
     exit 1
 fi
 
-# If parameters were passed, the range is checked and the corresponding command is executed.
+# If parameters were passed, validate the range and execute the corresponding command.
 if [[ $# -ge 1 ]]; then
-    if [[ $start_range -lt 1 || $end_range -gt $SERVER_COUNT || $start_range -gt $end_range ]]; then
+    if [[ $start_range -lt 1 || $end_range -gt $TOTAL_SERVERS || $start_range -gt $end_range ]]; then
         echo "Invalid range."
         exit 1
     fi
