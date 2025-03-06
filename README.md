@@ -29,6 +29,8 @@ Docker-L4D2-Competitive es un contenedor Docker orientado al despliegue y gesti�
   Instala o actualiza el servidor competitivo, gestionando repositorios y archivos.
 - **tools_gameserver.sh:**  
   Incluye funciones comunes para registro, manejo de errores y gestión de directorios/archivos.
+- **repos.py:**  
+  Contiene una lista de repositorios de GitHub con sus respectivas URLs, carpetas de destino y ramas.
 - **git-gameserver/**  
   - **example.default.sh:** Prototipo para aplicar modificaciones a repositorios específicos.
   - **sir.default.sh:** Aplica cambios a la rama `default` del repositorio `L4D2-Competitive-Rework`.
