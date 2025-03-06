@@ -1,9 +1,9 @@
-name: Docker Image Developer
+name: Docker Image Develop
 
 on:
   push:
     branches:
-      - developer
+      - develop
 
 permissions:
   contents: read
@@ -34,4 +34,4 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ghcr.io/aoc-gamers/lgsm-l4d2-competitive:developer
+          tags: ghcr.io/aoc-gamers/lgsm-l4d2-competitive:develop
