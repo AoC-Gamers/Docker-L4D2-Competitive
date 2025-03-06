@@ -46,7 +46,7 @@ echo -e "=======================================================================
 # Add environment variables to /etc/environment to make them permanent
 {
   echo -e "GAMESERVER=${GAMESERVER}"
-  echo -e "DISTRO=${DISTRO}"
+  echo -e "DISTRO=\"${DISTRO}\""
   echo -e "USER=${USER}"
   echo -e "UID=${UID}"
   echo -e "GID=${GID}"
