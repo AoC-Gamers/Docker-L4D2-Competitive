@@ -1,0 +1,24 @@
+services:
+  dev_comp:
+    build:
+      dockerfile: Dockerfile
+      context: .
+    image: dev_comp
+    container_name: dev_comp
+    pull_policy: always
+    volumes:
+      - dev_data:/data
+    environment:
+      - LGSM_PASSWORD=${LGSM_PASSWORD}
+      - SSH_PORT=${SSH_PORT}
+      - SSH_KEY=${SSH_KEY}
+      - L4D2_NO_INTALL=true
+      - L4D2_NO_AUTOSTART=true
+    ports:
+      - "27015:27015"
+      - "27115:27115"
+      - "22:22"
+
+volumes:
+  dev_data:
+    name: dev_data

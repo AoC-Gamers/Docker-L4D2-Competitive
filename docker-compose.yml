@@ -1,0 +1,16 @@
+services:
+  comp_l4d2:
+    image: ghcr.io/aoc-gamers/lgsm-l4d2-competitive:latest
+    container_name: comp_l4d2
+    pull_policy: always
+    volumes:
+      - comp_data:/data
+    environment:
+      - LGSM_PASSWORD=${LGSM_PASSWORD}
+      - SSH_PORT=${SSH_PORT}
+      - SSH_KEY=${SSH_KEY}
+    network_mode: host
+
+volumes:
+  comp_data:
+    name: comp_data
