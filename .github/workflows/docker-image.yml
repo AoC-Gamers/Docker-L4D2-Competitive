@@ -29,7 +29,6 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GHCR_PAT }}
 
-      # Condicional para construir la imagen de acuerdo a la rama
       - name: Build and push Docker image for develop
         if: ${{ github.ref == 'refs/heads/develop' }}
         uses: docker/build-push-action@v4
@@ -48,13 +47,12 @@ jobs:
           push: true
           tags: ghcr.io/aoc-gamers/lgsm-l4d2-competitive:latest
 
-      # Disparar webhook a Docker-L4D2-AoC dependiendo de la rama
       - name: Trigger AoC Workflow for develop
         if: ${{ github.ref == 'refs/heads/develop' }}
         run: |
           curl -X POST \
             https://api.github.com/repos/AoC-Gamers/Docker-L4D2-AoC/actions/workflows/docker-image.yml/dispatches \
-            -H "Authorization: token ${{ secrets.TOKEN_WEBHOOCK }}" \
+            -H "Authorization: token ${{ secrets.TOKEN_WEBHOOK }}" \
             -d '{"ref":"develop"}'
 
       - name: Trigger AoC Workflow for main
@@ -62,5 +60,5 @@ jobs:
         run: |
           curl -X POST \
             https://api.github.com/repos/AoC-Gamers/Docker-L4D2-AoC/actions/workflows/docker-image.yml/dispatches \
-            -H "Authorization: token ${{ secrets.TOKEN_WEBHOOCK }}" \
+            -H "Authorization: token ${{ secrets.TOKEN_WEBHOOK }}" \
             -d '{"ref":"main"}'
