@@ -68,13 +68,13 @@ COPY entrypoint-user.sh /app/entrypoint-user.sh
 COPY entrypoint-healthcheck.sh /app/entrypoint-healthcheck.sh
 
 # Copiar todos los archivos de /config-lgsm/l4d2server/ a /data/config-lgsm/l4d2server/
-COPY config-lgsm/l4d2server/* /data/config-lgsm/l4d2server/
+COPY config-lgsm/l4d2server/ /data/config-lgsm/l4d2server/
 
 # Copiar todos los archivos de /server-scripts/ a /app/server-scripts/
 COPY server-scripts/ /app/server-scripts/
 
 # Copiar todos los archivos de /docker-scripts/ a /app/docker-scripts/
-COPY docker-scripts/* /app/docker-scripts/
+COPY docker-scripts/ /app/docker-scripts/
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD /app/entrypoint-healthcheck.sh healthcheck || exit 1
