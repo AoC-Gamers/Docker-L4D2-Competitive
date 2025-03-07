@@ -54,7 +54,7 @@ jobs:
         run: |
           curl -X POST \
             https://api.github.com/repos/AoC-Gamers/Docker-L4D2-AoC/actions/workflows/docker-image.yml/dispatches \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Authorization: token ${{ secrets.TOKEN_WEBHOOCK }}" \
             -d '{"ref":"develop"}'
 
       - name: Trigger AoC Workflow for main
@@ -62,5 +62,5 @@ jobs:
         run: |
           curl -X POST \
             https://api.github.com/repos/AoC-Gamers/Docker-L4D2-AoC/actions/workflows/docker-image.yml/dispatches \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Authorization: token ${{ secrets.TOKEN_WEBHOOCK }}" \
             -d '{"ref":"main"}'
