@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #####################################################
-# Verify that the necessary environment variables are defined
+# Check that the necessary environment variables are defined
 : "${DIR_SCRIPTING:?The DIR_SCRIPTING variable is not defined.}"
 
 #####################################################
@@ -13,11 +13,11 @@ source "$DIR_SCRIPTING/tools_gameserver.sh"
 # Variables and constants
 CLONE_L4D2SERVER="$DIR_SCRIPTING/clone_l4d2server.json"
 
-# Se asume que el archivo base $DIR_APP/$GAMESERVER siempre existe.
+# It is assumed that the base file $DIR_APP/$GAMESERVER always exists.
 if [[ -f "$DIR_APP/$GAMESERVER" ]]; then
     TOTAL_SERVERS=1
 else
-    echo "El servidor base ($DIR_APP/$GAMESERVER) no existe."
+    echo "The base server ($DIR_APP/$GAMESERVER) does not exist."
     exit 1
 fi
 
@@ -33,19 +33,18 @@ done
 TOTAL_SERVERS=$(( TOTAL_SERVERS + CLONE_COUNT ))
 
 #####################################################
-# If the JSON file exists, check consistency.
-# Compare the number of detected clones (CLONE_COUNT) with the value in JSON.
+# If the JSON file exists, consistency is checked.
+# The number of detected clones (CLONE_COUNT) is compared with the value in JSON.
 if [[ -f "$CLONE_L4D2SERVER" ]]; then
     CLONED_SERVERS=$(jq '.amount_clones' "$CLONE_L4D2SERVER")
     if [[ $CLONED_SERVERS -ne $CLONE_COUNT ]]; then
-        echo "Inconsistency detected. Running the server cloning script..."
+        echo "An inconsistency was detected. Running the cloning script..."
         "$DIR_SCRIPTING/clone_l4d2server.sh" "$CLONED_SERVERS"
     fi
 fi
 
 #####################################################
 # Function: menu
-# Displays the interactive menu and reads the selected option.
 menu() {
     echo "Gameservers Menu"
     echo "1 - Start"
@@ -63,7 +62,7 @@ start_servers() {
     local start_range=$1
     local end_range=$2
 
-    # If end_range is 0, force it to 1 (edge case)
+    # Edge case: if end_range is 0, force it to 1.
     if [[ $end_range -eq 0 ]]; then
         end_range=1
     fi
@@ -77,9 +76,10 @@ start_servers() {
         fi
 
         if [[ -x "$executable" ]]; then
-            "$executable" start
+            # If it fails, a warning is displayed and it continues.
+            "$executable" start || echo "[WARN] Could not start $executable, continuing..."
         else
-            echo "Executable file $executable not found or does not have execution permissions."
+            echo "The executable file $executable does not exist or does not have execution permissions."
         fi
     done
 }
@@ -104,9 +104,9 @@ stop_servers() {
         fi
 
         if [[ -x "$executable" ]]; then
-            "$executable" stop
+            "$executable" stop || echo "[WARN] Could not stop $executable, continuing..."
         else
-            echo "Executable file $executable not found or does not have execution permissions."
+            echo "The executable file $executable does not exist or does not have execution permissions."
         fi
     done
     echo "Done"
@@ -132,9 +132,9 @@ restart_servers() {
         fi
 
         if [[ -x "$executable" ]]; then
-            "$executable" restart
+            "$executable" restart || echo "[WARN] Could not restart $executable, continuing..."
         else
-            echo "Executable file $executable not found or does not have execution permissions."
+            echo "The executable file $executable does not exist or does not have execution permissions."
         fi
     done
     echo "Done"
@@ -158,7 +158,6 @@ update_servers() {
 #####################################################
 # Argument processing or interactive menu.
 if [[ $# -eq 0 ]]; then
-    # No parameters: display the interactive menu.
     menu
     read -rp "Selection: " choice
     case $choice in
@@ -182,7 +181,7 @@ if [[ $# -eq 0 ]]; then
             ;;
     esac
 elif [[ $# -eq 1 ]]; then
-    # One parameter: apply the command to all servers.
+    # One parameter: applies the command to all servers.
     command=$1
     start_range=1
     end_range=$TOTAL_SERVERS
@@ -202,7 +201,7 @@ else
     exit 1
 fi
 
-# If parameters were passed, validate the range and execute the corresponding command.
+# If parameters were passed, the range is validated and the corresponding command is executed.
 if [[ $# -ge 1 ]]; then
     if [[ $start_range -lt 1 || $end_range -gt $TOTAL_SERVERS || $start_range -gt $end_range ]]; then
         echo "Invalid range."
