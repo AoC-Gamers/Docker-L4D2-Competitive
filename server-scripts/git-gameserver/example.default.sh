@@ -1,6 +1,7 @@
 #!/bin/bash
 # example.default.sh
 # Subscript to apply specific modifications to the 'default' branch of Example.
+set -euo pipefail
 
 if [ -z "$1" ]; then
     echo "Usage: $0 <REPO_DIR> <INSTALL_TYPE> <GIT_DOWNLOAD>"
