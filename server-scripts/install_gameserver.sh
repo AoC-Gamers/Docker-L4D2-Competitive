@@ -26,6 +26,9 @@ if [[ ! -f "$REPOS_JSON" ]]; then
     exit 1
 fi
 
+# JSON file with the list of paths to be backuped
+BACKUP_JSON="$DIR_SCRIPTING/backup_gameserver.json"
+
 #####################################################
 # Verify if the script is run as the user ${USER}
 check_user "${USER}"
@@ -141,8 +144,41 @@ clean_instance_logs() {
 }
 
 #####################################################
+# Backup and restore system
+backup_files() {
+    local backup_json="$1"
+    local base_dir="$2"
+    jq -r 'to_entries[] | "\(.key) \(.value[])"' "$backup_json" | while read -r folder file; do
+        local src="$base_dir/$folder/$file"
+        local dest="$base_dir/$file"
+        if [[ -f "$src" ]]; then
+            mkdir -p "$(dirname "$dest")"
+            mv "$src" "$dest"
+            log "Backed up $src to $dest"
+        fi
+    done
+}
+
+restore_files() {
+    local backup_json="$1"
+    local base_dir="$2"
+    jq -r 'to_entries[] | "\(.key) \(.value[])"' "$backup_json" | while read -r folder file; do
+        local src="$base_dir/$file"
+        local dest="$base_dir/$folder/$file"
+        if [[ -f "$src" ]]; then
+            mkdir -p "$(dirname "$dest")"
+            mv "$src" "$dest"
+            log "Restored $src to $dest"
+        fi
+    done
+}
+
+#####################################################
 # Process cleaning in case of update
 if [ "$INSTALL_TYPE" == "update" ]; then
+    # Backup files before cleaning
+    backup_files "$BACKUP_JSON" "$DIR_SOURCEMOD"
+
     verify_and_delete_dir "$DIR_SOURCEMOD/data"
     verify_and_delete_dir "$DIR_SOURCEMOD/extensions"
     verify_and_delete_dir "$DIR_SOURCEMOD/gamedata"
@@ -155,6 +191,9 @@ if [ "$INSTALL_TYPE" == "update" ]; then
     verify_and_delete_dir "$DIR_CFG/cfgogl"
     verify_and_delete_dir "$DIR_CFG/sourcemod"
     verify_and_delete_dir "$DIR_CFG/stripper"
+
+    # Restore files after cleaning
+    restore_files "$BACKUP_JSON" "$DIR_SOURCEMOD"
 fi
 
 #####################################################
