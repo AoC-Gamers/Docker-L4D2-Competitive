@@ -174,7 +174,13 @@ restore_files() {
         if [[ -f "$src" ]]; then
             mkdir -p "$(dirname "$dest")"
             mv "$src" "$dest"
-            log "Restored $src to $dest"
+            log "Restored file $src to $dest"
+        elif [[ -d "$src" ]]; then
+            mkdir -p "$(dirname "$dest")"
+            mv "$src" "$dest"
+            log "Restored directory $src to $dest"
+        else
+            log "Skipping $src as it does not exist or is not a valid file/directory"
         fi
     done
 }
