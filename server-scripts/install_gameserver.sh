@@ -154,7 +154,13 @@ backup_files() {
         if [[ -f "$src" ]]; then
             mkdir -p "$(dirname "$dest")"
             mv "$src" "$dest"
-            log "Backed up $src to $dest"
+            log "Backed up file $src to $dest"
+        elif [[ -d "$src" ]]; then
+            mkdir -p "$(dirname "$dest")"
+            mv "$src" "$dest"
+            log "Backed up directory $src to $dest"
+        else
+            log "Skipping $src as it does not exist or is not a valid file/directory"
         fi
     done
 }
