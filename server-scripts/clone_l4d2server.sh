@@ -126,21 +126,29 @@ fi
 
 #####################################################
 # Loop to create server clones
-for (( i=2; i<=AMOUNT_CLONES+1; i++ )); do
-
-    if [ "$AMOUNT_CLONES" -eq 0 ]; then
+for (( i=1; i<=AMOUNT_CLONES+1; i++ )); do
+    if [ "$AMOUNT_CLONES" -eq 1 ]; then
+        if [ -d "${DIR_SOURCEMOD}1" ]; then
+            echo "Verifying symbolic links for sourcemod1..."
+            create_sourcemod_links "${DIR_SOURCEMOD}1"
+        fi
         exit 0
     fi
 
-    SERVER_NAME="${GAMESERVER}-$i"
+    if [ "$i" -eq 1 ]; then
+        SERVER_NAME="${GAMESERVER}"
+    else
+        SERVER_NAME="${GAMESERVER}-$i"
+    fi
+
     DIR_NEW_SOURCEMOD="${DIR_SOURCEMOD}${i}"
-    
+
     if [ -f "$DIR_APP/$SERVER_NAME" ]; then
         echo "The server $SERVER_NAME already exists. Skipping..."
     else
         echo "Creating the server $SERVER_NAME..."
         $LGSM_L4D2SERVER
-        ./"$SERVER_NAME" details > /dev/null
+        ./$SERVER_NAME details > /dev/null
     fi
 
     # Copy configuration if the specific copy for the server does not exist
@@ -156,7 +164,7 @@ for (( i=2; i<=AMOUNT_CLONES+1; i++ )); do
         echo "The directory $DIR_NEW_SOURCEMOD already exists..."
         continue
     fi
-    
+
     echo "Creating the directory: $DIR_NEW_SOURCEMOD"
     mkdir "$DIR_NEW_SOURCEMOD" || error_exit "Error creating the directory $DIR_NEW_SOURCEMOD"
     create_sourcemod_links "$DIR_NEW_SOURCEMOD"
