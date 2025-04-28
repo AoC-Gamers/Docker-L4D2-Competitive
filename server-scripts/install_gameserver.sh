@@ -70,7 +70,7 @@ fi
 
 mkdir -p "$HOME/.steam/sdk32" "$HOME/.steam/sdk64"
 
-cp -v "$HOME/.local/share/Steam/steamcmd/linux32/"* "$HOME/.steam/sdk32"
+find "$HOME/.local/share/Steam/steamcmd/linux32/" -maxdepth 1 -type f -exec cp -v {} "$HOME/.steam/sdk32" \;
 cp -v "$HOME/.local/share/Steam/steamcmd/linux64/steamclient.so" "$HOME/.steam/sdk64/steamclient.so"
 
 if [[ -e "$LGSM_SERVERFILES/bin/libstdc++.so.6" ]]; then
