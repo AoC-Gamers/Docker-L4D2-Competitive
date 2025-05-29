@@ -43,6 +43,19 @@ echo -e ""
 echo -e "Initializing"
 echo -e "================================================================================"
 
+echo -e ""
+echo -e "Checking IPv6 status"
+echo -e "================================="
+
+if [ "$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6)" -eq 0 ]; then
+  echo -e "IPv6 is enabled. Disabling it..."
+  sysctl -w net.ipv6.conf.all.disable_ipv6=1
+  sysctl -w net.ipv6.conf.default.disable_ipv6=1
+  echo -e "IPv6 has been disabled temporarily."
+else
+  echo -e "IPv6 is already disabled."
+fi
+
 # Add environment variables to /etc/environment to make them permanent
 {
   echo -e "GAMESERVER=${GAMESERVER}"
