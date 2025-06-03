@@ -2,148 +2,121 @@
 set -euo pipefail
 
 #####################################################
-# Check that the necessary environment variables are defined
-: "${DIR_SCRIPTING:?The DIR_SCRIPTING variable is not defined.}"
+# Dependencias requeridas
+if ! command -v jq &> /dev/null; then
+    echo -e "\e[31m❌ Error:\e[0m jq no está instalado."
+    exit 1
+fi
 
 #####################################################
-# Function library
+# Librería de funciones
 source "$DIR_SCRIPTING/tools_gameserver.sh"
 
 #####################################################
-# Variables and constants
+# Validación de entorno
+: "${DIR_SCRIPTING:?❌ DIR_SCRIPTING no está definido.}"
+: "${DIR_APP:?❌ DIR_APP no está definido.}"
+: "${GAMESERVER:?❌ GAMESERVER no está definido.}"
+
+#####################################################
+# Variables y constantes
 CLONE_L4D2SERVER="$DIR_SCRIPTING/clone_l4d2server.json"
 
-# It is assumed that the base file $DIR_APP/$GAMESERVER always exists.
-if [[ -f "$DIR_APP/$GAMESERVER" ]]; then
+if [[ -x "$DIR_APP/$GAMESERVER" ]]; then
     TOTAL_SERVERS=1
 else
-    echo "The base server ($DIR_APP/$GAMESERVER) does not exist."
+    echo -e "\e[31m❌ Error:\e[0m El servidor base ($DIR_APP/$GAMESERVER) no existe o no tiene permisos de ejecución."
     exit 1
 fi
 
 PATTERN="$DIR_APP/$GAMESERVER-"
 CLONE_COUNT=0
 
+shopt -s nullglob
 for file in "$PATTERN"*; do
-    if [[ -f "$file" ]]; then
-        CLONE_COUNT=$(( CLONE_COUNT + 1 ))
-    fi
+    [[ -x "$file" ]] && CLONE_COUNT=$((CLONE_COUNT + 1))
 done
+shopt -u nullglob
 
 TOTAL_SERVERS=$(( TOTAL_SERVERS + CLONE_COUNT ))
 
 #####################################################
-# If the JSON file exists, consistency is checked.
-# The number of detected clones (CLONE_COUNT) is compared with the value in JSON.
+# Verificación del JSON
 if [[ -f "$CLONE_L4D2SERVER" ]]; then
-    CLONED_SERVERS=$(jq '.amount_clones' "$CLONE_L4D2SERVER")
-    if [[ $CLONED_SERVERS -ne $CLONE_COUNT ]]; then
-        echo "An inconsistency was detected. Running the cloning script..."
-        "$DIR_SCRIPTING/clone_l4d2server.sh" "$CLONED_SERVERS"
+    if jq -e 'has("amount_clones")' "$CLONE_L4D2SERVER" &>/dev/null; then
+        CLONED_SERVERS=$(jq '.amount_clones' "$CLONE_L4D2SERVER")
+        if [[ $CLONED_SERVERS -ne $CLONE_COUNT ]]; then
+            echo -e "\e[33m⚠️ Inconsistencia detectada.\e[0m Ejecutando script de clonación..."
+            "$DIR_SCRIPTING/clone_l4d2server.sh" "$CLONED_SERVERS"
+        fi
+    else
+        echo -e "\e[33m⚠️ Advertencia:\e[0m El JSON no contiene el campo 'amount_clones'."
     fi
 fi
 
 #####################################################
-# Function: menu
+# Menú
 menu() {
     echo "Gameservers Menu"
     echo "1 - Start"
     echo "2 - Stop"
     echo "3 - Restart"
     echo "4 - Automatic Update"
-    echo "5 - Update"
+    echo "5 - Manual Update"
     echo "* - Exit"
 }
 
-#####################################################
-# Function: start_servers
-# Starts the servers in the specified range.
+# Funciones principales
 start_servers() {
-    local start_range=$1
-    local end_range=$2
-
-    # Edge case: if end_range is 0, force it to 1.
-    if [[ $end_range -eq 0 ]]; then
-        end_range=1
-    fi
+    local start_range=$1 end_range=$2
+    (( end_range == 0 )) && end_range=1
 
     for (( i = start_range; i <= end_range; i++ )); do
-        local executable
-        if [[ $i -eq 1 ]]; then
-            executable="$DIR_APP/$GAMESERVER"
-        else
-            executable="$DIR_APP/$GAMESERVER-$i"
-        fi
+        local executable="$DIR_APP/$GAMESERVER"
+        [[ $i -ne 1 ]] && executable="$DIR_APP/$GAMESERVER-$i"
 
         if [[ -x "$executable" ]]; then
-            # If it fails, a warning is displayed and it continues.
-            "$executable" start || echo "[WARN] Could not start $executable, continuing..."
+            "$executable" start || echo -e "\e[33m[WARN]\e[0m No se pudo iniciar $executable, continuando..."
         else
-            echo "The executable file $executable does not exist or does not have execution permissions."
+            echo -e "\e[31m[ERROR]\e[0m El archivo $executable no existe o no tiene permisos de ejecución."
         fi
     done
 }
 
-#####################################################
-# Function: stop_servers
-# Stops the servers in the specified range.
 stop_servers() {
-    local start_range=$1
-    local end_range=$2
-
-    if [[ $end_range -eq 0 ]]; then
-        end_range=1
-    fi
+    local start_range=$1 end_range=$2
+    (( end_range == 0 )) && end_range=1
 
     for (( i = start_range; i <= end_range; i++ )); do
-        local executable
-        if [[ $i -eq 1 ]]; then
-            executable="$DIR_APP/$GAMESERVER"
-        else
-            executable="$DIR_APP/$GAMESERVER-$i"
-        fi
+        local executable="$DIR_APP/$GAMESERVER"
+        [[ $i -ne 1 ]] && executable="$DIR_APP/$GAMESERVER-$i"
 
         if [[ -x "$executable" ]]; then
-            "$executable" stop || echo "[WARN] Could not stop $executable, continuing..."
+            "$executable" stop || echo -e "\e[33m[WARN]\e[0m No se pudo detener $executable, continuando..."
         else
-            echo "The executable file $executable does not exist or does not have execution permissions."
+            echo -e "\e[31m[ERROR]\e[0m El archivo $executable no existe o no tiene permisos de ejecución."
         fi
     done
-    echo "Done"
+    echo "✔️ Finalizado"
 }
 
-#####################################################
-# Function: restart_servers
-# Restarts the servers in the specified range.
 restart_servers() {
-    local start_range=$1
-    local end_range=$2
-
-    if [[ $end_range -eq 0 ]]; then
-        end_range=1
-    fi
+    local start_range=$1 end_range=$2
+    (( end_range == 0 )) && end_range=1
 
     for (( i = start_range; i <= end_range; i++ )); do
-        local executable
-        if [[ $i -eq 1 ]]; then
-            executable="$DIR_APP/$GAMESERVER"
-        else
-            executable="$DIR_APP/$GAMESERVER-$i"
-        fi
+        local executable="$DIR_APP/$GAMESERVER"
+        [[ $i -ne 1 ]] && executable="$DIR_APP/$GAMESERVER-$i"
 
         if [[ -x "$executable" ]]; then
-            "$executable" restart || echo "[WARN] Could not restart $executable, continuing..."
+            "$executable" restart || echo -e "\e[33m[WARN]\e[0m No se pudo reiniciar $executable, continuando..."
         else
-            echo "The executable file $executable does not exist or does not have execution permissions."
+            echo -e "\e[31m[ERROR]\e[0m El archivo $executable no existe o no tiene permisos de ejecución."
         fi
     done
-    echo "Done"
+    echo "✔️ Finalizado"
 }
 
-#####################################################
-# Function: update_servers
-# Updates the servers. If the update type is "automatic",
-# they are stopped and restarted.
 update_servers() {
     local update_type=${1:-manual}
     if [[ $update_type == "automatic" ]]; then
@@ -156,77 +129,36 @@ update_servers() {
 }
 
 #####################################################
-# Argument processing or interactive menu.
+# Interacción
 if [[ $# -eq 0 ]]; then
     menu
-    read -rp "Selection: " choice
+    read -rp "Selección: " choice
     case $choice in
-        1)
-            start_servers 1 "$TOTAL_SERVERS"
-            ;;
-        2)
-            stop_servers 1 "$TOTAL_SERVERS"
-            ;;
-        3)
-            restart_servers 1 "$TOTAL_SERVERS"
-            ;;
-        4)
-            update_servers automatic
-            ;;
-        5)
-            update_servers manual
-            ;;
-        *)
-            echo "Done"
-            ;;
+        1) start_servers 1 "$TOTAL_SERVERS" ;;
+        2) stop_servers 1 "$TOTAL_SERVERS" ;;
+        3) restart_servers 1 "$TOTAL_SERVERS" ;;
+        4) update_servers automatic ;;
+        5) update_servers manual ;;
+        *) echo "Saliendo..." ;;
     esac
-elif [[ $# -eq 1 ]]; then
-    # One parameter: applies the command to all servers.
-    command=$1
-    start_range=1
-    end_range=$TOTAL_SERVERS
-elif [[ $# -eq 2 ]]; then
-    # Two parameters: the first is the command and the second is the start range;
-    # the end range is defined as the total number of servers.
-    command=$1
-    start_range=$2
-    end_range=$TOTAL_SERVERS
-elif [[ $# -eq 3 ]]; then
-    # Three parameters: explicitly define the command, start range, and end range.
-    command=$1
-    start_range=$2
-    end_range=$3
 else
-    echo "Usage: $0 {command [start_range [end_range]]}"
-    exit 1
-fi
+    command=$1
+    start_range=${2:-1}
+    end_range=${3:-$TOTAL_SERVERS}
 
-# If parameters were passed, the range is validated and the corresponding command is executed.
-if [[ $# -ge 1 ]]; then
-    if [[ $start_range -lt 1 || $end_range -gt $TOTAL_SERVERS || $start_range -gt $end_range ]]; then
-        echo "Invalid range."
+    if (( start_range < 1 || end_range > TOTAL_SERVERS || start_range > end_range )); then
+        echo -e "\e[31m❌ Rango inválido.\e[0m"
         exit 1
     fi
 
     case $command in
-        st|start)
-            start_servers "$start_range" "$end_range"
-            ;;
-        s|stop)
-            stop_servers "$start_range" "$end_range"
-            ;;
-        r|restart)
-            restart_servers "$start_range" "$end_range"
-            ;;
-        aup|aupdate)
-            update_servers automatic
-            ;;
-        up|update)
-            update_servers manual
-            ;;
-        *)
-            echo "Invalid command."
-            exit 1
-            ;;
+        st|start)     start_servers "$start_range" "$end_range" ;;
+        s|stop)       stop_servers "$start_range" "$end_range" ;;
+        r|restart)    restart_servers "$start_range" "$end_range" ;;
+        aup|aupdate)  update_servers automatic ;;
+        up|update)    update_servers manual ;;
+        *) echo -e "\e[31m❌ Comando inválido.\e[0m"; exit 1 ;;
     esac
 fi
+
+echo -e "\n🔢 Total de servidores detectados: $TOTAL_SERVERS"
