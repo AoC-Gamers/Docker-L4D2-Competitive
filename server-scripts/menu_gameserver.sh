@@ -22,32 +22,54 @@ source "$DIR_SCRIPTING/tools_gameserver.sh"
 # Variables y constantes
 CLONE_L4D2SERVER="$DIR_SCRIPTING/clone_l4d2server.json"
 
-if [[ -x "$DIR_APP/$GAMESERVER" ]]; then
-    TOTAL_SERVERS=1
-else
-    echo -e "\e[31m❌ Error:\e[0m El servidor base ($DIR_APP/$GAMESERVER) no existe o no tiene permisos de ejecución."
-    exit 1
-fi
+# Función para calcular el número total de servidores
+calculate_total_servers() {
+    local total_servers=0
+    local clone_count=0
+    
+    # Verificar servidor base
+    if [[ -x "$DIR_APP/$GAMESERVER" ]]; then
+        total_servers=1
+        echo -e "\e[36m[DEBUG]\e[0m Servidor base encontrado: $DIR_APP/$GAMESERVER" >&2
+    else
+        echo -e "\e[31m❌ Error:\e[0m El servidor base ($DIR_APP/$GAMESERVER) no existe o no tiene permisos de ejecución."
+        exit 1
+    fi
 
-PATTERN="$DIR_APP/$GAMESERVER-"
-CLONE_COUNT=0
+    # Contar servidores clonados
+    local pattern="$DIR_APP/$GAMESERVER-"
+    shopt -s nullglob
+    for file in "$pattern"*; do
+        if [[ -x "$file" ]]; then
+            clone_count=$((clone_count + 1))
+            echo -e "\e[36m[DEBUG]\e[0m Servidor clonado encontrado: $file" >&2
+        fi
+    done
+    shopt -u nullglob
 
-shopt -s nullglob
-for file in "$PATTERN"*; do
-    [[ -x "$file" ]] && CLONE_COUNT=$((CLONE_COUNT + 1))
-done
-shopt -u nullglob
+    total_servers=$(( total_servers + clone_count ))
+    echo -e "\e[36m[DEBUG]\e[0m Total calculado: $total_servers servidores ($clone_count clones + 1 base)" >&2
+    echo "$total_servers"
+}
 
-TOTAL_SERVERS=$(( TOTAL_SERVERS + CLONE_COUNT ))
+# Calcular número inicial de servidores
+TOTAL_SERVERS=$(calculate_total_servers)
 
 #####################################################
 # Verificación del JSON
 if [[ -f "$CLONE_L4D2SERVER" ]]; then
     if jq -e 'has("amount_clones")' "$CLONE_L4D2SERVER" &>/dev/null; then
         CLONED_SERVERS=$(jq '.amount_clones' "$CLONE_L4D2SERVER")
-        if [[ $CLONED_SERVERS -ne $CLONE_COUNT ]]; then
+        # Calcular el número actual de servidores clonados
+        CURRENT_CLONE_COUNT=$(( TOTAL_SERVERS - 1 ))
+        
+        if [[ $CLONED_SERVERS -ne $CURRENT_CLONE_COUNT ]]; then
             echo -e "\e[33m⚠️ Inconsistencia detectada.\e[0m Ejecutando script de clonación..."
             "$DIR_SCRIPTING/clone_l4d2server.sh" "$CLONED_SERVERS"
+            
+            # Recalcular el total de servidores después de la clonación
+            echo -e "\e[32m✅ Recalculando número total de servidores...\e[0m"
+            TOTAL_SERVERS=$(calculate_total_servers)
         fi
     else
         echo -e "\e[33m⚠️ Advertencia:\e[0m El JSON no contiene el campo 'amount_clones'."
@@ -162,3 +184,5 @@ else
 fi
 
 echo -e "\n🔢 Total de servidores detectados: $TOTAL_SERVERS"
+echo -e "📋 Servidor base: $GAMESERVER"
+echo -e "📋 Servidores clonados: $(( TOTAL_SERVERS - 1 ))"
