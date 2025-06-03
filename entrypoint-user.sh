@@ -154,5 +154,5 @@ elif [ "${L4D2_NO_AUTOSTART}" == "true" ]; then
   echo -e "Skip starting ${GAMESERVER} as L4D2_NO_AUTOSTART is set to true"
 else
   echo -e "Done"
-  bash $HOME/menu_gameserver.sh start  > /dev/null 2>&1
+  bash $HOME/menu_gameserver.sh start
 fi
