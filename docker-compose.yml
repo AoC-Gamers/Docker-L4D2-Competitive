@@ -1,6 +1,7 @@
 services:
   comp_l4d2:
     image: ghcr.io/aoc-gamers/lgsm-l4d2-competitive:latest
+    restart: unless-stopped
     container_name: comp_l4d2
     pull_policy: always
     volumes:
