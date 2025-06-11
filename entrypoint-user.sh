@@ -92,8 +92,8 @@ echo -e "================================="
 L4D2_FRESH_INSTALL="false"
 if [ -n "$(ls -A -- "${LGSM_SERVERFILES}" 2> /dev/null)" ]; then
   echo -e "Skip installing ${GAMESERVER} as ${LGSM_SERVERFILES} is not empty"
-elif [ "${L4D2_NO_INTALL}" == "true" ]; then
-  echo -e "Skip installing ${GAMESERVER} as L4D2_NO_INTALL is set to true"
+elif [ "${L4D2_NO_INSTALL}" == "true" ]; then
+  echo -e "Skip installing ${GAMESERVER} as L4D2_NO_INSTALL is set to true"
 else
   bash $DIR_SCRIPTING/l4d2_fix_install.sh
   L4D2_FRESH_INSTALL="true"

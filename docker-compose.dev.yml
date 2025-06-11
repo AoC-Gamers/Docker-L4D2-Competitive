@@ -12,7 +12,7 @@ services:
       - LGSM_PASSWORD=${LGSM_PASSWORD}
       - SSH_PORT=${SSH_PORT}
       - SSH_KEY=${SSH_KEY}
-      - L4D2_NO_INTALL=true
+      - L4D2_NO_INSTALL=true
       - L4D2_NO_AUTOSTART=true
     ports:
       - "27015:27015"
