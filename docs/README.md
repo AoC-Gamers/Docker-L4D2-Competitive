@@ -19,17 +19,19 @@ Bienvenido a la documentación completa del proyecto Docker-L4D2-Competitive, un
 
 ## 🎯 ¿Por Dónde Empezar?
 
-### Si eres nuevo en el proyecto:
-1. Lee la [Guía de Inicio Rápido](quick-start.md)
-2. Sigue la [Configuración Avanzada](configuration.md) para personalizar tu instalación
-3. Consulta la [Documentación de Scripts](scripts.md) para entender las herramientas disponibles
+### 🆕 Si eres nuevo en el proyecto:
+1. 📖 Lee la [Guía de Inicio Rápido](quick-start.md)
+2. ⚙️ Sigue la [Configuración Avanzada](configuration.md) para personalizar tu instalación
+3. 🔧 Consulta la [Documentación de Scripts](scripts.md) para entender las herramientas disponibles
 
-### Si ya tienes experiencia:
-- [API y Referencia](api-reference.md) para integración y automatización
-- [Guía de Desarrollo](development.md) para contribuir al proyecto
+### 👨‍💻 Si ya tienes experiencia:
+- 🚀 [API y Referencia](api-reference.md) para integración y automatización
+- 🔄 [Diagramas de Flujo](flowcharts.md) para entender el funcionamiento interno
+- 💻 [Guía de Desarrollo](development.md) para contribuir al proyecto
 
-### Si tienes problemas:
-- [Troubleshooting](troubleshooting.md) para soluciones rápidas
+### 🔧 Si tienes problemas:
+- 🆘 [Troubleshooting](troubleshooting.md) para soluciones rápidas
+- 🐛 [Issues en GitHub](https://github.com/AoC-Gamers/Docker-L4D2-Competitive/issues) para reportar bugs
 
 ## 🏗️ Arquitectura del Proyecto
 
@@ -100,6 +102,29 @@ graph TD
 - **Red**: Conexión estable (descarga inicial ~10GB)
 
 ## 🚨 Información Importante
+
+### ⚠️ Volumen Persistente OBLIGATORIO
+
+**CRÍTICO**: El volumen Docker es **obligatorio** para el funcionamiento correcto:
+
+```yaml
+# En docker-compose.yml - NO OPCIONAL
+volumes:
+  comp_data:
+    name: comp_data
+```
+
+**Sin volumen persistente**:
+- ❌ Se pierde configuración del servidor en cada reinicio
+- ❌ Se pierden mapas y contenido workshop descargado  
+- ❌ Se pierden logs y datos de juego
+- ❌ Reinstalación completa en cada actualización
+
+**Con volumen persistente**:
+- ✅ Configuraciones persistentes entre reinicios
+- ✅ Scripts se actualizan automáticamente via enlaces simbólicos
+- ✅ Datos del gameserver preservados
+- ✅ Actualizaciones sin pérdida de datos
 
 ### ⚠️ Primera Instalación
 La primera ejecución descarga:

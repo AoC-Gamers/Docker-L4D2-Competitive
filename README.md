@@ -1,229 +1,148 @@
 # Docker-L4D2-Competitive
 
-Docker-L4D2-Competitive es un contenedor Docker orientado al despliegue y gestión de servidores competitivos de Left 4 Dead 2. Basado en el proyecto [docker-gameserver](https://github.com/GameServerManagers/docker-gameserver), este proyecto incorpora scripts adicionales para la instalación de dependencias, configuración y clonación de servidores, optimizados para entornos competitivos.
+[![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)](https://hub.docker.com/r/aocgamers/lgsm-l4d2-competitive)
+[![GitHub](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/AoC-Gamers/Docker-L4D2-Competitive)
 
-## Funcionalidades del Proyecto
+**Contenedor Docker para servidores competitivos de Left 4 Dead 2** con configuración automática, gestión de workshop, clonación de servidores y scripts de post-procesamiento Git.
 
-### Scripts de Configuración Inicial (docker-script/)
-- **dependencies_check.sh:**  
-  Verifica e instala las dependencias requeridas en sistemas Debian.
-- **rep_branch.sh:**  
-  Actualiza el campo "branch" en el archivo `repos.json` según las variables de entorno.
-- **ssh.sh:**  
-  Configura el servicio SSH: deshabilita el login como root, habilita autenticación por contraseña, y configura el puerto SSH.
-- **symlink.sh:**  
-  Crea enlaces simbólicos para organizar scripts y configuraciones.
+## 🚀 Inicio Rápido
 
-### Scripts de Gestión del Servidor (server-scripts/)
-- **workshop.py:**  
-  Gestiona la descarga y actualización de plugins desde la API de Steam.
-- **clone_l4d2server.sh:**  
-  Clona servidores L4D2 usando LinuxGSM, permitiendo la creación y gestión de múltiples clones.
-- **l4d2_fix_install.sh:**  
-  Realiza la instalación/actualización del servidor mediante steamcmd.
-- **maps_l4d2center.sh:**  
-  Automatiza la descarga, verificación y actualización de mapas del servidor.
-- **menu_gameserver.sh:**  
-  Proporciona un menú interactivo (o comandos directos) para iniciar, detener, reiniciar y actualizar servidores.
-- **install_gameserver.sh:**  
-  Instala o actualiza el servidor competitivo, gestionando repositorios y archivos.
-- **tools_gameserver.sh:**  
-  Incluye funciones comunes para registro, manejo de errores y gestión de directorios/archivos.
-- **repos.py:**  
-  Contiene una lista de repositorios de GitHub con sus respectivas URLs, carpetas de destino y ramas.
-- **git-gameserver/**  
-  - **example.default.sh:** Prototipo para aplicar modificaciones a repositorios específicos.
-  - **sir.default.sh:** Aplica cambios a la rama `default` del repositorio `L4D2-Competitive-Rework`.
-
-## Flujo de Trabajo del Contenedor
-
-1. **Inicio:**  
-   Se inicia el contenedor mediante `docker-compose.yml` con la imagen `ghcr.io/aoc-gamers/lgsm-l4d2-competitive:latest`, montando volúmenes y configurando variables de entorno.
-
-2. **Ejecución del Entrypoint:**  
-   - `entrypoint.sh` configura el entorno, maneja señales de terminación, ajusta permisos y ejecuta scripts personalizados.
-   - `entrypoint-user.sh` se encarga de la configuración e instalación del servidor, creación de enlaces simbólicos y ejecución del servidor.
-     
-3. **Verificación de Salud:**  
-   `entrypoint-healthcheck.sh` verifica el estado del contenedor comprobando el puerto SSH.
-
-# Workshop Downloader
-
-Script en bash para descargar artículos y colecciones del Steam Workshop de Left 4 Dead 2 utilizando `workshop.py`.
-
-## Características
-
-- **Procesamiento por lotes**: Descarga artículos en grupos de 5 (configurable) para evitar sobrecarga del servidor
-- **Archivo de configuración**: Utiliza un archivo `.env` para configurar artículos y colecciones
-- **Logging completo**: Genera archivos de log detallados con timestamp
-- **Expansión de variables**: Soporta variables de entorno como `$DIR_LEFT4DEAD2`
-- **Reintentos automáticos**: `workshop.py` incluye lógica de reintentos en caso de errores
-- **Creación automática de directorios**: Crea el directorio de salida si no existe
-
-## Instalación
-
-1. Asegúrate de que `workshop.py` esté en el mismo directorio que `workshop_downloader.sh`
-2. Haz el script ejecutable:
-   ```bash
-   chmod +x workshop_downloader.sh
-   ```
-
-## Configuración
-
-1. Crea un archivo `.env` basado en `.env.example`:
-   ```bash
-   cp .env.example .env
-   ```
-
-2. Edita el archivo `.env` y configura tus artículos y colecciones:
-   ```bash
-   # Artículos individuales del Workshop (IDs separados por comas)
-   WORKSHOP_ITEMS=123456789,987654321,456789123
-   
-   # Colecciones del Workshop (IDs separados por comas)
-   WORKSHOP_COLLECTIONS=3489804150,2222222222
-   
-   # Directorio de salida (puedes usar variables de entorno)
-   OUTPUT_DIR=$DIR_LEFT4DEAD2/addons/workshop
-   
-   # Configuración opcional
-   BATCH_SIZE=5
-   BATCH_DELAY=10
-   ```
-
-## Uso
-
-### Uso básico
 ```bash
-./workshop_downloader.sh
+# 1. Clonar el repositorio
+git clone https://github.com/AoC-Gamers/Docker-L4D2-Competitive.git
+cd Docker-L4D2-Competitive
+
+# 2. Configurar variables básicas
+cp example.env .env
+nano .env  # Editar LGSM_PASSWORD y SSH_PORT
+
+# 3. Iniciar el contenedor
+docker-compose up -d
+
+# 4. Acceder por SSH (opcional)
+ssh linuxgsm@localhost -p 2222
 ```
 
-### Opciones disponibles
-```bash
-./workshop_downloader.sh [OPCIONES]
+> **⚠️ Volumen Obligatorio**: El volumen `comp_data:/data` es **crítico** para persistir configuraciones, mapas y datos del servidor.
 
-Opciones:
-  -e, --env-file FILE     Archivo .env a usar (default: .env)
-  -o, --output-dir DIR    Directorio de salida
-  -b, --batch-size SIZE   Tamaño del lote (default: 5)
-  -d, --delay SECONDS     Delay entre lotes en segundos (default: 10)
-  -l, --log-file FILE     Archivo de log personalizado
-  -h, --help              Mostrar ayuda
+## ✨ Características Principales
+
+- **🔧 Configuración Automática**: Instalación y configuración completa del servidor L4D2
+- **🎮 Servidores Múltiples**: Clonación automática de instancias L4D2 independientes
+- **📦 Steam Workshop**: Descarga automática de colecciones y artículos (con procesamiento por lotes)
+- **🗺️ Gestión de Mapas**: Descarga desde L4D2Center con verificación MD5
+- **🌿 Ramas Dinámicas**: Sistema `BRANCH_*` para usar diferentes versiones por entorno
+- **🔗 Enlaces Simbólicos**: Actualizaciones automáticas de scripts vía `symlink.sh`
+- **📊 Menú Interactivo**: Control centralizado de todos los servidores
+
+## 🏗️ Arquitectura del Sistema
+
+### Directorios Clave
+- **`/app/`** (No persistente): Scripts actualizables con nuevas versiones
+- **`/data/`** (Persistente): Gameserver, configuraciones, logs y datos de usuario
+- **Enlaces simbólicos**: Conectan `/app` con `/data` para coherencia automática
+
+### Flujo de Trabajo
+```mermaid
+graph LR
+    A[Docker Compose] --> B[Entrypoint]
+    B --> C[Configuración SSH]
+    C --> D[Enlaces Simbólicos]
+    D --> E[Install Gameserver]
+    E --> F[Workshop/Mapas]
+    F --> G[Servidores Listos]
 ```
 
-### Ejemplos
+## 📊 Variables de Entorno Principales
 
-1. **Uso con archivo .env personalizado:**
-   ```bash
-   ./workshop_downloader.sh -e mi_config.env
-   ```
+| Variable | Descripción | Ejemplo |
+|----------|-------------|---------|
+| `LGSM_PASSWORD` | Contraseña SSH (obligatorio) | `mi_password_seguro` |
+| `SSH_PORT` | Puerto SSH del contenedor | `2222` |
+| `BRANCH_SIR` | Rama del repo L4D2-Competitive-Rework | `development` |
+| `L4D2_NO_INSTALL` | Evitar instalación automática | `false` |
+| `GIT_FORCE_DOWNLOAD` | Forzar descarga de repositorios | `false` |
 
-2. **Cambiar directorio de salida:**
-   ```bash
-   ./workshop_downloader.sh -o /path/to/addons/workshop
-   ```
+Ver [configuración completa](docs/configuration.md) para todas las opciones.
 
-3. **Procesamiento más agresivo (lotes más grandes, menos delay):**
-   ```bash
-   ./workshop_downloader.sh -b 10 -d 5
-   ```
+## 🎯 Casos de Uso
 
-4. **Log personalizado:**
-   ```bash
-   ./workshop_downloader.sh -l workshop_custom.log
-   ```
-
-## Variables de entorno soportadas
-
-El script expande automáticamente las variables de entorno. Ejemplos comunes:
-
-- `$DIR_LEFT4DEAD2` - Directorio del servidor Left 4 Dead 2
-- `$HOME` - Directorio home del usuario
-- `$PWD` - Directorio actual
-
-## Archivos generados
-
-- **Log file**: `workshop_YYYYMMDD_HHMMSS.log` - Contiene toda la actividad del script
-- **addons.lst**: Archivo JSON generado por `workshop.py` con el estado de las descargas
-
-## Funcionamiento
-
-1. **Validación**: Verifica que `workshop.py` y `python3` estén disponibles
-2. **Configuración**: Carga el archivo `.env` y expande variables de entorno
-3. **Procesamiento**: 
-   - Divide artículos/colecciones en lotes del tamaño especificado
-   - Ejecuta `workshop.py` para cada lote
-   - Espera entre lotes para evitar sobrecarga
-4. **Logging**: Registra toda la actividad en el archivo de log
-
-## Solución de problemas
-
-### Error: "path doesn't exist"
-- Verifica que la variable `$DIR_LEFT4DEAD2` esté definida en tu entorno
-- O usa una ruta absoluta en lugar de variables de entorno
-
-### Error: "workshop.py no encontrado"
-- Asegúrate de que `workshop.py` esté en el mismo directorio que el script
-- Verifica los permisos del archivo
-
-### Error: "python3 no está instalado"
-- Instala Python 3: `sudo apt-get install python3`
-
-## Logs
-
-Los logs incluyen:
-- Timestamp de cada operación
-- Estado de cada lote procesado
-- Errores y advertencias
-- Información de debug (variables cargadas)
-
-Ejemplo de salida:
+### Desarrollo
+```yaml
+environment:
+  - BRANCH_SIR=development
+  - GIT_FORCE_DOWNLOAD=true
+  - DEBUG_MODE=true
 ```
-[INFO] === Iniciando Workshop Downloader ===
-[INFO] Archivo de log: /data/server-scripts/workshop_20250529_191033.log
-[INFO] Verificando dependencias...
-[INFO] Todas las dependencias están disponibles
-[INFO] Cargando configuración desde: /data/server-scripts/.env
-[DEBUG] Cargada variable: WORKSHOP_COLLECTIONS=3489804150
-[DEBUG] OUTPUT_DIR expandido a: /data/serverfiles/left4dead2/addons/workshop
-[INFO] Configuración:
-[INFO]   - Tamaño de lote: 5
-[INFO]   - Delay entre lotes: 10 segundos
-[INFO]   - Directorio de salida: /data/serverfiles/left4dead2/addons/workshop
+
+### Producción
+```yaml
+environment:
+  - LGSM_PASSWORD=${LGSM_PASSWORD}
+  - SSH_KEY=${SSH_KEY}
+  # Sin BRANCH_* = usa ramas estables
 ```
 
 ## 📚 Documentación Completa
 
-Para documentación detallada, consulta el directorio [`docs/`](docs/):
+| Documento | Descripción | Para quién |
+|-----------|-------------|------------|
+| **[🚀 Inicio Rápido](docs/quick-start.md)** | Instalación y primeros pasos | Nuevos usuarios |
+| **[⚙️ Configuración Avanzada](docs/configuration.md)** | Variables, workshop, múltiples servidores | Usuarios experimentados |
+| **[📜 Scripts](docs/scripts.md)** | Referencia completa de todos los scripts | Administradores |
+| **[� Diagramas de Flujo](docs/flowcharts.md)** | Flujos visuales de instalación | Desarrolladores |
+| **[🔧 API Reference](docs/api-reference.md)** | Funciones y APIs técnicas | Integradores |
+| **[🐛 Troubleshooting](docs/troubleshooting.md)** | Solución de problemas | Todos |
+| **[👨‍💻 Desarrollo](docs/development.md)** | Contribuir al proyecto | Contribuidores |
 
-- **[🚀 Guía de Inicio Rápido](docs/quick-start.md)** - Instalación y primeros pasos
-- **[⚙️ Configuración Avanzada](docs/configuration.md)** - Personalización detallada
-- **[📜 Documentación de Scripts](docs/scripts.md)** - Referencia completa de scripts
-- **[🔧 API y Funciones](docs/api-reference.md)** - Referencia técnica
-- **[🐛 Troubleshooting](docs/troubleshooting.md)** - Solución de problemas
-- **[👨‍💻 Guía de Desarrollo](docs/development.md)** - Contribuir al proyecto
+## 🛠️ Requisitos del Sistema
 
-## Contribución
+- **Docker**: 20.10+ y Docker Compose 1.29+
+- **RAM**: 4GB mínimo, 8GB recomendado para producción
+- **Almacenamiento**: 20GB disponibles (50GB+ para producción)
+- **Red**: Conexión estable (descarga inicial ~10GB)
 
-1. Consulta la [Guía de Desarrollo](docs/development.md) para requisitos y estándares
-2. Realiza un fork del repositorio
-3. Crea una rama con tus cambios
-4. Envía un pull request con una descripción detallada de tus mejoras o correcciones
+## 🚨 Información Importante
 
-## Referencias
+### ⚠️ Primera Instalación
+- **Tiempo**: 30-60 minutos (dependiendo de conexión)
+- **Descarga**: ~8GB de L4D2 + ~2GB de configuraciones competitivas
+- **Volumen Docker**: **OBLIGATORIO** para persistir datos
 
-En este apartado se incluyen los enlaces y recursos utilizados:
+### 🔐 Seguridad
+- Cambiar `LGSM_PASSWORD` por defecto
+- Configurar claves SSH para acceso remoto seguro
+- Revisar configuración de puertos según entorno
 
-- [docker-gameserver - GameServerManagers](https://github.com/GameServerManagers/docker-gameserver)
-- [SteamCMD y actualización anónima de juegos](https://github.com/ValveSoftware/steam-for-linux/issues/11522#issuecomment-2512232264)
-- [Steam Workshop Content Downloader](https://github.com/Geam/steam_workshop_downloader)
-- [Mapas de L4D2Center](https://l4d2center.com/maps/servers/index.json)
-- [L4D2-Competitive-Rework](https://github.com/SirPlease/L4D2-Competitive-Rework)
+## 🤝 Contribuir y Soporte
 
-## Licencia
+### 🐛 Reportar Problemas
+[**Issues**](https://github.com/AoC-Gamers/Docker-L4D2-Competitive/issues) • [**Releases**](https://github.com/AoC-Gamers/Docker-L4D2-Competitive/releases)
 
-Distribuido bajo la [Licencia MIT](LICENSE).
+### 🤝 Contribuir
+1. Fork del repositorio
+2. Crear rama: `git checkout -b feature/mejora-increible`
+3. Commit: `git commit -m 'Add mejora increible'`
+4. Push: `git push origin feature/mejora-increible`
+5. Abrir Pull Request
 
-## Contacto
+Ver [Guía de Desarrollo](docs/development.md) para requisitos y estándares.
 
-Para consultas, sugerencias o reportar problemas, abre un issue en el repositorio o contacta con el equipo de desarrollo.
+### 🙏 Agradecimientos
+- [GameServerManagers/LinuxGSM](https://github.com/GameServerManagers/LinuxGSM) - Base de gestión de servidores
+- [SirPlease/L4D2-Competitive-Rework](https://github.com/SirPlease/L4D2-Competitive-Rework) - Configuración competitiva
+- [Geam/steam_workshop_downloader](https://github.com/Geam/steam_workshop_downloader) - Herramienta de workshop
+
+## 📜 Licencia
+
+Distribuido bajo la [**Licencia MIT**](LICENSE). Ver `LICENSE` para más información.
+
+---
+
+<div align="center">
+
+**¿Nuevo en el proyecto?** → [Guía de Inicio Rápido](docs/quick-start.md)  
+**¿Tienes problemas?** → [Troubleshooting](docs/troubleshooting.md)  
+**¿Quieres contribuir?** → [Guía de Desarrollo](docs/development.md)
+
+</div>

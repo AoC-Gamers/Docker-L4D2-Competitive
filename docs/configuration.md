@@ -1,5 +1,20 @@
 # Configuración Avanzada
 
+## 📑 Tabla de Contenidos
+
+1. [Variables de Entorno Completas](#variables-de-entorno-completas)
+2. [Arquitectura de Persistencia y Enlaces Simbólicos](#arquitectura-de-persistencia-y-enlaces-simbólicos)
+3. [Configuración de Servidores Múltiples](#configuración-de-servidores-múltiples)
+4. [Configuración del Workshop](#configuración-del-workshop)
+5. [Configuración de Mapas L4D2Center](#configuración-de-mapas-l4d2center)
+6. [Configuración de Repositorios Git](#configuración-de-repositorios-git)
+7. [Configuración de Red y Puertos](#configuración-de-red-y-puertos)
+8. [Backup y Restauración](#backup-y-restauración)
+9. [Optimización de Rendimiento](#optimización-de-rendimiento)
+10. [Monitoreo y Logs](#monitoreo-y-logs)
+
+---
+
 ## Variables de Entorno Completas
 
 ### Variables del Contenedor Principal
@@ -34,6 +49,113 @@ LGSM_SERVERFILES=/data/serverfiles
 LGSM_DATADIR=/data/lgsm
 LGSM_CONFIG=/data/lgsm-config
 ```
+
+## Arquitectura de Persistencia y Enlaces Simbólicos
+
+### 🔍 Separación de Directorios: /app vs /data
+
+El proyecto utiliza una arquitectura de **separación de responsabilidades** entre directorios:
+
+#### 📁 Directorio `/app` (No Persistente)
+- **Contenido**: Scripts de instalación, subscripts, y caché de repositorios Git
+- **Propósito**: Código actualizable con nuevas versiones del contenedor
+- **Comportamiento**: Se sobrescribe en cada actualización de imagen
+- **Incluye**:
+  - `/app/server-scripts/` - Scripts principales
+  - `/app/server-scripts/git-gameserver/` - Subscripts de post-procesamiento
+  - Cache de repositorios Git clonados
+
+#### 💾 Directorio `/data` (Persistente)
+- **Contenido**: Gameserver, configuraciones, logs, y datos de usuario
+- **Propósito**: Información que debe sobrevivir actualizaciones
+- **Comportamiento**: Persistente via volumen Docker
+- **Incluye**:
+  - `/data/serverfiles/` - Archivos del servidor L4D2
+  - `/data/lgsm/` - Configuraciones LinuxGSM
+  - `/data/log/` - Logs del sistema
+  - **Enlaces simbólicos** hacia scripts en `/app/`
+
+### ⚙️ Configuración Obligatoria del Volumen
+
+**En `docker-compose.yml` es OBLIGATORIO:**
+```yaml
+services:
+  comp_l4d2:
+    volumes:
+      - comp_data:/data  # ← CRÍTICO: Persistencia de datos
+    
+volumes:
+  comp_data:
+    name: comp_data      # ← OBLIGATORIO: Volumen nombrado
+```
+
+**❌ Sin este volumen**: 
+- Se pierden configuraciones del servidor
+- Se pierden mapas y contenido workshop descargado
+- Se pierden logs y datos de juego
+- Cada reinicio = instalación desde cero
+
+### 🔗 Rol Crítico de `symlink.sh`
+
+El script `symlink.sh` es **fundamental** para mantener coherencia entre `/app` y `/data`:
+
+#### Proceso de Enlaces Simbólicos
+
+```bash
+# Enlaces desde /app hacia /data para acceso persistente
+/data/menu_gameserver.sh → /app/server-scripts/menu_gameserver.sh
+/data/lgsm/lgsm/server-scripts/install_gameserver.sh → /app/server-scripts/install_gameserver.sh
+/data/lgsm/lgsm/server-scripts/workshop_downloader.sh → /app/server-scripts/workshop_downloader.sh
+# ... todos los scripts de /app/server-scripts/
+```
+
+#### Ventajas del Sistema de Enlaces
+
+1. **Acceso Consistente**: Scripts disponibles en `/data` (persistente)
+2. **Actualizaciones Automáticas**: Scripts se actualizan con nuevas versiones
+3. **Trabajo en `/data`**: Usuarios pueden ejecutar desde directorio persistente
+4. **Coherencia**: Modificaciones en `/app` se reflejan automáticamente
+5. **Compatibilidad**: LinuxGSM funciona desde `/data` sin problemas
+
+#### Flujo de Actualización
+
+```mermaid
+graph TD
+    A[🔄 Actualización Contenedor] --> B[📦 Nueva Imagen]
+    B --> C[🗂️ /app Sobrescrito]
+    C --> D[🔗 symlink.sh Ejecutado]
+    D --> E[📁 Enlaces Recreados]
+    E --> F[✅ Scripts Actualizados en /data]
+    F --> G[🎮 Gameserver Mantiene Datos]
+    
+    style C fill:#ff6b6b,stroke:#333,stroke-width:2px
+    style F fill:#4ecdc4,stroke:#333,stroke-width:2px
+    style G fill:#45b7d1,stroke:#333,stroke-width:2px
+```
+
+### 🎯 Ejemplo Práctico de Actualización
+
+**Situación**: Se lanza nueva versión con mejoras en `install_gameserver.sh`
+
+**Sin volumen persistente** ❌:
+```bash
+docker-compose pull  # Nueva imagen
+docker-compose up -d  # ¡Se pierde TODO!
+# Resultado: Reinstalación completa desde cero
+```
+
+**Con volumen persistente** ✅:
+```bash
+docker-compose pull  # Nueva imagen
+docker-compose up -d  # Solo se actualiza /app
+# Resultado: 
+# - Scripts mejorados disponibles automáticamente
+# - Gameserver mantiene configuraciones
+# - Mapas y workshop preserved
+# - Logs históricos intactos
+```
+
+[🔝 Volver arriba](#configuración-avanzada)
 
 ## Configuración de Servidores Múltiples
 
@@ -151,6 +273,8 @@ STATS_ENABLED=true
 ./workshop_downloader.sh -o /ruta/personalizada
 ```
 
+[🔝 Volver arriba](#configuración-avanzada)
+
 ## Configuración de Mapas L4D2Center
 
 ### Variables de Entorno
@@ -180,6 +304,18 @@ L4D2_MAPS_FORCE_DOWNLOAD=false ./maps_l4d2center.sh
 
 ### Archivo `repos.json`
 
+**Configuración actual (repositorio real):**
+```json
+[
+  {
+    "repo_url": "https://github.com/SirPlease/L4D2-Competitive-Rework.git",
+    "folder": "sir",
+    "branch": "default"
+  }
+]
+```
+
+**Ejemplos de configuración expandida (hipotética):**
 ```json
 [
   {
@@ -202,44 +338,161 @@ L4D2_MAPS_FORCE_DOWNLOAD=false ./maps_l4d2center.sh
 
 ### Configuración Dinámica de Ramas
 
-El sistema permite modificar las ramas de los repositorios usando variables de entorno:
+El sistema de ramas dinámicas permite modificar automáticamente las ramas de los repositorios según las variables de entorno definidas. Esto es especialmente útil para diferentes entornos (desarrollo, testing, producción).
 
-#### Variables de Rama
-```bash
-# Formato: BRANCH_{FOLDER_UPPERCASE}
-export BRANCH_SIR=development
-export BRANCH_MI_PROYECTO=feature/new-update
-export BRANCH_PRIVATE_CONFIG=testing
+#### 🔧 Configuración desde Docker Compose
+
+**Método 1: Variables en `docker-compose.yml`**
+```yaml
+services:
+  comp_l4d2:
+    image: ghcr.io/aoc-gamers/lgsm-l4d2-competitive:latest
+    environment:
+      - LGSM_PASSWORD=${LGSM_PASSWORD}
+      - SSH_PORT=${SSH_PORT}
+      - SSH_KEY=${SSH_KEY}
+      # Variables de rama dinámicas
+      - BRANCH_SIR=development
+      # Variables para subscripts (disponibles en install_gameserver.sh)
+      - COMPETITIVE_MODE=true
+      - DEBUG_ENABLED=false
 ```
 
-#### Casos de Uso por Entorno
-
-**Desarrollo:**
+**Método 2: Variables en archivo `.env` principal**
 ```bash
-export BRANCH_SIR=development
-export BRANCH_CONFIGS=dev
-export DEBUG_MODE=true
+# Archivo: .env (en la raíz del proyecto)
+LGSM_PASSWORD=mi_password_seguro
+SSH_PORT=2222
+SSH_KEY=ssh-rsa AAAAB...
+
+# Variables BRANCH_* para modificar repos.json dinámicamente
+# Solo funciona para folders que existen en repos.json
+BRANCH_SIR=development
+
+# Variables adicionales para subscripts de instalación
+GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+COMPETITIVE_MODE=true
+TOURNAMENT_MODE=false
 ```
 
-**Testing:**
-```bash
-export BRANCH_SIR=testing
-export BRANCH_CONFIGS=staging
-export COMPETITIVE_MODE=false
+#### 🎯 Sistema de Variables BRANCH_* para repos.json
+
+El script `rep_branch.sh` está específicamente diseñado para **modificar dinámicamente el archivo `repos.json`** usando variables de entorno con el prefijo `BRANCH_*`. 
+
+**Funcionamiento:**
+1. **Lee el archivo `repos.json`** actual
+2. **Para cada repositorio**, busca una variable `BRANCH_{FOLDER_UPPERCASE}`
+3. **Si la variable existe** y no es "default", actualiza el campo `branch`
+4. **Guarda el archivo modificado** `repos.json`
+5. **`install_gameserver.sh`** usa las nuevas ramas
+
+**Archivo `repos.json` actual:**
+```json
+[
+  {
+    "repo_url": "https://github.com/SirPlease/L4D2-Competitive-Rework.git",
+    "folder": "sir",
+    "branch": "default"
+  }
+]
 ```
 
-**Producción:**
+**Variable para modificar la rama:**
 ```bash
-# Sin variables BRANCH_* = usa ramas por defecto
-export COMPETITIVE_MODE=true
-export DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/prod/xxx
+# Para folder: "sir" → Variable: BRANCH_SIR
+BRANCH_SIR=development
 ```
 
-#### Flujo de Modificación
-1. `rep_branch.sh` lee las variables `BRANCH_*`
-2. Modifica dinámicamente `repos.json`
-3. `install_gameserver.sh` usa las nuevas ramas
-4. Ejecuta subscripts específicos: `{folder}.{branch}.sh`
+**Resultado después de `rep_branch.sh`:**
+```json
+[
+  {
+    "repo_url": "https://github.com/SirPlease/L4D2-Competitive-Rework.git",
+    "folder": "sir",
+    "branch": "development"  # ← Modificado dinámicamente
+  }
+]
+```
+
+**⚠️ Importante**: Las variables `BRANCH_*` solo funcionan si existe un repositorio con el `folder` correspondiente en `repos.json`.
+
+#### 🔄 Casos de Uso por Entorno
+
+**Docker Compose para Desarrollo:**
+```yaml
+# docker-compose.dev.yml
+services:
+  comp_l4d2:
+    environment:
+      # Solo repositorios existentes en repos.json
+      - BRANCH_SIR=development
+      - DEBUG_MODE=true
+      - GIT_FORCE_DOWNLOAD=true
+      
+      # Ejemplos hipotéticos si agregases más repos:
+      # - BRANCH_CONFIGS=dev           # Para repo con folder "configs"
+      # - BRANCH_PLUGINS=experimental  # Para repo con folder "plugins"
+```
+
+**Docker Compose para Testing:**
+```yaml
+# docker-compose.test.yml
+services:
+  comp_l4d2:
+    environment:
+      - BRANCH_SIR=testing
+      - L4D2_NO_AUTOSTART=true
+      - LOG_LEVEL=debug
+```
+
+**Docker Compose para Producción:**
+```yaml
+# docker-compose.prod.yml
+services:
+  comp_l4d2:
+    environment:
+      # Sin variables BRANCH_* = usa rama "default" de repos.json
+      - LGSM_PASSWORD=${LGSM_PASSWORD}
+      - SSH_KEY=${SSH_KEY}
+      - LOG_LEVEL=warning
+```
+
+#### ⚙️ Flujo de Modificación de repos.json
+
+```mermaid
+graph LR
+    A[Variables BRANCH_*] --> B[rep_branch.sh]
+    B --> C[Lee repos.json]
+    C --> D[Modifica campo 'branch']
+    D --> E[Guarda repos.json]
+    E --> F[install_gameserver.sh]
+    F --> G[Clona con nuevas ramas]
+```
+
+**Proceso detallado:**
+1. **Variables definidas**: Docker Compose o archivo `.env` definen `BRANCH_*`
+2. **Lectura**: `rep_branch.sh` lee el archivo `repos.json` actual
+3. **Transformación**: Convierte `folder` a `BRANCH_{FOLDER_UPPERCASE}`
+4. **Modificación**: Actualiza solo los repositorios con variables definidas
+5. **Persistencia**: Guarda el archivo `repos.json` modificado
+6. **Instalación**: `install_gameserver.sh` usa las nuevas ramas para clonar
+5. **Post-procesamiento**: Ejecuta subscripts: `{folder}.{rama}.sh`
+
+#### 🛠️ Comandos para Testing
+
+```bash
+# Ver variables de rama detectadas
+docker-compose exec comp_l4d2 env | grep BRANCH_
+
+# Forzar actualización con nuevas ramas
+docker-compose exec comp_l4d2 bash -c "
+  cd /app/docker-scripts && ./rep_branch.sh && 
+  cd /app/server-scripts && GIT_FORCE_DOWNLOAD=true ./install_gameserver.sh update
+"
+
+# Ver repos.json modificado
+docker-compose exec comp_l4d2 cat /app/server-scripts/repos.json
+```
 
 ### Scripts de Post-Procesamiento
 

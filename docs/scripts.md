@@ -1,5 +1,14 @@
 # Documentación de Scripts
 
+## 📑 Tabla de Contenidos
+
+1. [Visión General](#visión-general)
+2. [Scripts de Configuración Inicial (`docker-scripts/`)](#scripts-de-configuración-inicial-docker-scripts)
+3. [Scripts de Gestión del Servidor (`server-scripts/`)](#scripts-de-gestión-del-servidor-server-scripts)
+4. [Flujo de Ejecución](#flujo-de-ejecución)
+
+---
+
 ## Visión General
 
 El proyecto incluye varios scripts organizados en diferentes categorías para facilitar la gestión del servidor L4D2 competitivo.
@@ -31,16 +40,14 @@ Actualiza el campo "branch" en el archivo `repos.json` según las variables de e
 - Formato: `BRANCH_{FOLDER_UPPERCASE}`
 - Si la variable es "default", no se modifica el repositorio
 
-**Ejemplos:**
+**Ejemplos con repositorio actual:**
 ```bash
-# Para repo con folder "sir" 
+# Para el repositorio existente "sir" 
 export BRANCH_SIR=development
 
-# Para repo con folder "my_plugin"
-export BRANCH_MY_PLUGIN=feature/new-update
-
-# Para repo con folder "configs"
-export BRANCH_CONFIGS=testing
+# Ejemplos hipotéticos para repositorios adicionales:
+# export BRANCH_CONFIGS=testing        # Si agregar repo con folder "configs"
+# export BRANCH_PLUGINS=feature/beta   # Si agregar repo con folder "plugins"
 ```
 
 **Proceso:**
@@ -51,15 +58,13 @@ export BRANCH_CONFIGS=testing
 
 **Casos de uso:**
 ```bash
-# Desarrollo: usar ramas development
+# Desarrollo: usar rama development para SIR
 export BRANCH_SIR=development
-export BRANCH_CONFIGS=dev
 
-# Testing: usar ramas específicas de prueba
+# Testing: usar rama específica de prueba
 export BRANCH_SIR=testing
-export BRANCH_MY_PLUGIN=feature/beta-test
 
-# Producción: usar ramas estables (por defecto)
+# Producción: usar rama estable (por defecto)
 # No definir variables = usar ramas definidas en repos.json
 ```
 
@@ -76,18 +81,42 @@ Configura el servicio SSH del contenedor.
 - `SSH_PORT`: Puerto SSH (default: 22)
 
 ### `symlink.sh`
-Crea enlaces simbólicos para organizar scripts y configuraciones.
+Crea enlaces simbólicos críticos para mantener coherencia entre `/app` (no persistente) y `/data` (persistente).
+
+**Importancia Crítica:**
+- **Persistencia**: Permite que scripts estén disponibles en `/data` después de actualizaciones
+- **Coherencia**: Mantiene sincronización automática entre directorios
+- **Compatibilidad**: LinuxGSM puede trabajar desde `/data` sin problemas
+- **Actualizaciones**: Scripts se actualizan automáticamente con nuevas versiones
 
 **Funcionalidades:**
-- Enlaces para scripts de gestión
-- Enlaces para scripts git-gameserver
-- Organización de estructura de directorios
+- Crea enlaces simbólicos para todos los scripts de `/app/server-scripts/`
+- Organiza estructura de directorios en `/data`
+- Excluye `menu_gameserver.sh` del directorio general (enlace especial en `/data`)
+- Maneja subcarpeta `git-gameserver/` por separado
 
-**Estructura creada:**
+**Estructura de Enlaces Creada:**
+```bash
+# Enlace especial en raíz de /data
+/data/menu_gameserver.sh → /app/server-scripts/menu_gameserver.sh
+
+# Scripts principales en /data/lgsm/lgsm/server-scripts/
+/data/lgsm/lgsm/server-scripts/install_gameserver.sh → /app/server-scripts/install_gameserver.sh
+/data/lgsm/lgsm/server-scripts/workshop_downloader.sh → /app/server-scripts/workshop_downloader.sh
+/data/lgsm/lgsm/server-scripts/clone_l4d2server.sh → /app/server-scripts/clone_l4d2server.sh
+# ... (todos los scripts excepto menu_gameserver.sh)
+
+# Subscripts en subcarpeta
+/data/lgsm/lgsm/server-scripts/git-gameserver/ → /app/server-scripts/git-gameserver/*
 ```
-/data/server-scripts/ -> /app/server-scripts/*
-/data/server-scripts/git-gameserver/ -> /app/server-scripts/git-gameserver/*
-/data/menu_gameserver.sh -> /app/server-scripts/menu_gameserver.sh
+
+**Variables de entorno:**
+- `DIR_SCRIPTING`: Directorio destino para enlaces (definido por LinuxGSM)
+
+**Uso:**
+```bash
+./symlink.sh
+# No requiere parámetros, usa variables de entorno predefinidas
 ```
 
 ## Scripts de Gestión del Servidor (`server-scripts/`)
