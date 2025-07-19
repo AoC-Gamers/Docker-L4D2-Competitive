@@ -192,11 +192,23 @@ Ejemplo de salida:
 [INFO]   - Directorio de salida: /data/serverfiles/left4dead2/addons/workshop
 ```
 
+## 📚 Documentación Completa
+
+Para documentación detallada, consulta el directorio [`docs/`](docs/):
+
+- **[🚀 Guía de Inicio Rápido](docs/quick-start.md)** - Instalación y primeros pasos
+- **[⚙️ Configuración Avanzada](docs/configuration.md)** - Personalización detallada
+- **[📜 Documentación de Scripts](docs/scripts.md)** - Referencia completa de scripts
+- **[🔧 API y Funciones](docs/api-reference.md)** - Referencia técnica
+- **[🐛 Troubleshooting](docs/troubleshooting.md)** - Solución de problemas
+- **[👨‍💻 Guía de Desarrollo](docs/development.md)** - Contribuir al proyecto
+
 ## Contribución
 
-1. Realiza un fork del repositorio.
-2. Crea una rama con tus cambios.
-3. Envía un pull request con una descripción detallada de tus mejoras o correcciones.
+1. Consulta la [Guía de Desarrollo](docs/development.md) para requisitos y estándares
+2. Realiza un fork del repositorio
+3. Crea una rama con tus cambios
+4. Envía un pull request con una descripción detallada de tus mejoras o correcciones
 
 ## Referencias
 
