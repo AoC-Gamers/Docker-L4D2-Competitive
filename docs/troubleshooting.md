@@ -1,5 +1,38 @@
 # Guía de Troubleshooting
 
+## 📑 Tabla de Contenidos
+
+1. [FAQ - Preguntas Frecuentes](#faq---preguntas-frecuentes)
+2. [Problemas Comunes de Instalación](#problemas-comunes-de-instalación)
+3. [Problemas del Workshop](#problemas-del-workshop)
+4. [Problemas de Configuración](#problemas-de-configuración)
+5. [Problemas de Red y Conectividad](#problemas-de-red-y-conectividad)
+
+---
+
+## FAQ - Preguntas Frecuentes
+
+### ❓ ¿Es necesario el volumen Docker?
+**Sí, es OBLIGATORIO.** Sin él perderás toda configuración en cada reinicio. Ver [configuración obligatoria](configuration.md#configuración-obligatoria-del-volumen).
+
+### ❓ ¿Cómo actualizo solo los scripts sin perder datos?
+```bash
+docker-compose pull
+docker-compose up -d
+```
+Los enlaces simbólicos se actualizan automáticamente.
+
+### ❓ ¿Puedo usar ramas diferentes del repositorio SIR?
+Sí, usa `BRANCH_SIR=nombre_rama` en variables de entorno.
+
+### ❓ ¿Cómo acceso por SSH al contenedor?
+```bash
+ssh linuxgsm@localhost -p 2222
+# Password: el configurado en LGSM_PASSWORD
+```
+
+---
+
 ## Problemas Comunes de Instalación
 
 ### El contenedor no inicia

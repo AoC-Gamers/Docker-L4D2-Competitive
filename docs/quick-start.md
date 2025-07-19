@@ -100,50 +100,30 @@ El proyecto incluye dos scripts para gestionar contenido del Steam Workshop:
 
 #### Configuración del Workshop
 
+> **📖 Documentación Completa**: Ver [Configuración del Workshop](configuration.md#configuración-del-workshop) para opciones avanzadas.
+
+**Configuración básica rápida:**
 ```bash
-# Acceder al contenedor y navegar a scripts
+# Acceder al contenedor
 docker-compose exec comp_l4d2 bash
 cd /data/server-scripts
 
-# Crear archivo de configuración basado en el ejemplo
-cp .env.example .env
-nano .env
-
-# O crear manualmente con configuración básica:
+# Crear configuración básica
 cat > .env << EOF
-# Artículos individuales del Workshop (IDs separados por comas)
 WORKSHOP_ITEMS=123456789,987654321
-
-# Colecciones del Workshop (IDs separados por comas)
 WORKSHOP_COLLECTIONS=3489804150
-
-# Directorio de salida (usando variable de entorno del sistema)
 OUTPUT_DIR=\$DIR_LEFT4DEAD2/addons/workshop
-
-# Configuración de procesamiento por lotes
 BATCH_SIZE=5
 BATCH_DELAY=10
 EOF
-```
 
-#### Descarga de Contenido
-
-```bash
-# Descargar usando el script wrapper (recomendado)
+# Descargar contenido
 ./workshop_downloader.sh
-
-# Alternativas con opciones específicas:
-./workshop_downloader.sh -b 10 -d 5  # Lotes más grandes, menos delay
-./workshop_downloader.sh -o /ruta/custom  # Directorio personalizado
-
-# Uso directo de workshop.py (avanzado)
-python3 workshop.py -o /data/serverfiles/left4dead2/addons/workshop 3489804150
 ```
 
 **Ventajas del sistema:**
-- **Persistencia**: La configuración .env guarda tus colecciones y artículos
+- **Persistencia**: Configuración .env preservada entre reinicios
 - **Procesamiento por lotes**: Evita sobrecargar la API de Steam
-- **Reintentos automáticos**: Maneja errores de red automáticamente
 - **Logging detallado**: Registra todo el proceso para debugging
 
 ## Solución de Problemas Comunes

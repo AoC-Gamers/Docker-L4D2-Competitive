@@ -105,10 +105,8 @@ graph TD
 ### 🔄 Variables de Rama Dinámicas (`rep_branch.sh`)
 
 ```bash
-# Configuración de entorno
+# Configuración de entorno (repositorio existente)
 export BRANCH_SIR=development
-export BRANCH_CONFIGS=testing
-export BRANCH_MY_PLUGIN=feature/new-update
 
 # repos.json original:
 {
@@ -162,32 +160,30 @@ graph LR
 
 #### 1. **Entorno de Desarrollo**
 ```bash
-# Variables de entorno
+# Variables de entorno (repositorio real)
 export BRANCH_SIR=development
-export BRANCH_CONFIGS=dev
 export GITHUB_TOKEN=ghp_dev_token
 export COMPETITIVE_MODE=false
 
-# Resultado: Usa ramas de desarrollo con configuración de prueba
+# Resultado: Usa rama de desarrollo con configuración de prueba
 ```
 
 #### 2. **Entorno de Producción**
 ```bash
-# Sin variables BRANCH_* = usa ramas por defecto de repos.json
+# Sin variables BRANCH_* = usa ramas por defecto
 export GITHUB_TOKEN=ghp_prod_token
 export COMPETITIVE_MODE=true
-export DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/prod/xxx
 
-# Resultado: Usa ramas estables con configuración de producción
+# Resultado: Usa configuración estable y optimizada
 ```
 
 #### 3. **Testing de Features**
 ```bash
+# Testing con repositorio existente
 export BRANCH_SIR=feature/new-weapons
-export BRANCH_CONFIGS=testing
 export DEBUG_MODE=true
 
-# Resultado: Prueba features específicas con configs de testing
+# Resultado: Prueba features específicas con debugging habilitado
 ```
 
 Este sistema proporciona una **flexibilidad extrema** para gestionar diferentes entornos, ramas y configuraciones del servidor L4D2 competitivo.

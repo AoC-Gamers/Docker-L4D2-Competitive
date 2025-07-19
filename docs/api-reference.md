@@ -1,5 +1,15 @@
 # API y Referencia de Funciones
 
+## 📑 Tabla de Contenidos
+
+1. [Funciones de `tools_gameserver.sh`](#funciones-de-tools_gameserversh)
+2. [API de Variables de Rama Dinámicas](#api-de-variables-de-rama-dinámicas)
+3. [API del Workshop Downloader](#api-del-workshop-downloader)
+4. [API del Maps Downloader](#api-del-maps-downloader)
+5. [API del Menu Gameserver](#api-del-menu-gameserver)
+
+---
+
 ## Funciones de `tools_gameserver.sh`
 
 ### Logging y Gestión de Errores
@@ -115,11 +125,13 @@ check_user "linuxgsm"
 |----------|---------|-------------|
 | `BRANCH_*` | `BRANCH_{FOLDER_UPPERCASE}` | Modifica rama de repositorio específico |
 
-**Ejemplos:**
+**Ejemplos con repositorio actual:**
 ```bash
-BRANCH_SIR=development        # Para repo folder "sir"
-BRANCH_MY_PLUGIN=testing      # Para repo folder "my_plugin"  
-BRANCH_CONFIGS=feature/beta   # Para repo folder "configs"
+BRANCH_SIR=development        # Para repo folder "sir" (existente)
+
+# Ejemplos hipotéticos para futuros repositorios:
+# BRANCH_CONFIGS=testing      # Si agregar repo con folder "configs"  
+# BRANCH_PLUGINS=feature/beta # Si agregar repo con folder "plugins"
 ```
 
 **Proceso:**
