@@ -1,7 +1,6 @@
 # Docker-L4D2-Competitive
 
-[![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the## 📚 Documentación Completa
-
+📚 Documentación Completa
 | Documento | Descripción | Para quién |
 |-----------|-------------|------------|
 | **[🚀 Inicio Rápido](docs/quick-start.md)** | Instalación y primeros pasos | Nuevos usuarios |
@@ -9,7 +8,7 @@
 | **[🔄 L4D2Updater](docs/l4d2-updater.md)** | Sistema de actualizaciones automáticas | Administradores |
 | **[📜 Scripts](docs/scripts.md)** | Referencia completa de todos los scripts | Administradores |
 | **[🔧 API Reference](docs/api-reference.md)** | Funciones y APIs técnicas | Integradores |=docker&logoColor=white)](https://hub.docker.com/r/aocgamers/lgsm-l4d2-competitive)
-[![GitHub](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/AoC-Gamers/Docker-L4D2-Competitive)
+
 
 **Contenedor Docker para servidores competitivos de Left 4 Dead 2** con configuración automática, gestión de workshop, clonación de servidores y scripts de post-procesamiento Git.
 
