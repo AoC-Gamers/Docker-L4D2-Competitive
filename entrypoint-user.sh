@@ -87,16 +87,77 @@ if [ "${LGSM_DEV}" == "true" ]; then
 fi
 
 echo -e ""
-echo -e "Installing ${GAMESERVER} using l4d2_fix_install.sh"
+echo -e "Installing ${GAMESERVER}"
 echo -e "================================="
 L4D2_FRESH_INSTALL="false"
-if [ -n "$(ls -A -- "${LGSM_SERVERFILES}" 2> /dev/null)" ]; then
-  echo -e "Skip installing ${GAMESERVER} as ${LGSM_SERVERFILES} is not empty"
+install=0
+
+# Function to clean Steam password from environment
+clean_steam_password() {
+  if [ -n "${STEAM_PASSWD:-}" ]; then
+    echo -e "🔒 Cleaning STEAM_PASSWD from environment for security..."
+    unset STEAM_PASSWD
+    export STEAM_PASSWD=""
+  fi
+}
+
+# Check if Steam credentials are provided
+if [ -n "${STEAM_USER:-}" ] && [ -n "${STEAM_PASSWD:-}" ]; then
+  echo -e "Steam credentials detected - using official Steam installation method"
+  
+  # Configure Steam credentials in secrets-common.cfg
+  SECRETS_CONFIG="${LGSM_CONFIG}/${GAMESERVER}/secrets-common.cfg"
+  
+  if [ ! -f "${SECRETS_CONFIG}" ]; then
+    echo -e "Creating secrets-common.cfg with Steam credentials"
+    mkdir -p "$(dirname "${SECRETS_CONFIG}")"
+    touch "${SECRETS_CONFIG}"
+  fi
+  
+  # Add Steam credentials if not already present
+  if ! grep -q "steamuser=" "${SECRETS_CONFIG}"; then
+    echo "steamuser=${STEAM_USER}" >> "${SECRETS_CONFIG}"
+  fi
+  
+  if ! grep -q "steampass=" "${SECRETS_CONFIG}"; then
+    echo "steampass=${STEAM_PASSWD}" >> "${SECRETS_CONFIG}"
+  fi
+  
+  echo -e "⚠️  IMPORTANT: If your Steam account is protected with SteamGuard Mobile Authenticator,"
+  echo -e "    you must authorize this login from your mobile device when prompted."
+  echo -e ""
+  
+  # Official Steam installation
+  if [ -z "$(ls -A -- "/data/serverfiles" 2> /dev/null)" ]; then
+    echo -e "Installing ${GAMESERVER} using official Steam method"
+    ./"${GAMESERVER}" auto-install
+    install=1
+    L4D2_FRESH_INSTALL="true"
+    
+    # Clean password after successful installation
+    clean_steam_password
+    echo -e "✅ Installation completed. Steam password cleared from environment."
+  else
+    echo -e "Skip installing ${GAMESERVER} as serverfiles directory is not empty"
+    # Sponsor to display LinuxGSM logo
+    ./"${GAMESERVER}" sponsor
+    clean_steam_password
+  fi
+  
 elif [ "${L4D2_NO_INSTALL}" == "true" ]; then
   echo -e "Skip installing ${GAMESERVER} as L4D2_NO_INSTALL is set to true"
+  echo -e "To install manually, run: ./${GAMESERVER} auto-install"
+  
 else
-  bash $DIR_SCRIPTING/l4d2_fix_install.sh
-  L4D2_FRESH_INSTALL="true"
+  echo -e "Using community workaround method (l4d2_fix_install.sh)"
+  echo -e "No Steam credentials provided - using anonymous installation"
+  
+  if [ -n "$(ls -A -- "${LGSM_SERVERFILES}" 2> /dev/null)" ]; then
+    echo -e "Skip installing ${GAMESERVER} as ${LGSM_SERVERFILES} is not empty"
+  else
+    bash $DIR_SCRIPTING/l4d2_fix_install.sh
+    L4D2_FRESH_INSTALL="true"
+  fi
 fi
 
 echo -e ""
@@ -107,6 +168,8 @@ if [ "${L4D2_FRESH_INSTALL}" == "false" ]; then
 else
   bash $DIR_SCRIPTING/install_gameserver.sh install
 fi
+
+bash /app/docker-scripts/l4d2_updater.sh
 
 echo -e ""
 echo -e "Config Profile"

@@ -12,8 +12,11 @@ services:
       - LGSM_PASSWORD=${LGSM_PASSWORD}
       - SSH_PORT=${SSH_PORT}
       - SSH_KEY=${SSH_KEY}
-      - L4D2_NO_INSTALL=true
-      - L4D2_NO_AUTOSTART=true
+      - L4D2_NO_INSTALL=false
+      - L4D2_NO_AUTOSTART=false
+      - L4D2_NO_UPDATER=false
+      - STEAM_USER=${STEAM_USER}
+      - STEAM_PASSWD=${STEAM_PASSWD}
     ports:
       - "27015:27015"
       - "27115:27115"

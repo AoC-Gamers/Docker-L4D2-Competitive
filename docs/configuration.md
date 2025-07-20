@@ -3,15 +3,16 @@
 ## 📑 Tabla de Contenidos
 
 1. [Variables de Entorno Completas](#variables-de-entorno-completas)
-2. [Arquitectura de Persistencia y Enlaces Simbólicos](#arquitectura-de-persistencia-y-enlaces-simbólicos)
-3. [Configuración de Servidores Múltiples](#configuración-de-servidores-múltiples)
-4. [Configuración del Workshop](#configuración-del-workshop)
-5. [Configuración de Mapas L4D2Center](#configuración-de-mapas-l4d2center)
-6. [Configuración de Repositorios Git](#configuración-de-repositorios-git)
-7. [Configuración de Red y Puertos](#configuración-de-red-y-puertos)
-8. [Backup y Restauración](#backup-y-restauración)
-9. [Optimización de Rendimiento](#optimización-de-rendimiento)
-10. [Monitoreo y Logs](#monitoreo-y-logs)
+2. [Configuración L4D2Updater](#configuración-l4d2updater)
+3. [Arquitectura de Persistencia y Enlaces Simbólicos](#arquitectura-de-persistencia-y-enlaces-simbólicos)
+4. [Configuración de Servidores Múltiples](#configuración-de-servidores-múltiples)
+5. [Configuración del Workshop](#configuración-del-workshop)
+6. [Configuración de Mapas L4D2Center](#configuración-de-mapas-l4d2center)
+7. [Configuración de Repositorios Git](#configuración-de-repositorios-git)
+8. [Configuración de Red y Puertos](#configuración-de-red-y-puertos)
+9. [Backup y Restauración](#backup-y-restauración)
+10. [Optimización de Rendimiento](#optimización-de-rendimiento)
+11. [Monitoreo y Logs](#monitoreo-y-logs)
 
 ---
 
@@ -25,14 +26,130 @@ LGSM_PASSWORD=contraseña_segura    # Contraseña del usuario linuxgsm
 SSH_PORT=2222                      # Puerto SSH personalizado
 SSH_KEY=ssh-rsa AAAAB...          # Claves SSH públicas (separadas por comas)
 
-# Control de Instalación
-L4D2_NO_INSTALL=false             # Evitar instalación automática del servidor
+# Credenciales Steam (Opcional - se limpian automáticamente)
+STEAM_USER=tu_usuario_steam        # Usuario Steam para instalación oficial
+STEAM_PASSWD=tu_contraseña_steam   # Contraseña Steam (se elimina tras uso)
+
+# Control de Instalación del Servidor L4D2
+L4D2_NO_INSTALL=false             # Controla método de instalación del servidor
 L4D2_NO_AUTOSTART=false           # Evitar inicio automático del servidor
 L4D2_FRESH_INSTALL=false          # Forzar instalación limpia
+
+# Sistema L4D2Updater
+L4D2_NO_UPDATER=false             # Control del sistema de actualizaciones automáticas
 
 # Configuraciones de Desarrollo
 LGSM_DEV=false                    # Habilitar modo desarrollador
 GIT_FORCE_DOWNLOAD=false          # Forzar descarga de repositorios
+```
+
+### 🔧 Control de Instalación del Servidor L4D2
+
+#### Sistema de Instalación Inteligente
+
+El contenedor ahora incluye **3 métodos de instalación** que se seleccionan automáticamente:
+
+1. **🏆 Steam Oficial** - Si `STEAM_USER` y `STEAM_PASSWD` están disponibles
+2. **🔧 Workaround Automático** - Usando `l4d2_fix_install.sh` (método comunitario)
+3. **📝 Instalación Manual** - Si `L4D2_NO_INSTALL=true`
+
+#### Variables de Control
+
+```bash
+# Credenciales Steam (Opcional)
+STEAM_USER=tu_usuario_steam        # Si está presente, usa instalación oficial
+STEAM_PASSWD=tu_contraseña_steam   # Se elimina automáticamente tras uso
+
+# Control manual de instalación
+L4D2_NO_INSTALL=false             # true = deshabilita instalación automática
+```
+
+#### Flujo de Instalación
+
+```
+Inicio → ¿STEAM_USER presente?
+  ├─ Sí → Instalación Steam Oficial → Limpiar credenciales
+  └─ No → ¿L4D2_NO_INSTALL=true?
+      ├─ Sí → Instalación Manual
+      └─ No → Workaround Automático
+```
+
+#### **Método 1: Steam Oficial** (Recomendado si tienes cuenta)
+
+**Ventajas:**
+- ✅ **Método oficial**: Soportado por Valve
+- ✅ **Más rápido**: Descarga directa sin conversiones
+- ✅ **Automático**: Se limpia después del uso
+- ✅ **Seguro**: Credenciales se eliminan tras instalación
+
+**Configuración:**
+```bash
+STEAM_USER=tu_usuario_steam
+STEAM_PASSWD=tu_contraseña_steam
+# Nota: Si Steam falla, automáticamente usa workaround
+```
+
+#### **Método 2: Workaround Automático** (Predeterminado)
+
+**Ventajas:**
+- ✅ **Sin credenciales**: No requiere cuenta Steam
+- ✅ **Totalmente automático**: Sin intervención manual
+- ✅ **Método validado**: Basado en [solución comunitaria](https://github.com/ValveSoftware/steam-for-linux/issues/11522#issuecomment-2512232264)
+- ⚙️ **Técnica**: Instala para Windows + valida para Linux
+
+**Configuración:**
+```bash
+# No requiere configuración adicional - es el predeterminado
+# O explícitamente:
+L4D2_NO_INSTALL=false
+```
+
+#### **Método 3: Instalación Manual**
+
+**Cuándo usar:**
+- 🔧 Tienes proceso de instalación personalizado
+- � Quieres usar tu propia imagen L4D2 pre-instalada
+- ⚙️ Necesitas control total del proceso
+
+**Configuración:**
+```bash
+L4D2_NO_INSTALL=true              # Deshabilita instalación automática
+```
+
+**Proceso manual:**
+```bash
+# Ejecutar dentro del contenedor
+docker-compose exec comp_l4d2 bash
+./l4d2server install  # Instalación manual oficial
+```
+```bash
+# Para la mayoría de usuarios (predeterminado)
+L4D2_NO_INSTALL=false
+
+# Para usuarios con cuenta Steam específica
+L4D2_NO_INSTALL=true
+```
+
+#### `L4D2_NO_AUTOSTART` - Control de Inicio Automático
+
+| Valor | Comportamiento |
+|-------|----------------|
+| `false` o sin definir | **Inicio automático** del servidor después de instalación |
+| `true` | **Sin inicio automático** - permite configuración manual |
+
+**Casos de uso para `L4D2_NO_AUTOSTART=true`:**
+- Configuración manual de servidores antes del primer inicio
+- Desarrollo y testing de configuraciones
+- Instalación en múltiples etapas
+
+#### `L4D2_FRESH_INSTALL` - Instalación Limpia
+
+| Valor | Comportamiento |
+|-------|----------------|
+| `false` o sin definir | **Preservar configuraciones** existentes |
+| `true` | **Instalación desde cero** - elimina configuraciones previas |
+
+**⚠️ Precaución**: `L4D2_FRESH_INSTALL=true` eliminará todas las configuraciones personalizadas.
 ```
 
 ### Variables de LinuxGSM
@@ -49,6 +166,96 @@ LGSM_SERVERFILES=/data/serverfiles
 LGSM_DATADIR=/data/lgsm
 LGSM_CONFIG=/data/lgsm-config
 ```
+
+## Configuración L4D2Updater
+
+### 🔄 Sistema de Actualizaciones Automáticas
+
+L4D2Updater configura el servidor para usar el **mecanismo nativo de actualizaciones de Valve**, permitiendo actualizaciones automáticas sin intervención manual.
+
+#### Variable de Control
+
+```bash
+L4D2_NO_UPDATER=false             # Instalar L4D2Updater (predeterminado)
+L4D2_NO_UPDATER=true              # Deshabilitar sistema de actualizaciones
+```
+
+#### ⚙️ Funcionamiento del Sistema
+
+**Instalación Automática:**
+- ✅ **Después de cada instalación** del servidor L4D2
+- ✅ **Verifica requisitos**: `srcds_run` existe y `L4D2_NO_UPDATER` no está habilitado
+- ✅ **Completamente automático**: No requiere configuración adicional
+
+**Archivos Generados:**
+```
+/data/serverfiles/
+├── srcds_run              # Original de Valve
+├── srcds_l4d2            # ← Clon personalizado con AUTO_UPDATE="yes"
+└── update_l4d2.txt       # ← Script SteamCMD para actualizaciones
+
+/data/config-lgsm/l4d2server/
+└── common.cfg            # ← Modificado: executable="./srcds_l4d2"
+```
+
+**Variables Configuradas Automáticamente:**
+```bash
+# En srcds_l4d2
+AUTO_UPDATE="yes"                                    # Habilita actualizaciones
+STEAM_DIR="$HOME/.steam/steam/steamcmd"             # Directorio SteamCMD
+STEAMCMD_SCRIPT="$HOME/serverfiles/update_l4d2.txt" # Script de actualización
+```
+
+**Contenido del Script de Actualización:**
+```bash
+# update_l4d2.txt
+@ShutdownOnFailedCommand 1
+@NoPromptForPassword 1
+force_install_dir /data/serverfiles/
+login anonymous          # ← Evita solicitudes SteamGuard
+app_update 222860
+quit
+```
+
+#### 🛡️ Consideraciones de Seguridad
+
+**Login Anónimo:**
+- ✅ **Siempre usa `login anonymous`** para actualizaciones
+- ✅ **Evita SteamGuard**: No solicita autenticación móvil en cada inicio
+- ✅ **Sin credenciales**: No almacena información de usuario para actualizaciones
+
+**Separación de Responsabilidades:**
+- 🔐 **Credenciales Steam**: Solo para instalación inicial (se limpian automáticamente)
+- 🔄 **Actualizaciones**: Usa login anónimo con infraestructura oficial de Valve
+
+#### 🔧 Casos de Uso
+
+**Deshabilitar L4D2Updater:**
+```bash
+# En .env
+L4D2_NO_UPDATER=true
+
+# Útil para:
+# - Servidores con versiones específicas
+# - Entornos de desarrollo/testing
+# - Control manual de actualizaciones
+```
+
+**Verificar Instalación:**
+```bash
+# Verificar que el sistema está funcionando
+docker-compose exec comp_l4d2 ls -la /data/serverfiles/srcds_l4d2
+docker-compose exec comp_l4d2 cat /data/serverfiles/update_l4d2.txt
+docker-compose exec comp_l4d2 grep "executable=" /data/config-lgsm/l4d2server/common.cfg
+```
+
+**Reinstalar Sistema:**
+```bash
+# Si necesitas reinstalar L4D2Updater
+docker-compose exec comp_l4d2 bash /app/docker-scripts/l4d2_updater.sh
+```
+
+Ver [Documentación Completa L4D2Updater](l4d2-updater.md) para información técnica detallada.
 
 ## Arquitectura de Persistencia y Enlaces Simbólicos
 

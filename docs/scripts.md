@@ -119,6 +119,47 @@ Crea enlaces simbólicos críticos para mantener coherencia entre `/app` (no per
 # No requiere parámetros, usa variables de entorno predefinidas
 ```
 
+### `l4d2_updater.sh`
+Configura el sistema de actualizaciones automáticas L4D2Updater usando el mecanismo nativo de Valve.
+
+**Funcionalidades:**
+- ✅ **Clona `srcds_run`**: Crea `srcds_l4d2` personalizado con `AUTO_UPDATE="yes"`
+- ✅ **Genera script SteamCMD**: Crea `update_l4d2.txt` con comandos de actualización
+- ✅ **Configura LGSM**: Modifica LinuxGSM para usar el ejecutable personalizado
+- ✅ **Login anónimo**: Evita solicitudes SteamGuard en cada inicio
+
+**Variables de entorno:**
+- `L4D2_NO_UPDATER`: Si es `true`, omite instalación del sistema
+
+**Requisitos:**
+- Servidor L4D2 completamente instalado
+- Archivo `srcds_run` presente en `/data/serverfiles/`
+- LinuxGSM configurado
+
+**Archivos generados:**
+```bash
+/data/serverfiles/srcds_l4d2        # Ejecutable personalizado
+/data/serverfiles/update_l4d2.txt   # Script SteamCMD
+# Modifica: /data/config-lgsm/l4d2server/common.cfg
+```
+
+**Uso:**
+```bash
+# Instalación automática (después de instalación L4D2)
+# O instalación manual:
+./l4d2_updater.sh
+```
+
+**Verificación:**
+```bash
+# Verificar instalación
+ls -la /data/serverfiles/srcds_l4d2
+cat /data/serverfiles/update_l4d2.txt
+grep "executable=" /data/config-lgsm/l4d2server/common.cfg
+```
+
+Ver [Documentación Completa L4D2Updater](l4d2-updater.md) para información detallada.
+
 ## Scripts de Gestión del Servidor (`server-scripts/`)
 
 ### `menu_gameserver.sh`
@@ -270,22 +311,105 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/xxx/xxx
 ```
 
 ### `l4d2_fix_install.sh`
-Realiza la instalación/actualización del servidor mediante steamcmd.
+**Script crítico para instalación del servidor L4D2** que resuelve las limitaciones de autenticación de Steam para servidores Linux.
+
+#### 🔒 Contexto del Problema de Steam
+
+**Problema**: Steam dejó de permitir la descarga anónima de servidores de L4D2 para Linux, requiriendo ahora autenticación con cuenta Steam.
+
+**Impacto**: Los servidores Linux no pueden instalarse de forma automática sin proporcionar credenciales Steam.
+
+#### 🛠️ Solución Implementada
+
+Este script utiliza una **solución no oficial** basada en [este comentario de GitHub](https://github.com/ValveSoftware/steam-for-linux/issues/11522#issuecomment-2512232264):
+
+**Método de instalación dual:**
+1. **Descarga para Windows**: Instala el servidor completo especificando plataforma Windows
+2. **Validación para Linux**: Ejecuta validación para Linux, descargando solo archivos faltantes
+3. **Resultado**: Servidor completo funcional en Linux sin autenticación
+
+#### ⚙️ Funcionamiento Técnico
+
+```bash
+# 1. Instalación completa para Windows (sin limitación de autenticación)
+steamcmd +login anonymous +@sSteamCmdForcePlatformType "windows" +app_update 222860 validate
+
+# 2. Validación para Linux (descarga solo archivos faltantes específicos de Linux)
+steamcmd +login anonymous +@sSteamCmdForcePlatformType "linux" +app_update 222860 validate
+```
+
+**Ventajas de este método:**
+- ✅ **Sin autenticación**: No requiere cuenta Steam
+- ✅ **Automático**: Instalación completamente desatendida
+- ✅ **Eficiente**: Solo descarga archivos necesarios para Linux
+- ✅ **Confiable**: Método validado por la comunidad
+
+#### 🎛️ Opciones de Usuario
+
+##### Opción 1: Instalación Automática (Predeterminada)
+```bash
+# En .env o docker-compose.yml
+L4D2_NO_INSTALL=false  # (o sin definir)
+```
+- **Comportamiento**: Ejecuta `l4d2_fix_install.sh` automáticamente
+- **Para quién**: Mayoría de usuarios que quieren instalación sin complicaciones
+
+##### Opción 2: Instalación Manual con Cuenta Steam
+```bash
+# En .env o docker-compose.yml
+L4D2_NO_INSTALL=true
+```
+**Proceso manual:**
+```bash
+# 1. Acceder al contenedor
+docker-compose exec comp_l4d2 bash
+
+# 2. Agregar cuenta Steam manualmente
+./l4d2server install
+
+# 3. Proporcionar credenciales cuando se solicite
+# Steam Username: tu_usuario
+# Steam Password: tu_contraseña
+```
+- **Para quién**: Usuarios que prefieren usar cuenta Steam oficial
+- **Ventaja**: Método oficialmente soportado por Steam
+- **Desventaja**: Requiere credenciales y proceso manual
+
+#### 🔧 Proceso de Instalación
 
 **Funcionalidades:**
-- Instalación para plataformas Windows y Linux
-- Creación de enlaces simbólicos
+- Instalación dual de plataformas (Windows + Linux)
+- Creación de enlace simbólico `/app/serverfiles`
 - Validación de archivos del servidor
+- Verificación de usuario correcto
 
-**Uso:**
+**Uso automático:**
 ```bash
+# Ejecutado automáticamente si L4D2_NO_INSTALL != true
 ./l4d2_fix_install.sh
 ```
 
-**Proceso:**
-1. Actualización para plataforma Windows
-2. Actualización para plataforma Linux  
-3. Creación de enlace simbólico `/app/serverfiles`
+**Variables verificadas:**
+- `LGSM_SERVERFILES`: Directorio de archivos del servidor
+- `USER`: Usuario actual (debe ser linuxgsm)
+
+#### 📊 Comparación de Métodos
+
+| Aspecto | Instalación Automática | Cuenta Steam Manual |
+|---------|----------------------|-------------------|
+| **Autenticación** | No requerida | Cuenta Steam necesaria |
+| **Automatización** | 100% automática | Requiere intervención manual |
+| **Tiempo** | ~15-30 minutos | ~15-30 minutos + tiempo manual |
+| **Seguridad** | No expone credenciales | Requiere credenciales Steam |
+| **Soporte** | Método comunitario | Método oficial Steam |
+| **Confiabilidad** | Alta (validado) | Alta (oficial) |
+
+#### 🚨 Notas Importantes
+
+- **Método predeterminado**: Instalación automática sin autenticación
+- **Compatibilidad**: Funciona con todas las versiones actuales de L4D2
+- **Actualización**: Las actualizaciones del servidor funcionan normalmente después de la instalación inicial
+- **Referencia**: [Discusión técnica en GitHub](https://github.com/ValveSoftware/steam-for-linux/issues/11522#issuecomment-2512232264)
 
 ### `workshop_downloader.sh`
 Gestiona la descarga de artículos y colecciones del Steam Workshop.
