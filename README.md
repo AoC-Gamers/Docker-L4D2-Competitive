@@ -1,6 +1,10 @@
 # Docker-L4D2-Competitive
 
-[![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)](https://hub.docker.com/r/aocgamers/lgsm-l4d2-competitive)
+[![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-bad| **[🚀 Inicio Rápido](docs/quick-start.md)** | Instalación y primeros pasos | Nuevos usuarios |
+| **[⚙️ Configuración Avanzada](docs/configuration.md)** | Variables, workshop, múltiples servidores | Usuarios experimentados |
+| **[🔄 L4D2Updater](docs/l4d2-updater.md)** | Sistema de actualizaciones automáticas | Administradores |
+| **[📜 Scripts](docs/scripts.md)** | Referencia completa de todos los scripts | Administradores |
+| **[🔧 API Reference](docs/api-reference.md)** | Funciones y APIs técnicas | Integradores |=docker&logoColor=white)](https://hub.docker.com/r/aocgamers/lgsm-l4d2-competitive)
 [![GitHub](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/AoC-Gamers/Docker-L4D2-Competitive)
 
 **Contenedor Docker para servidores competitivos de Left 4 Dead 2** con configuración automática, gestión de workshop, clonación de servidores y scripts de post-procesamiento Git.
@@ -12,9 +16,10 @@
 git clone https://github.com/AoC-Gamers/Docker-L4D2-Competitive.git
 cd Docker-L4D2-Competitive
 
-# 2. Configurar variables básicas
+# 2. Configurar variables básicas (SEGURO)
 cp example.env .env
-nano .env  # Editar LGSM_PASSWORD y SSH_PORT
+nano .env  # Editar LGSM_PASSWORD, SSH_PORT, STEAM_USER, etc.
+chmod 600 .env  # Permisos restrictivos para seguridad
 
 # 3. Iniciar el contenedor
 docker-compose up -d
@@ -27,13 +32,16 @@ ssh linuxgsm@localhost -p 2222
 
 ## ✨ Características Principales
 
-- **🔧 Configuración Automática**: Instalación y configuración completa del servidor L4D2
+- **� 3 Métodos de Instalación**: Steam oficial, workaround automático, o manual
+- **�🔧 Configuración Automática**: Instalación y configuración completa del servidor L4D2
+- **🚀 L4D2Updater**: Sistema de actualizaciones automáticas usando mecanismo nativo de Valve
 - **🎮 Servidores Múltiples**: Clonación automática de instancias L4D2 independientes
 - **📦 Steam Workshop**: Descarga automática de colecciones y artículos (con procesamiento por lotes)
 - **🗺️ Gestión de Mapas**: Descarga desde L4D2Center con verificación MD5
 - **🌿 Ramas Dinámicas**: Sistema `BRANCH_*` para usar diferentes versiones por entorno
 - **🔗 Enlaces Simbólicos**: Actualizaciones automáticas de scripts vía `symlink.sh`
 - **📊 Menú Interactivo**: Control centralizado de todos los servidores
+- **🔒 Seguridad**: Gestión segura de credenciales con limpieza automática
 
 ## 🏗️ Arquitectura del Sistema
 
@@ -47,10 +55,11 @@ ssh linuxgsm@localhost -p 2222
 graph LR
     A[Docker Compose] --> B[Entrypoint]
     B --> C[Configuración SSH]
-    C --> D[Enlaces Simbólicos]
-    D --> E[Install Gameserver]
-    E --> F[Workshop/Mapas]
-    F --> G[Servidores Listos]
+    C --> D[Instalación L4D2]
+    D --> E[L4D2Updater]
+    E --> F[Install Gameserver]
+    F --> G[Workshop/Mapas]
+    G --> H[Servidores Listos]
 ```
 
 ## 📊 Variables de Entorno Principales
@@ -59,20 +68,31 @@ graph LR
 |----------|-------------|---------|
 | `LGSM_PASSWORD` | Contraseña SSH (obligatorio) | `mi_password_seguro` |
 | `SSH_PORT` | Puerto SSH del contenedor | `2222` |
-| `BRANCH_SIR` | Rama del repo L4D2-Competitive-Rework | `development` |
+| `STEAM_USER` | Usuario Steam (instalación oficial) | `mi_usuario_steam` |
+| `STEAM_PASSWD` | Contraseña Steam (limpieza automática) | `mi_contraseña` |
 | `L4D2_NO_INSTALL` | Evitar instalación automática | `false` |
+| `L4D2_NO_UPDATER` | Deshabilitar L4D2Updater | `false` |
+| `BRANCH_SIR` | Rama del repo L4D2-Competitive-Rework | `development` |
 | `GIT_FORCE_DOWNLOAD` | Forzar descarga de repositorios | `false` |
 
 Ver [configuración completa](docs/configuration.md) para todas las opciones.
 
 ## 🎯 Casos de Uso
 
+### Instalación con Steam (Recomendado)
+```bash
+# .env
+STEAM_USER=mi_usuario_steam
+STEAM_PASSWD=mi_contraseña_steam
+LGSM_PASSWORD=mi_password_seguro
+```
+
 ### Desarrollo
 ```yaml
 environment:
   - BRANCH_SIR=development
   - GIT_FORCE_DOWNLOAD=true
-  - DEBUG_MODE=true
+  - L4D2_NO_AUTOSTART=true
 ```
 
 ### Producción
@@ -126,7 +146,7 @@ environment:
 4. Push: `git push origin feature/mejora-increible`
 5. Abrir Pull Request
 
-Ver [Guía de Desarrollo](docs/development.md) para requisitos y estándares.
+Consulta la [documentación completa](docs/) para información técnica detallada.
 
 ### 🙏 Agradecimientos
 - [GameServerManagers/LinuxGSM](https://github.com/GameServerManagers/LinuxGSM) - Base de gestión de servidores
@@ -142,7 +162,7 @@ Distribuido bajo la [**Licencia MIT**](LICENSE). Ver `LICENSE` para más informa
 <div align="center">
 
 **¿Nuevo en el proyecto?** → [Guía de Inicio Rápido](docs/quick-start.md)  
-**¿Tienes problemas?** → [Troubleshooting](docs/troubleshooting.md)  
-**¿Quieres contribuir?** → [Guía de Desarrollo](docs/development.md)
+**¿Necesitas ayuda?** → [Documentación Completa](docs/)  
+**¿Quieres contribuir?** → [Issues & Pull Requests](https://github.com/AoC-Gamers/Docker-L4D2-Competitive)
 
 </div>

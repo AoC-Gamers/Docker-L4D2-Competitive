@@ -9,13 +9,10 @@ Bienvenido a la documentación completa del proyecto Docker-L4D2-Competitive, un
 - **[Configuración Avanzada](configuration.md)** - Opciones detalladas y personalización
 
 ### 🔧 Gestión y Operación
+- **[L4D2Updater](l4d2-updater.md)** - Sistema de actualizaciones automáticas con Valve
 - **[Documentación de Scripts](scripts.md)** - Referencia completa de todos los scripts
 - **[Diagramas de Flujo](flowcharts.md)** - Flujos de instalación y subscripts
 - **[API y Referencia de Funciones](api-reference.md)** - Documentación técnica de APIs
-- **[Guía de Troubleshooting](troubleshooting.md)** - Solución de problemas comunes
-
-### 👨‍💻 Desarrollo
-- **[Guía de Desarrollo](development.md)** - Contribuir al proyecto y desarrollo local
 
 ## 🎯 ¿Por Dónde Empezar?
 
@@ -27,11 +24,11 @@ Bienvenido a la documentación completa del proyecto Docker-L4D2-Competitive, un
 ### 👨‍💻 Si ya tienes experiencia:
 - 🚀 [API y Referencia](api-reference.md) para integración y automatización
 - 🔄 [Diagramas de Flujo](flowcharts.md) para entender el funcionamiento interno
-- 💻 [Guía de Desarrollo](development.md) para contribuir al proyecto
+- � [L4D2Updater](l4d2-updater.md) para actualizaciones automáticas
 
 ### 🔧 Si tienes problemas:
-- 🆘 [Troubleshooting](troubleshooting.md) para soluciones rápidas
 - 🐛 [Issues en GitHub](https://github.com/AoC-Gamers/Docker-L4D2-Competitive/issues) para reportar bugs
+- 📚 Revisar toda la documentación para soluciones específicas
 
 ## 🏗️ Arquitectura del Proyecto
 
@@ -170,7 +167,7 @@ docker-compose logs -f comp_l4d2
 4. **Push** a la rama: `git push origin feature/amazing-feature`
 5. **Abrir Pull Request**
 
-Ver [Guía de Desarrollo](development.md) para más detalles.
+Consulta la documentación técnica para entender la arquitectura del proyecto.
 
 ## 📝 Changelog y Versiones
 
@@ -199,11 +196,11 @@ Distribuido bajo la [Licencia MIT](../LICENSE). Ver `LICENSE` para más informac
 ### ⚙️ Quiero personalizar la configuración
 ➡️ [Configuración Avanzada](configuration.md)
 
-### 🐛 Tengo un problema
-➡️ [Troubleshooting](troubleshooting.md)
+### � Necesito configurar actualizaciones
+➡️ [L4D2Updater](l4d2-updater.md)
 
-### 🛠️ Quiero modificar/contribuir
-➡️ [Guía de Desarrollo](development.md)
+### � Quiero entender los scripts
+➡️ [Documentación de Scripts](scripts.md)
 
 ### 📖 Necesito referencia técnica
 ➡️ [API Reference](api-reference.md)
