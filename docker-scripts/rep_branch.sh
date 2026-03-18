@@ -1,8 +1,8 @@
 #!/bin/bash
 # Script: rep_branch.sh
-# Description: Updates the "branch" field in the repos.json file according to environment variables.
-#              Each variable has the prefix "BRANCH_" followed by the folder name in uppercase.
-#              If the variable is "default", the update is skipped for that repository.
+# Description: Updates dynamic fields in repos.json according to environment variables.
+#              Git sources use BRANCH_{FOLDER} and GitHub release sources can use
+#              RELEASE_TAG_{FOLDER}. If the value is "default", the update is skipped.
 
 # Path to the repos.json file
 REPOS_FILE="/app/server-scripts/repos.json"
@@ -24,16 +24,20 @@ NUM=$(jq length "$TMP_FILE")
 for ((i=0; i<NUM; i++)); do
     # Get the value of the "folder" field
     FOLDER=$(jq -r ".[$i].folder" "$TMP_FILE")
-    # Construct the environment variable name (e.g., BRANCH_SIR)
-    VAR_NAME="BRANCH_$(echo "$FOLDER" | tr '[:lower:]' '[:upper:]')"
-    # Get the value of the variable; if not defined, use "default"
-    VALUE=${!VAR_NAME:-default}
+    BRANCH_VAR_NAME="BRANCH_$(echo "$FOLDER" | tr '[:lower:]' '[:upper:]')"
+    BRANCH_VALUE=${!BRANCH_VAR_NAME:-default}
 
-    # Check if the value is "default"
-    if [ "$VALUE" != "default" ]; then
-        # Update the "branch" field with the obtained value
-        jq --arg val "$VALUE" ".[$i].branch = \$val" "$TMP_FILE" > "${TMP_FILE}.tmp" && mv "${TMP_FILE}.tmp" "$TMP_FILE"
-        echo "Updated branch '$FOLDER' to '$VALUE'."
+    if [ "$BRANCH_VALUE" != "default" ]; then
+        jq --arg val "$BRANCH_VALUE" ".[$i].branch = \$val" "$TMP_FILE" > "${TMP_FILE}.tmp" && mv "${TMP_FILE}.tmp" "$TMP_FILE"
+        echo "Updated branch '$FOLDER' to '$BRANCH_VALUE'."
+    fi
+
+    RELEASE_TAG_VAR_NAME="RELEASE_TAG_$(echo "$FOLDER" | tr '[:lower:]' '[:upper:]')"
+    RELEASE_TAG_VALUE=${!RELEASE_TAG_VAR_NAME:-default}
+
+    if [ "$RELEASE_TAG_VALUE" != "default" ]; then
+        jq --arg val "$RELEASE_TAG_VALUE" ".[$i].release_tag = \$val" "$TMP_FILE" > "${TMP_FILE}.tmp" && mv "${TMP_FILE}.tmp" "$TMP_FILE"
+        echo "Updated release tag '$FOLDER' to '$RELEASE_TAG_VALUE'."
     fi
 done
 

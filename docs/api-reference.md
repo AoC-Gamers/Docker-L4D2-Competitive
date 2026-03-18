@@ -41,6 +41,26 @@ error_exit "No se pudo acceder al directorio $DIR_APP"
 
 ### Gestión de Archivos y Directorios
 
+#### `github_api_request(url)`
+Realiza una petición a la API de GitHub usando `GITHUB_TOKEN` si está disponible.
+
+**Parámetros:**
+- `url`: Endpoint completo de GitHub API
+
+#### `download_file(url, destination)`
+Descarga un archivo con `curl` y añade autenticación para GitHub cuando corresponde.
+
+**Parámetros:**
+- `url`: Archivo remoto
+- `destination`: Ruta local de salida
+
+#### `extract_archive(path, destination)`
+Extrae archivos `.zip`, `.tar.gz`, `.tgz` o `.tar`.
+
+**Parámetros:**
+- `path`: Archivo comprimido
+- `destination`: Directorio destino
+
 #### `verify_and_delete_dir(path)`
 Verifica si un directorio existe y lo elimina.
 
@@ -117,13 +137,15 @@ check_user "linuxgsm"
 | `L4D2_NO_INSTALL` | `false` | Evitar instalación automática |
 | `L4D2_NO_AUTOSTART` | `false` | Evitar inicio automático |
 | `L4D2_FRESH_INSTALL` | `false` | Instalación limpia |
-| `GIT_FORCE_DOWNLOAD` | `false` | Forzar descarga de repos |
+| `GIT_FORCE_DOWNLOAD` | `false` | Forzar descarga de cualquier fuente remota |
+| `GITHUB_TOKEN` | vacío | Token opcional para API y assets de GitHub releases |
 
 ### Variables de Rama Dinámica
 
 | Variable | Formato | Descripción |
 |----------|---------|-------------|
 | `BRANCH_*` | `BRANCH_{FOLDER_UPPERCASE}` | Modifica rama de repositorio específico |
+| `RELEASE_TAG_*` | `RELEASE_TAG_{FOLDER_UPPERCASE}` | Modifica el tag/canal de una fuente `github_release` |
 
 **Ejemplos con repositorio actual:**
 ```bash
@@ -136,9 +158,48 @@ BRANCH_SIR=development        # Para repo folder "sir" (existente)
 
 **Proceso:**
 1. `rep_branch.sh` lee variables `BRANCH_*`
-2. Modifica `repos.json` dinámicamente
-3. `install_gameserver.sh` usa nuevas ramas
-4. Ejecuta subscripts correspondientes
+2. `rep_branch.sh` también puede leer `RELEASE_TAG_*`
+3. Modifica `repos.json` dinámicamente
+4. `install_gameserver.sh` usa nuevas ramas o nuevos tags
+5. Ejecuta subscripts correspondientes
+
+## API de Fuentes de Instalación
+
+### Esquema `git`
+
+```json
+{
+  "source_type": "git",
+  "repo_url": "https://github.com/SirPlease/L4D2-Competitive-Rework.git",
+  "folder": "sir",
+  "branch": "default"
+}
+```
+
+### Esquema `github_release`
+
+```json
+{
+  "source_type": "github_release",
+  "github_repo": "AoC-Gamers/BanSystem",
+  "release_tag": "channel/latest",
+  "asset_name_glob": "bansystem-*.zip",
+  "folder": "bansystem",
+  "branch": "default"
+}
+```
+
+`github_release` admite:
+
+1. `asset_name`: nombre exacto del asset.
+2. `asset_name_glob`: patrón glob para resolver automáticamente el ZIP correcto dentro de la release.
+
+### Parámetros del hook `git-gameserver/{folder}.{branch}.sh`
+
+1. `SOURCE_DIR`: Directorio del checkout Git o del artefacto extraído
+2. `INSTALL_TYPE`: `install` o `update`
+3. `SOURCE_DOWNLOAD`: `true` si se descargó la fuente, `false` si se usó caché
+4. `SOURCE_TYPE`: `git` o `github_release`
 
 ## API del Workshop Downloader
 

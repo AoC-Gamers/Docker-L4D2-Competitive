@@ -22,6 +22,75 @@ log() {
 }
 
 #######################################
+# Function: github_api_request
+# Performs a GitHub API request using GITHUB_TOKEN if available.
+# Parameters:
+#   $1: API URL.
+#######################################
+github_api_request() {
+    local api_url="$1"
+    local -a curl_args=(
+        -fsSL
+        -H "Accept: application/vnd.github+json"
+        -H "X-GitHub-Api-Version: 2022-11-28"
+    )
+
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
+        curl_args+=( -H "Authorization: Bearer ${GITHUB_TOKEN}" )
+    fi
+
+    curl "${curl_args[@]}" "$api_url"
+}
+
+#######################################
+# Function: download_file
+# Downloads a file using curl with optional GitHub token.
+# Parameters:
+#   $1: URL.
+#   $2: Destination path.
+#######################################
+download_file() {
+    local url="$1"
+    local destination="$2"
+    local -a curl_args=( -fsSL -o "$destination" )
+
+    if [ -n "${GITHUB_TOKEN:-}" ] && [[ "$url" == https://api.github.com/* || "$url" == https://github.com/* ]]; then
+        curl_args+=( -H "Authorization: Bearer ${GITHUB_TOKEN}" )
+    fi
+
+    curl "${curl_args[@]}" "$url"
+}
+
+#######################################
+# Function: extract_archive
+# Extracts supported archives into a destination directory.
+# Parameters:
+#   $1: Archive path.
+#   $2: Destination directory.
+#######################################
+extract_archive() {
+    local archive_path="$1"
+    local destination_dir="$2"
+
+    mkdir -p "$destination_dir"
+
+    case "$archive_path" in
+        *.zip)
+            unzip -oq "$archive_path" -d "$destination_dir"
+            ;;
+        *.tar.gz|*.tgz)
+            tar -xzf "$archive_path" -C "$destination_dir"
+            ;;
+        *.tar)
+            tar -xf "$archive_path" -C "$destination_dir"
+            ;;
+        *)
+            error_exit "Unsupported archive format: $archive_path"
+            ;;
+    esac
+}
+
+#######################################
 # Function: error_exit
 # Logs an error message and exits the script.
 # Parameters:

@@ -99,29 +99,178 @@ fi
 
 #####################################################
 # Auxiliary functions for Git
+save_source_state() {
+    local source_name="$1"
+    local source_state="$2"
+
+    if [[ -f "$CACHE_FILE" ]]; then
+        grep -Fv "${source_name}:" "$CACHE_FILE" > "${CACHE_FILE}.tmp" || true
+        mv "${CACHE_FILE}.tmp" "$CACHE_FILE"
+    fi
+
+    echo "$source_name:$source_state" >> "$CACHE_FILE"
+}
+
+has_source_changed() {
+    local source_name="$1"
+    local new_state="$2"
+
+    if [[ -f "$CACHE_FILE" ]]; then
+        local old_state
+        old_state=$(grep -F "${source_name}:" "$CACHE_FILE" | tail -n 1 | cut -d':' -f2-)
+        if [[ "$old_state" == "$new_state" ]]; then
+            return 1  # No changes
+        fi
+    fi
+    return 0  # Changes or not found
+}
+
 get_latest_commit_hash() {
     local repo_dir="$1"
     git -C "$repo_dir" rev-parse HEAD || error_exit "Could not get the latest hash in $repo_dir."
 }
 
-save_commit_hash() {
-    local repo_name="$1"
-    local commit_hash="$2"
-    sed -i "/^${repo_name}:/d" "$CACHE_FILE"
-    echo "$repo_name:$commit_hash" >> "$CACHE_FILE"
+resolve_github_release_asset() {
+    local github_repo="$1"
+    local release_tag="$2"
+    local asset_name="$3"
+    local asset_name_glob="$4"
+    local encoded_tag
+    local api_url
+    local release_json
+    local matched_asset_name=""
+    local asset_download_url
+    local asset_updated_at
+    local candidate_name
+    local candidate_url
+    local candidate_updated_at
+
+    encoded_tag=$(jq -rn --arg value "$release_tag" '$value|@uri')
+    api_url="https://api.github.com/repos/${github_repo}/releases/tags/${encoded_tag}"
+    release_json=$(github_api_request "$api_url") || error_exit "Could not fetch release metadata for ${github_repo}@${release_tag}."
+
+    if [[ -n "$asset_name" && "$asset_name" != "null" ]]; then
+        matched_asset_name="$asset_name"
+        asset_download_url=$(echo "$release_json" | jq -r --arg asset_name "$asset_name" '.assets[] | select(.name == $asset_name) | .browser_download_url' | head -n 1)
+        asset_updated_at=$(echo "$release_json" | jq -r --arg asset_name "$asset_name" '.assets[] | select(.name == $asset_name) | .updated_at' | head -n 1)
+    else
+        while IFS=$'\t' read -r candidate_name candidate_url candidate_updated_at; do
+            [[ -n "$candidate_name" ]] || continue
+
+            if [[ "$candidate_name" == $asset_name_glob ]]; then
+                if [[ -z "$asset_updated_at" || "$candidate_updated_at" > "$asset_updated_at" ]]; then
+                    matched_asset_name="$candidate_name"
+                    asset_download_url="$candidate_url"
+                    asset_updated_at="$candidate_updated_at"
+                fi
+            fi
+        done < <(echo "$release_json" | jq -r '.assets[] | [.name, .browser_download_url, .updated_at] | @tsv')
+    fi
+
+    if [[ -z "$asset_download_url" || "$asset_download_url" == "null" ]]; then
+        if [[ -n "$asset_name_glob" && "$asset_name_glob" != "null" ]]; then
+            error_exit "No asset matching '${asset_name_glob}' was found in ${github_repo}@${release_tag}."
+        fi
+
+        error_exit "Asset '${asset_name}' not found in ${github_repo}@${release_tag}."
+    fi
+
+    if [[ -z "$asset_updated_at" || "$asset_updated_at" == "null" ]]; then
+        error_exit "Could not determine update state for asset '${matched_asset_name}' in ${github_repo}@${release_tag}."
+    fi
+
+    printf '%s\n%s\n%s\n' "$matched_asset_name" "$asset_download_url" "$asset_updated_at"
 }
 
-has_repo_changed() {
-    local repo_name="$1"
-    local new_hash="$2"
-    if [[ -f "$CACHE_FILE" ]]; then
-        local old_hash
-        old_hash=$(grep "^${repo_name}:" "$CACHE_FILE" | cut -d':' -f2)
-        if [[ "$old_hash" == "$new_hash" ]]; then
-            return 1  # No changes
+download_git_source() {
+    local repo_url="$1"
+    local folder="$2"
+    local branch="$3"
+    local source_download=false
+    local remote_state
+
+    if [[ "${GIT_FORCE_DOWNLOAD:-false}" == "true" ]]; then
+        source_download=true
+        rm -rf "$folder"
+    elif [[ -d "$folder" ]]; then
+        echo "Checking for changes in $folder..."
+        if [[ "$branch" == "default" ]]; then
+            remote_state=$(git ls-remote "$repo_url" HEAD | awk '{print $1}')
+        else
+            remote_state=$(git ls-remote -h "$repo_url" "$branch" | awk '{print $1}')
         fi
+
+        if has_source_changed "$folder" "$remote_state"; then
+            source_download=true
+            echo "The repository $folder has changed (will be updated)."
+            rm -rf "$folder"
+        else
+            echo "The repository $folder has not changed. Using cache."
+        fi
+    else
+        source_download=true
     fi
-    return 0  # Changes or not found
+
+    if [[ "$source_download" == "true" ]]; then
+        echo "Cloning $repo_url into folder $folder (branch: $branch)..."
+        if [[ "$branch" == "default" ]]; then
+            git clone "$repo_url" "$folder" || error_exit "Failed to clone $repo_url"
+        else
+            git clone -b "$branch" "$repo_url" "$folder" || error_exit "Failed to clone $repo_url on branch $branch"
+        fi
+        remote_state=$(get_latest_commit_hash "$folder")
+        save_source_state "$folder" "$remote_state"
+    fi
+
+    printf '%s\n' "$source_download"
+}
+
+download_github_release_source() {
+    local github_repo="$1"
+    local release_tag="$2"
+    local asset_name="$3"
+    local asset_name_glob="$4"
+    local folder="$5"
+    local source_download=false
+    local resolved_asset_name
+    local asset_download_url
+    local remote_state
+    local archive_path
+
+    mapfile -t asset_metadata < <(resolve_github_release_asset "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob")
+    resolved_asset_name="${asset_metadata[0]}"
+    asset_download_url="${asset_metadata[1]}"
+    remote_state="${resolved_asset_name}@${asset_metadata[2]}"
+
+    if [[ "${GIT_FORCE_DOWNLOAD:-false}" == "true" ]]; then
+        source_download=true
+        rm -rf "$folder"
+    elif [[ -d "$folder" ]]; then
+        echo "Checking for changes in artifact source $folder..."
+        if has_source_changed "$folder" "$remote_state"; then
+            source_download=true
+            echo "The artifact source $folder has changed (will be updated)."
+            rm -rf "$folder"
+        else
+            echo "The artifact source $folder has not changed. Using cache."
+        fi
+    else
+        source_download=true
+    fi
+
+    if [[ "$source_download" == "true" ]]; then
+        archive_path="$DIR_TMP/$resolved_asset_name"
+        rm -f "$archive_path"
+        mkdir -p "$folder"
+        echo "Downloading release asset $resolved_asset_name from $github_repo@$release_tag..."
+        download_file "$asset_download_url" "$archive_path" || error_exit "Failed to download $resolved_asset_name from $asset_download_url"
+        rm -rf "$folder"
+        mkdir -p "$folder"
+        extract_archive "$archive_path" "$folder"
+        save_source_state "$folder" "$remote_state"
+    fi
+
+    printf '%s\n' "$source_download"
 }
 
 #####################################################
@@ -209,56 +358,49 @@ if [ "$INSTALL_TYPE" == "update" ]; then
 fi
 
 #####################################################
-# Repository installation
+# Source installation
 jq -c '.[]' "$REPOS_JSON" | while IFS= read -r repo_item; do
-    # Extract values from JSON
-    repo_url=$(echo "$repo_item" | jq -r '.repo_url' | envsubst)
+    source_type=$(echo "$repo_item" | jq -r '.source_type // "git"')
     folder=$(echo "$repo_item" | jq -r '.folder')
-    branch=$(echo "$repo_item" | jq -r '.branch')
+    branch=$(echo "$repo_item" | jq -r '.branch // "default"')
 
-    GIT_DOWNLOAD=false
+    SOURCE_DOWNLOAD=false
 
-    # If forced download, or if the folder does not exist, clone
-    if [[ "${GIT_FORCE_DOWNLOAD:-false}" == "true" ]]; then
-        GIT_DOWNLOAD=true
-        rm -rf "$folder"
-    elif [[ -d "$folder" ]]; then
-        echo "Checking for changes in $folder..."
-        if [[ "$branch" == "default" ]]; then
-            remote_hash=$(git ls-remote "$repo_url" HEAD | awk '{print $1}')
-        else
-            remote_hash=$(git ls-remote -h "$repo_url" "$branch" | awk '{print $1}')
-        fi
+    case "$source_type" in
+        git)
+            repo_url=$(echo "$repo_item" | jq -r '.repo_url' | envsubst)
+            SOURCE_DOWNLOAD=$(download_git_source "$repo_url" "$folder" "$branch")
+            ;;
+        github_release)
+            github_repo=$(echo "$repo_item" | jq -r '.github_repo' | envsubst)
+            release_tag=$(echo "$repo_item" | jq -r '.release_tag' | envsubst)
+            asset_name=$(echo "$repo_item" | jq -r '.asset_name // empty' | envsubst)
+            asset_name_glob=$(echo "$repo_item" | jq -r '.asset_name_glob // empty' | envsubst)
 
-        if has_repo_changed "$folder" "$remote_hash"; then
-            GIT_DOWNLOAD=true
-            echo "The repository $folder has changed (will be updated)."
-            rm -rf "$folder"
-        else
-            echo "The repository $folder has not changed. Using cache."
-            GIT_DOWNLOAD=false
-        fi
-    else
-        GIT_DOWNLOAD=true
-    fi
+            if [[ -z "$github_repo" || "$github_repo" == "null" ]]; then
+                error_exit "The field 'github_repo' is required for github_release sources."
+            fi
 
-    # Clone or update the repository if necessary
-    if [[ "$GIT_DOWNLOAD" == "true" ]]; then
-        echo "Cloning $repo_url into folder $folder (branch: $branch)..."
-        if [[ "$branch" == "default" ]]; then
-            git clone "$repo_url" "$folder" || { echo "Failed to clone $repo_url"; exit 1; }
-        else
-            git clone -b "$branch" "$repo_url" "$folder" || { echo "Failed to clone $repo_url on branch $branch"; exit 1; }
-        fi
-        latest_hash=$(get_latest_commit_hash "$folder")
-        save_commit_hash "$folder" "$latest_hash"
-    fi
+            if [[ -z "$release_tag" || "$release_tag" == "null" ]]; then
+                error_exit "The field 'release_tag' is required for github_release sources."
+            fi
 
-    # Optional: execute a modification subscript for the repository
+            if [[ -z "$asset_name" && -z "$asset_name_glob" ]]; then
+                error_exit "The field 'asset_name' or 'asset_name_glob' is required for github_release sources."
+            fi
+
+            SOURCE_DOWNLOAD=$(download_github_release_source "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob" "$folder")
+            ;;
+        *)
+            error_exit "Unsupported source_type '$source_type' for folder '$folder'."
+            ;;
+    esac
+
+    # Optional: execute a modification subscript for the source
     subscript_file="$DIR_SCRIPTING/git-gameserver/${folder}.${branch}.sh"
     if [[ -f "$subscript_file" ]]; then
         echo "Executing subscript $subscript_file for $folder..."
-        bash "$subscript_file" "$folder" "$INSTALL_TYPE" "$GIT_DOWNLOAD"
+        bash "$subscript_file" "$folder" "$INSTALL_TYPE" "$SOURCE_DOWNLOAD" "$source_type"
     else
         echo "No subscript found for $folder. Skipping..."
     fi

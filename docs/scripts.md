@@ -224,7 +224,7 @@ Clona servidores L4D2 usando LinuxGSM.
 - `clone_exclude.json`: Define qué archivos copiar vs. enlazar
 
 ### `install_gameserver.sh`
-**El corazón del sistema**: Instala o actualiza el servidor competitivo, gestionando repositorios Git y ejecutando subscripts personalizados.
+**El corazón del sistema**: Instala o actualiza el servidor competitivo, gestionando fuentes Git y artefactos de release, y ejecutando subscripts personalizados.
 
 **Modos de operación:**
 - `install` (0): Instalación limpia
@@ -241,41 +241,77 @@ Clona servidores L4D2 usando LinuxGSM.
 ./install_gameserver.sh 1
 ```
 
-**Sistema de Repositorios Git:**
-1. **Configuración via `repos.json`**: Define repositorios, carpetas locales y ramas
-2. **Modificación dinámica**: `rep_branch.sh` permite cambiar ramas por entorno
+**Sistema de Fuentes de Instalación:**
+1. **Configuración via `repos.json`**: Define fuentes, carpetas locales y selector de hook
+2. **Modificación dinámica**: `rep_branch.sh` permite cambiar ramas Git o tags de release por entorno
 3. **Caché inteligente**: Solo descarga si hay cambios remotos
-4. **Subscripts personalizados**: Ejecuta post-procesamiento específico por repo
+4. **Subscripts personalizados**: Ejecuta post-procesamiento específico por fuente
 
-**Flujo de repositorios:**
+**Flujo de fuentes:**
 ```bash
-# Para cada repositorio en repos.json:
-1. Verificar cambios remotos vs caché local
-2. Clonar/actualizar solo si hay cambios
-3. Buscar subscript: git-gameserver/{folder}.{branch}.sh
-4. Ejecutar subscript con parámetros: REPO_DIR INSTALL_TYPE GIT_DOWNLOAD
+# Para cada entrada en repos.json:
+1. Resolver el tipo de fuente (`git` o `github_release`)
+2. Verificar cambios remotos vs caché local
+3. Clonar, descargar y extraer solo si hay cambios
+4. Buscar subscript: git-gameserver/{folder}.{branch}.sh
+5. Ejecutar subscript con parámetros: SOURCE_DIR INSTALL_TYPE SOURCE_DOWNLOAD SOURCE_TYPE
 ```
+
+**Esquemas soportados en `repos.json`:**
+```json
+[
+  {
+    "source_type": "git",
+    "repo_url": "https://github.com/SirPlease/L4D2-Competitive-Rework.git",
+    "folder": "sir",
+    "branch": "default"
+  },
+  {
+    "source_type": "github_release",
+    "github_repo": "AoC-Gamers/BanSystem",
+    "release_tag": "channel/latest",
+    "asset_name_glob": "bansystem-*.zip",
+    "folder": "bansystem",
+    "branch": "default"
+  },
+  {
+    "source_type": "github_release",
+    "github_repo": "AoC-Gamers/L4D2-CommSuite",
+    "release_tag": "channel/develop",
+    "asset_name_glob": "l4d2-commsuite-*.zip",
+    "folder": "l4d2_commsuite",
+    "branch": "default"
+  }
+]
+```
+
+Para `github_release` puedes usar uno de estos campos:
+
+1. `asset_name`: nombre exacto del archivo.
+2. `asset_name_glob`: patrón glob, útil para canales como `channel/latest` o `channel/develop` cuando el ZIP incluye la versión en el nombre.
 
 **Subscripts de Post-procesamiento:**
 - **Ubicación**: `/data/server-scripts/git-gameserver/`
 - **Convención**: `{folder}.{branch}.sh`
 - **Parámetros recibidos**:
-  1. `REPO_DIR`: Directorio del repositorio clonado
+  1. `SOURCE_DIR`: Directorio del repositorio clonado o del artefacto extraído
   2. `INSTALL_TYPE`: `install` o `update`
-  3. `GIT_DOWNLOAD`: `true` si descargó, `false` si usó caché
+  3. `SOURCE_DOWNLOAD`: `true` si descargó, `false` si usó caché
+  4. `SOURCE_TYPE`: `git` o `github_release`
 - **Variables disponibles**: Todas las del archivo `.env`
 
 **Ejemplos de subscripts:**
 ```bash
 # sir.default.sh - Procesa L4D2-Competitive-Rework
 #!/bin/bash
-REPO_DIR="$1"
+SOURCE_DIR="$1"
 INSTALL_TYPE="$2" 
-GIT_DOWNLOAD="$3"
+SOURCE_DOWNLOAD="$3"
+SOURCE_TYPE="${4:-git}"
 
-if [[ "$GIT_DOWNLOAD" == "true" ]]; then
-    # Aplicar configuraciones del repo
-    cp -r "$REPO_DIR/addons/"* "$DIR_SOURCEMOD/"
+if [[ "$SOURCE_DOWNLOAD" == "true" ]]; then
+  # Aplicar configuraciones de la fuente
+  cp -r "$SOURCE_DIR/addons/"* "$DIR_SOURCEMOD/"
 fi
 
 # my_plugin.main.sh - Plugin personalizado
@@ -289,13 +325,14 @@ fi
 1. Preparación de bibliotecas Steam 32-bit/64-bit
 2. Limpieza de bibliotecas conflictivas
 3. Sistema de backup (solo en modo update)
-4. Procesamiento de repositorios Git
+4. Procesamiento de fuentes Git y artefactos
 5. Ejecución de subscripts de post-procesamiento
 6. Restauración de configuraciones (solo en modo update)
 
 **Variables de entorno:**
 - `GIT_FORCE_DOWNLOAD`: Forzar descarga de repositorios
 - `REPOS_JSON`: Archivo de configuración de repositorios
+- `GITHUB_TOKEN`: Token opcional para consultar y descargar releases de GitHub
 - Variables del `.env`: Disponibles para todos los subscripts
 
 **Archivo .env compartido:**

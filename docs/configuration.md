@@ -8,7 +8,7 @@
 4. [Configuración de Servidores Múltiples](#configuración-de-servidores-múltiples)
 5. [Configuración del Workshop](#configuración-del-workshop)
 6. [Configuración de Mapas L4D2Center](#configuración-de-mapas-l4d2center)
-7. [Configuración de Repositorios Git](#configuración-de-repositorios-git)
+7. [Configuración de Fuentes de Instalación](#configuración-de-fuentes-de-instalación)
 8. [Configuración de Red y Puertos](#configuración-de-red-y-puertos)
 9. [Backup y Restauración](#backup-y-restauración)
 10. [Optimización de Rendimiento](#optimización-de-rendimiento)
@@ -41,6 +41,7 @@ L4D2_NO_UPDATER=false             # Control del sistema de actualizaciones autom
 # Configuraciones de Desarrollo
 LGSM_DEV=false                    # Habilitar modo desarrollador
 GIT_FORCE_DOWNLOAD=false          # Forzar descarga de repositorios
+GITHUB_TOKEN=ghp_xxx              # Opcional: consultar y descargar releases GitHub
 ```
 
 ### 🔧 Control de Instalación del Servidor L4D2
@@ -264,13 +265,13 @@ Ver [Documentación Completa L4D2Updater](l4d2-updater.md) para información té
 El proyecto utiliza una arquitectura de **separación de responsabilidades** entre directorios:
 
 #### 📁 Directorio `/app` (No Persistente)
-- **Contenido**: Scripts de instalación, subscripts, y caché de repositorios Git
+- **Contenido**: Scripts de instalación, subscripts, y caché de fuentes Git o artefactos
 - **Propósito**: Código actualizable con nuevas versiones del contenedor
 - **Comportamiento**: Se sobrescribe en cada actualización de imagen
 - **Incluye**:
   - `/app/server-scripts/` - Scripts principales
   - `/app/server-scripts/git-gameserver/` - Subscripts de post-procesamiento
-  - Cache de repositorios Git clonados
+  - Cache de checkouts Git y artefactos extraídos
 
 #### 💾 Directorio `/data` (Persistente)
 - **Contenido**: Gameserver, configuraciones, logs, y datos de usuario
@@ -507,14 +508,20 @@ L4D2_MAPS_SKIP_MD5=false
 L4D2_MAPS_FORCE_DOWNLOAD=false ./maps_l4d2center.sh
 ```
 
-## Configuración de Repositorios Git
+## Configuración de Fuentes de Instalación
 
 ### Archivo `repos.json`
+
+Competitive puede instalar contenido desde dos tipos de fuente:
+
+1. `git`: clona un repositorio y ejecuta el hook correspondiente.
+2. `github_release`: descarga un ZIP o TAR publicado en GitHub Releases, lo extrae en caché y ejecuta el mismo hook.
 
 **Configuración actual (repositorio real):**
 ```json
 [
   {
+    "source_type": "git",
     "repo_url": "https://github.com/SirPlease/L4D2-Competitive-Rework.git",
     "folder": "sir",
     "branch": "default"
@@ -526,24 +533,43 @@ L4D2_MAPS_FORCE_DOWNLOAD=false ./maps_l4d2center.sh
 ```json
 [
   {
+    "source_type": "git",
     "repo_url": "https://github.com/SirPlease/L4D2-Competitive-Rework.git",
     "folder": "sir",
     "branch": "default"
   },
   {
+    "source_type": "git",
     "repo_url": "https://github.com/usuario/mi-repo.git", 
     "folder": "mi_proyecto",
     "branch": "main"
   },
   {
+    "source_type": "git",
     "repo_url": "https://${GITHUB_TOKEN}@github.com/private/repo.git",
     "folder": "private_config",
     "branch": "production"
+  },
+  {
+    "source_type": "github_release",
+    "github_repo": "AoC-Gamers/BanSystem",
+    "release_tag": "channel/latest",
+    "asset_name_glob": "bansystem-*.zip",
+    "folder": "bansystem",
+    "branch": "default"
+  },
+  {
+    "source_type": "github_release",
+    "github_repo": "AoC-Gamers/L4D2-CommSuite",
+    "release_tag": "channel/develop",
+    "asset_name_glob": "l4d2-commsuite-*.zip",
+    "folder": "l4d2_commsuite",
+    "branch": "default"
   }
 ]
 ```
 
-### Configuración Dinámica de Ramas
+### Configuración Dinámica de Ramas y Releases
 
 El sistema de ramas dinámicas permite modificar automáticamente las ramas de los repositorios según las variables de entorno definidas. Esto es especialmente útil para diferentes entornos (desarrollo, testing, producción).
 
@@ -558,8 +584,9 @@ services:
       - LGSM_PASSWORD=${LGSM_PASSWORD}
       - SSH_PORT=${SSH_PORT}
       - SSH_KEY=${SSH_KEY}
-      # Variables de rama dinámicas
+      # Variables dinámicas por fuente
       - BRANCH_SIR=development
+      - RELEASE_TAG_BANSYSTEM=channel/develop
       # Variables para subscripts (disponibles en install_gameserver.sh)
       - COMPETITIVE_MODE=true
       - DEBUG_ENABLED=false
@@ -572,9 +599,9 @@ LGSM_PASSWORD=mi_password_seguro
 SSH_PORT=2222
 SSH_KEY=ssh-rsa AAAAB...
 
-# Variables BRANCH_* para modificar repos.json dinámicamente
-# Solo funciona para folders que existen en repos.json
+# Variables dinámicas para modificar repos.json
 BRANCH_SIR=development
+RELEASE_TAG_BANSYSTEM=channel/develop
 
 # Variables adicionales para subscripts de instalación
 GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -582,41 +609,65 @@ COMPETITIVE_MODE=true
 TOURNAMENT_MODE=false
 ```
 
-#### 🎯 Sistema de Variables BRANCH_* para repos.json
+#### 🎯 Sistema de Variables Dinámicas para `repos.json`
 
-El script `rep_branch.sh` está específicamente diseñado para **modificar dinámicamente el archivo `repos.json`** usando variables de entorno con el prefijo `BRANCH_*`. 
+El script `rep_branch.sh` está diseñado para **modificar dinámicamente el archivo `repos.json`** usando:
+
+- `BRANCH_*` para ramas Git
+- `RELEASE_TAG_*` para tags o canales de `github_release`
 
 **Funcionamiento:**
 1. **Lee el archivo `repos.json`** actual
-2. **Para cada repositorio**, busca una variable `BRANCH_{FOLDER_UPPERCASE}`
-3. **Si la variable existe** y no es "default", actualiza el campo `branch`
+2. **Para cada fuente**, busca `BRANCH_{FOLDER_UPPERCASE}` y `RELEASE_TAG_{FOLDER_UPPERCASE}`
+3. **Si la variable existe** y no es "default", actualiza el campo correspondiente
 4. **Guarda el archivo modificado** `repos.json`
-5. **`install_gameserver.sh`** usa las nuevas ramas
+5. **`install_gameserver.sh`** usa la nueva rama o el nuevo tag
 
-**Archivo `repos.json` actual:**
+**Archivo `repos.json` con fuente Git y artefacto:**
 ```json
 [
   {
+    "source_type": "git",
     "repo_url": "https://github.com/SirPlease/L4D2-Competitive-Rework.git",
     "folder": "sir",
+    "branch": "default"
+  },
+  {
+    "source_type": "github_release",
+    "github_repo": "AoC-Gamers/BanSystem",
+    "release_tag": "channel/latest",
+    "asset_name_glob": "bansystem-*.zip",
+    "folder": "bansystem",
     "branch": "default"
   }
 ]
 ```
 
-**Variable para modificar la rama:**
+**Variables para modificar la fuente:**
 ```bash
 # Para folder: "sir" → Variable: BRANCH_SIR
 BRANCH_SIR=development
+
+# Para folder: "bansystem" → Variable: RELEASE_TAG_BANSYSTEM
+RELEASE_TAG_BANSYSTEM=channel/develop
 ```
 
 **Resultado después de `rep_branch.sh`:**
 ```json
 [
   {
+    "source_type": "git",
     "repo_url": "https://github.com/SirPlease/L4D2-Competitive-Rework.git",
     "folder": "sir",
     "branch": "development"  # ← Modificado dinámicamente
+  },
+  {
+    "source_type": "github_release",
+    "github_repo": "AoC-Gamers/BanSystem",
+    "release_tag": "channel/develop",  # ← Modificado dinámicamente
+    "asset_name_glob": "bansystem-*.zip",
+    "folder": "bansystem",
+    "branch": "default"
   }
 ]
 ```
