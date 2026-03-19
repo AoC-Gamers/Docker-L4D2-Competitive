@@ -1,10 +1,12 @@
+name: ${DEV_COMPOSE_PROJECT_NAME:-docker-l4d2-competitive-dev}
+
 services:
   dev_comp:
     build:
       dockerfile: Dockerfile
       context: .
     image: dev_comp
-    container_name: dev_comp
+    container_name: ${DEV_COMP_CONTAINER_NAME:-dev_comp}
     pull_policy: always
     env_file:
       - .env
@@ -25,4 +27,4 @@ services:
 
 volumes:
   dev_comp_data:
-    name: dev_comp_data
+    name: ${DEV_COMP_DATA_VOLUME_NAME:-dev_comp_data}

@@ -170,6 +170,8 @@ apply_stack_if_needed() {
 
 prepare_user_profile() {
   section "Prepare user profile"
+  local key
+  local trimmed_key
 
   if [ ! -f "$HOME/.bashrc" ]; then
     step "Creating $HOME/.bashrc"
@@ -187,22 +189,29 @@ prepare_user_profile() {
   fi
 
   if [ ! -f "$HOME/.ssh/authorized_keys" ]; then
-    local key
-
     step "Creating authorized_keys"
     touch "$HOME/.ssh/authorized_keys"
-    chmod 600 "$HOME/.ssh/authorized_keys"
-
-    if [ -n "${SSH_KEY:-}" ]; then
-      IFS=',' read -ra KEYS <<< "${SSH_KEY}"
-      for key in "${KEYS[@]}"; do
-        echo -e "${key}" >> "$HOME/.ssh/authorized_keys"
-      done
-    else
-      info "SSH_KEY is empty. Skipping key addition."
-    fi
   else
     info "authorized_keys already exists"
+  fi
+
+  chmod 600 "$HOME/.ssh/authorized_keys"
+
+  if [ -n "${SSH_KEY:-}" ]; then
+    step "Ensuring SSH public keys are present"
+    IFS=',' read -ra KEYS <<< "${SSH_KEY}"
+    for key in "${KEYS[@]}"; do
+      trimmed_key="$(printf '%s' "$key" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+      if [ -z "$trimmed_key" ]; then
+        continue
+      fi
+
+      if ! grep -Fqx "$trimmed_key" "$HOME/.ssh/authorized_keys"; then
+        printf '%s\n' "$trimmed_key" >> "$HOME/.ssh/authorized_keys"
+      fi
+    done
+  else
+    info "SSH_KEY is empty. Skipping key addition."
   fi
 }
 

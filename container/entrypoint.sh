@@ -74,6 +74,9 @@ step "Persisting runtime environment to /etc/environment"
   echo -e "DIR_STACK=/data/stack"
   echo -e "DIR_STACK_HOOKS=/data/stack/hooks"
   echo -e "SSH_PORT=${SSH_PORT:-22}"
+  echo -e "STACK_PROFILE=${STACK_PROFILE:-default}"
+  echo -e "L4D2_NO_INSTALL=${L4D2_NO_INSTALL:-false}"
+  echo -e "L4D2_NO_AUTOSTART=${L4D2_NO_AUTOSTART:-false}"
 } >> /etc/environment
 
 # Export environment variables

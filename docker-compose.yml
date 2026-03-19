@@ -1,8 +1,10 @@
+name: ${COMPOSE_PROJECT_NAME:-docker-l4d2-competitive}
+
 services:
   comp_l4d2:
-    image: ghcr.io/aoc-gamers/lgsm-l4d2-competitive:latest
+    image: ghcr.io/aoc-gamers/lgsm-l4d2-competitive:${COMP_IMAGE_TAG:-latest}
     restart: unless-stopped
-    container_name: comp_l4d2
+    container_name: ${COMP_CONTAINER_NAME:-comp_l4d2}
     pull_policy: always
     env_file:
       - .env
@@ -17,4 +19,4 @@ services:
 
 volumes:
   comp_data:
-    name: comp_data
+    name: ${COMP_DATA_VOLUME_NAME:-comp_data}

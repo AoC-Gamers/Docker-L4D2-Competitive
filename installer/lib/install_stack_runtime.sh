@@ -32,6 +32,17 @@ get_latest_commit_hash() {
     git -C "$repo_dir" rev-parse HEAD || error_exit "Could not get the latest hash in $repo_dir."
 }
 
+sanitize_url_for_log() {
+    local value="$1"
+
+    if [[ "$value" =~ ^(https?://)([^/@:]+):([^@/]+)@(.+)$ ]]; then
+        printf '%s%s:%s@%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "***" "${BASH_REMATCH[4]}"
+        return 0
+    fi
+
+    printf '%s\n' "$value"
+}
+
 resolve_github_release_asset() {
     local github_repo="$1"
     local release_tag="$2"
@@ -41,8 +52,8 @@ resolve_github_release_asset() {
     local api_url
     local release_json
     local matched_asset_name=""
-    local asset_download_url
-    local asset_updated_at
+    local asset_download_url=""
+    local asset_updated_at=""
     local candidate_name
     local candidate_url
     local candidate_updated_at
@@ -90,12 +101,15 @@ download_git_source() {
     local branch="$3"
     local source_download=false
     local remote_state
+    local sanitized_repo_url
+
+    sanitized_repo_url="$(sanitize_url_for_log "$repo_url")"
 
     if [[ "${GIT_FORCE_DOWNLOAD:-false}" == "true" ]]; then
         source_download=true
         rm -rf "$folder"
     elif [[ -d "$folder" ]]; then
-        step "Checking Git source state for $folder"
+        step "Checking Git source state for $folder" >&2
         if [[ "$branch" == "default" ]]; then
             remote_state=$(git ls-remote "$repo_url" HEAD | awk '{print $1}')
         else
@@ -104,25 +118,25 @@ download_git_source() {
 
         if has_source_changed "$folder" "$remote_state"; then
             source_download=true
-            info "Repository $folder changed. Refreshing local cache."
+            info "Repository $folder changed. Refreshing local cache." >&2
             rm -rf "$folder"
         else
-            info "Repository $folder unchanged. Reusing local cache."
+            info "Repository $folder unchanged. Reusing local cache." >&2
         fi
     else
         source_download=true
     fi
 
     if [[ "$source_download" == "true" ]]; then
-        step "Cloning $folder from $repo_url (branch: $branch)"
+        step "Cloning $folder from $sanitized_repo_url (branch: $branch)" >&2
         if [[ "$branch" == "default" ]]; then
-            git clone "$repo_url" "$folder" || error_exit "Failed to clone $repo_url"
+            git clone "$repo_url" "$folder" || error_exit "Failed to clone $sanitized_repo_url"
         else
-            git clone -b "$branch" "$repo_url" "$folder" || error_exit "Failed to clone $repo_url on branch $branch"
+            git clone -b "$branch" "$repo_url" "$folder" || error_exit "Failed to clone $sanitized_repo_url on branch $branch"
         fi
         remote_state=$(get_latest_commit_hash "$folder")
         save_source_state "$folder" "$remote_state"
-        success "Git source ready for $folder"
+        success "Git source ready for $folder" >&2
     fi
 
     printf '%s\n' "$source_download"
@@ -135,27 +149,34 @@ download_github_release_source() {
     local asset_name_glob="$4"
     local folder="$5"
     local source_download=false
+    local asset_metadata=()
     local resolved_asset_name
     local asset_download_url
     local remote_state
     local archive_path
+    local sanitized_asset_download_url
 
     mapfile -t asset_metadata < <(resolve_github_release_asset "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob")
+    if [[ ${#asset_metadata[@]} -lt 3 ]]; then
+        error_exit "Could not resolve release asset metadata for ${github_repo}@${release_tag}."
+    fi
+
     resolved_asset_name="${asset_metadata[0]}"
     asset_download_url="${asset_metadata[1]}"
+    sanitized_asset_download_url="$(sanitize_url_for_log "$asset_download_url")"
     remote_state="${resolved_asset_name}@${asset_metadata[2]}"
 
     if [[ "${GIT_FORCE_DOWNLOAD:-false}" == "true" ]]; then
         source_download=true
         rm -rf "$folder"
     elif [[ -d "$folder" ]]; then
-        step "Checking artifact source state for $folder"
+        step "Checking artifact source state for $folder" >&2
         if has_source_changed "$folder" "$remote_state"; then
             source_download=true
-            info "Artifact source $folder changed. Refreshing local cache."
+            info "Artifact source $folder changed. Refreshing local cache." >&2
             rm -rf "$folder"
         else
-            info "Artifact source $folder unchanged. Reusing local cache."
+            info "Artifact source $folder unchanged. Reusing local cache." >&2
         fi
     else
         source_download=true
@@ -165,13 +186,13 @@ download_github_release_source() {
         archive_path="$DIR_TMP/$resolved_asset_name"
         rm -f "$archive_path"
         mkdir -p "$folder"
-        step "Downloading release asset $resolved_asset_name from $github_repo@$release_tag"
-        download_file "$asset_download_url" "$archive_path" || error_exit "Failed to download $resolved_asset_name from $asset_download_url"
+        step "Downloading release asset $resolved_asset_name from $github_repo@$release_tag" >&2
+        download_file "$asset_download_url" "$archive_path" || error_exit "Failed to download $resolved_asset_name from $sanitized_asset_download_url"
         rm -rf "$folder"
         mkdir -p "$folder"
         extract_archive "$archive_path" "$folder"
         save_source_state "$folder" "$remote_state"
-        success "Release artifact ready for $folder"
+        success "Release artifact ready for $folder" >&2
     fi
 
     printf '%s\n' "$source_download"
