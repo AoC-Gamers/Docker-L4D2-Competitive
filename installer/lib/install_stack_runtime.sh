@@ -272,9 +272,6 @@ prepare_update_cleanup() {
     verify_and_delete_dir "$DIR_SOURCEMOD/translations"
     clean_instance_logs
     mkdir -p "$DIR_SOURCEMOD/configs"
-    verify_and_delete_dir "$DIR_CFG/cfgogl"
-    verify_and_delete_dir "$DIR_CFG/sourcemod"
-    verify_and_delete_dir "$DIR_CFG/stripper"
 
     restore_files "$BACKUP_JSON" "$DIR_SOURCEMOD"
 }
