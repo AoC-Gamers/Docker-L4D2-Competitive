@@ -3,12 +3,12 @@ set -euo pipefail
 
 #####################################################
 # Variables and environment validations
-: "${DIR_SCRIPTING:?The DIR_SCRIPTING variable is not defined.}"
+: "${DIR_INSTALLER_LIB:?The DIR_INSTALLER_LIB variable is not defined.}"
 : "${DIR_ADDONS:?The DIR_ADDONS variable is not defined.}"
 
 #####################################################
 # Function library
-source "$DIR_SCRIPTING/tools_gameserver.sh"
+source "$DIR_INSTALLER_LIB/tools_stack.sh"
 
 #####################################################
 # Verify if the script is run as the user ${USER}

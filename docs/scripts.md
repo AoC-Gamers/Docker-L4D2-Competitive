@@ -1,658 +1,187 @@
-# Documentación de Scripts
+# Documentacion de Scripts
 
-## 📑 Tabla de Contenidos
+## Tabla de Contenidos
 
-1. [Visión General](#visión-general)
-2. [Scripts de Configuración Inicial (`docker-scripts/`)](#scripts-de-configuración-inicial-docker-scripts)
-3. [Scripts de Gestión del Servidor (`server-scripts/`)](#scripts-de-gestión-del-servidor-server-scripts)
-4. [Flujo de Ejecución](#flujo-de-ejecución)
+1. Vision General
+2. Bootstrap del Contenedor
+3. Comandos del Installer
+4. Librerias del Installer
+5. Catalogo del Stack
+6. Flujo de Ejecucion
 
 ---
 
-## Visión General
+## Vision General
 
-El proyecto incluye varios scripts organizados en diferentes categorías para facilitar la gestión del servidor L4D2 competitivo.
+Competitive ya no organiza su logica operativa como `docker-scripts/` y `server-scripts/`. El modelo vigente se divide en:
 
-## Scripts de Configuración Inicial (`docker-scripts/`)
+1. `container/bootstrap/`: scripts de bootstrap del contenedor.
+2. `installer/bin/`: comandos ejecutables del framework.
+3. `installer/lib/`: utilidades compartidas.
+4. `installer/config/`: configuracion operativa del installer.
+5. `stack/`: catalogo, perfiles, snapshot y hooks.
 
-### `dependencies_check.sh`
-Verifica e instala las dependencias requeridas en sistemas Debian.
+## Bootstrap del Contenedor
 
-**Funcionalidades:**
-- Verificación de paquetes del sistema
-- Instalación automática de dependencias faltantes
-- Validación de arquitectura i386
+### `container/entrypoint.sh`
 
-**Uso:**
-```bash
-./dependencies_check.sh
+Punto de entrada del contenedor. Exporta variables, prepara el runtime y ejecuta los scripts de `container/bootstrap/`.
+
+### `container/entrypoint-user.sh`
+
+Orquesta la fase de usuario LinuxGSM. Su flujo principal es:
+
+1. Instalar o validar L4D2.
+2. Ejecutar `l4d2_fix_install.sh` cuando corresponde.
+3. Ejecutar `install_stack.sh` para materializar el stack.
+4. Sincronizar instancias adicionales con `sync_instances.sh`.
+5. Lanzar `menu_stack.sh`.
+
+### `container/bootstrap/compile_stack.sh`
+
+Materializa `stack/sources.json` a partir de:
+
+1. `stack/manifests/components.json`
+2. `stack/profiles/{STACK_PROFILE}.json`
+3. overrides `BRANCH_*` y `RELEASE_TAG_*`
+
+Es el reemplazo semantico del flujo historico basado en `repos.json` y `rep_branch.sh`.
+
+### `container/bootstrap/symlink.sh`
+
+Crea los enlaces simbolicos entre el arbol inmutable de `/app` y el arbol operativo persistente de `/data`.
+
+Estructura enlazada:
+
+```text
+/data/installer/bin/      -> /app/installer/bin/*
+/data/installer/lib/      -> /app/installer/lib/*
+/data/installer/config/   -> /app/installer/config/*
+/data/stack/manifests/    -> /app/stack/manifests/*
+/data/stack/profiles/     -> /app/stack/profiles/*
+/data/stack/hooks/        -> /app/stack/hooks/*
 ```
 
-### `rep_branch.sh`
-Actualiza el campo "branch" en el archivo `repos.json` según las variables de entorno.
+### Otros scripts de bootstrap
 
-**Funcionalidades:**
-- Modifica dinámicamente las ramas de repositorios Git
-- Permite usar diferentes ramas por entorno (desarrollo, producción, testing)
-- Soporta variables de entorno con prefijo `BRANCH_`
+- `dependencies_check.sh`: valida dependencias de runtime.
+- `l4d2_updater.sh`: instala o actualiza el binario base del juego.
+- `ssh_config.sh`: prepara acceso SSH y permisos.
 
-**Convención de Variables:**
-- Formato: `BRANCH_{FOLDER_UPPERCASE}`
-- Si la variable es "default", no se modifica el repositorio
+## Comandos del Installer
 
-**Ejemplos con repositorio actual:**
-```bash
-# Para el repositorio existente "sir" 
-export BRANCH_SIR=development
+### `installer/bin/install_stack.sh`
 
-# Ejemplos hipotéticos para repositorios adicionales:
-# export BRANCH_CONFIGS=testing        # Si agregar repo con folder "configs"
-# export BRANCH_PLUGINS=feature/beta   # Si agregar repo con folder "plugins"
-```
+Es el comando principal del framework. Instala o actualiza el stack materializado en `stack/sources.json`.
 
-**Proceso:**
-1. Lee todos los repositorios de `repos.json`
-2. Para cada repo, busca variable `BRANCH_{FOLDER_UPPERCASE}`
-3. Si existe y no es "default", actualiza la rama en el JSON
-4. Guarda el archivo modificado
+Capacidades:
 
-**Casos de uso:**
-```bash
-# Desarrollo: usar rama development para SIR
-export BRANCH_SIR=development
+- soporta `source_type=git`
+- soporta `source_type=github_release`
+- resuelve assets por nombre exacto o `asset_name_glob`
+- mantiene cache local y evita descargas innecesarias
+- ejecuta hooks desde `stack/hooks/`
 
-# Testing: usar rama específica de prueba
-export BRANCH_SIR=testing
-
-# Producción: usar rama estable (por defecto)
-# No definir variables = usar ramas definidas en repos.json
-```
-
-### `ssh.sh`
-Configura el servicio SSH del contenedor.
-
-**Configuraciones aplicadas:**
-- Deshabilita login como root
-- Habilita autenticación por contraseña
-- Configura puerto SSH personalizado
-- Establece configuraciones de seguridad
-
-**Variables de entorno:**
-- `SSH_PORT`: Puerto SSH (default: 22)
-
-### `symlink.sh`
-Crea enlaces simbólicos críticos para mantener coherencia entre `/app` (no persistente) y `/data` (persistente).
-
-**Importancia Crítica:**
-- **Persistencia**: Permite que scripts estén disponibles en `/data` después de actualizaciones
-- **Coherencia**: Mantiene sincronización automática entre directorios
-- **Compatibilidad**: LinuxGSM puede trabajar desde `/data` sin problemas
-- **Actualizaciones**: Scripts se actualizan automáticamente con nuevas versiones
-
-**Funcionalidades:**
-- Crea enlaces simbólicos para todos los scripts de `/app/server-scripts/`
-- Organiza estructura de directorios en `/data`
-- Excluye `menu_gameserver.sh` del directorio general (enlace especial en `/data`)
-- Maneja subcarpeta `git-gameserver/` por separado
-
-**Estructura de Enlaces Creada:**
-```bash
-# Enlace especial en raíz de /data
-/data/menu_gameserver.sh → /app/server-scripts/menu_gameserver.sh
-
-# Scripts principales en /data/lgsm/lgsm/server-scripts/
-/data/lgsm/lgsm/server-scripts/install_gameserver.sh → /app/server-scripts/install_gameserver.sh
-/data/lgsm/lgsm/server-scripts/workshop_downloader.sh → /app/server-scripts/workshop_downloader.sh
-/data/lgsm/lgsm/server-scripts/clone_l4d2server.sh → /app/server-scripts/clone_l4d2server.sh
-# ... (todos los scripts excepto menu_gameserver.sh)
-
-# Subscripts en subcarpeta
-/data/lgsm/lgsm/server-scripts/git-gameserver/ → /app/server-scripts/git-gameserver/*
-```
-
-**Variables de entorno:**
-- `DIR_SCRIPTING`: Directorio destino para enlaces (definido por LinuxGSM)
-
-**Uso:**
-```bash
-./symlink.sh
-# No requiere parámetros, usa variables de entorno predefinidas
-```
-
-### `l4d2_updater.sh`
-Configura el sistema de actualizaciones automáticas L4D2Updater usando el mecanismo nativo de Valve.
-
-**Funcionalidades:**
-- ✅ **Clona `srcds_run`**: Crea `srcds_l4d2` personalizado con `AUTO_UPDATE="yes"`
-- ✅ **Genera script SteamCMD**: Crea `update_l4d2.txt` con comandos de actualización
-- ✅ **Configura LGSM**: Modifica LinuxGSM para usar el ejecutable personalizado
-- ✅ **Login anónimo**: Evita solicitudes SteamGuard en cada inicio
-
-**Variables de entorno:**
-- `L4D2_NO_UPDATER`: Si es `true`, omite instalación del sistema
-
-**Requisitos:**
-- Servidor L4D2 completamente instalado
-- Archivo `srcds_run` presente en `/data/serverfiles/`
-- LinuxGSM configurado
-
-**Archivos generados:**
-```bash
-/data/serverfiles/srcds_l4d2        # Ejecutable personalizado
-/data/serverfiles/update_l4d2.txt   # Script SteamCMD
-# Modifica: /data/config-lgsm/l4d2server/common.cfg
-```
-
-**Uso:**
-```bash
-# Instalación automática (después de instalación L4D2)
-# O instalación manual:
-./l4d2_updater.sh
-```
-
-**Verificación:**
-```bash
-# Verificar instalación
-ls -la /data/serverfiles/srcds_l4d2
-cat /data/serverfiles/update_l4d2.txt
-grep "executable=" /data/config-lgsm/l4d2server/common.cfg
-```
-
-Ver [Documentación Completa L4D2Updater](l4d2-updater.md) para información detallada.
-
-## Scripts de Gestión del Servidor (`server-scripts/`)
-
-### `menu_gameserver.sh`
-Menú interactivo principal para gestión de servidores.
-
-**Opciones del menú:**
-1. Iniciar servidores
-2. Detener servidores  
-3. Reiniciar servidores
-4. Actualizar (automático con parada)
-5. Actualizar (manual sin parada)
-
-**Uso interactivo:**
-```bash
-./menu_gameserver.sh
-```
-
-**Uso por comandos:**
-```bash
-# Iniciar servidores del 1 al 3
-./menu_gameserver.sh start 1 3
-
-# Detener todos
-./menu_gameserver.sh stop
-
-# Reiniciar servidor específico
-./menu_gameserver.sh restart 2 2
-```
-
-**Funciones principales:**
-- `calculate_total_servers()`: Calcula servidores disponibles
-- `start_servers(start, end)`: Inicia rango de servidores
-- `stop_servers(start, end)`: Detiene rango de servidores
-- `restart_servers(start, end)`: Reinicia rango de servidores
-- `update_servers(type)`: Actualiza servidores
-
-### `clone_l4d2server.sh`
-Clona servidores L4D2 usando LinuxGSM.
-
-**Parámetros:**
-- `AMOUNT_CLONES`: Número de clones a crear
-
-**Uso:**
-```bash
-# Crear 3 servidores adicionales
-./clone_l4d2server.sh 3
-
-# Solo configurar primer servidor
-./clone_l4d2server.sh 0
-```
-
-**Proceso de clonación:**
-1. Validación de parámetros
-2. Creación del servidor base (si no existe)
-3. Creación de servidores clonados
-4. Configuración de directorios SourceMod individuales
-5. Copia de configuraciones base
-6. Creación de enlaces simbólicos según `clone_exclude.json`
-
-**Archivos de configuración:**
-- `clone_l4d2server.json`: Configuración de clonación
-- `clone_exclude.json`: Define qué archivos copiar vs. enlazar
-
-### `install_gameserver.sh`
-**El corazón del sistema**: Instala o actualiza el servidor competitivo, gestionando fuentes Git y artefactos de release, y ejecutando subscripts personalizados.
-
-**Modos de operación:**
-- `install` (0): Instalación limpia
-- `update` (1): Actualización preservando configuraciones
-
-**Uso:**
-```bash
-# Instalación limpia
-./install_gameserver.sh install
-./install_gameserver.sh 0
-
-# Actualización
-./install_gameserver.sh update  
-./install_gameserver.sh 1
-```
-
-**Sistema de Fuentes de Instalación:**
-1. **Configuración via `repos.json`**: Define fuentes, carpetas locales y selector de hook
-2. **Modificación dinámica**: `rep_branch.sh` permite cambiar ramas Git o tags de release por entorno
-3. **Caché inteligente**: Solo descarga si hay cambios remotos
-4. **Subscripts personalizados**: Ejecuta post-procesamiento específico por fuente
-
-**Flujo de fuentes:**
-```bash
-# Para cada entrada en repos.json:
-1. Resolver el tipo de fuente (`git` o `github_release`)
-2. Verificar cambios remotos vs caché local
-3. Clonar, descargar y extraer solo si hay cambios
-4. Buscar subscript: git-gameserver/{folder}.{branch}.sh
-5. Ejecutar subscript con parámetros: SOURCE_DIR INSTALL_TYPE SOURCE_DOWNLOAD SOURCE_TYPE
-```
-
-**Esquemas soportados en `repos.json`:**
-```json
-[
-  {
-    "source_type": "git",
-    "repo_url": "https://github.com/SirPlease/L4D2-Competitive-Rework.git",
-    "folder": "sir",
-    "branch": "default"
-  },
-  {
-    "source_type": "github_release",
-    "github_repo": "AoC-Gamers/BanSystem",
-    "release_tag": "channel/latest",
-    "asset_name_glob": "bansystem-*.zip",
-    "folder": "bansystem",
-    "branch": "default"
-  },
-  {
-    "source_type": "github_release",
-    "github_repo": "AoC-Gamers/L4D2-CommSuite",
-    "release_tag": "channel/develop",
-    "asset_name_glob": "l4d2-commsuite-*.zip",
-    "folder": "l4d2_commsuite",
-    "branch": "default"
-  }
-]
-```
-
-Para `github_release` puedes usar uno de estos campos:
-
-1. `asset_name`: nombre exacto del archivo.
-2. `asset_name_glob`: patrón glob, útil para canales como `channel/latest` o `channel/develop` cuando el ZIP incluye la versión en el nombre.
-
-**Subscripts de Post-procesamiento:**
-- **Ubicación**: `/data/server-scripts/git-gameserver/`
-- **Convención**: `{folder}.{branch}.sh`
-- **Parámetros recibidos**:
-  1. `SOURCE_DIR`: Directorio del repositorio clonado o del artefacto extraído
-  2. `INSTALL_TYPE`: `install` o `update`
-  3. `SOURCE_DOWNLOAD`: `true` si descargó, `false` si usó caché
-  4. `SOURCE_TYPE`: `git` o `github_release`
-- **Variables disponibles**: Todas las del archivo `.env`
-
-**Ejemplos de subscripts:**
-```bash
-# sir.default.sh - Procesa L4D2-Competitive-Rework
-#!/bin/bash
-SOURCE_DIR="$1"
-INSTALL_TYPE="$2" 
-SOURCE_DOWNLOAD="$3"
-SOURCE_TYPE="${4:-git}"
-
-if [[ "$SOURCE_DOWNLOAD" == "true" ]]; then
-  # Aplicar configuraciones de la fuente
-  cp -r "$SOURCE_DIR/addons/"* "$DIR_SOURCEMOD/"
-fi
-
-# my_plugin.main.sh - Plugin personalizado
-if [[ "${DISCORD_WEBHOOK_URL:-}" ]]; then
-    # Configurar webhook desde .env
-    echo "webhook_url=$DISCORD_WEBHOOK_URL" > "$DIR_SOURCEMOD/configs/discord.cfg"
-fi
-```
-
-**Proceso de instalación:**
-1. Preparación de bibliotecas Steam 32-bit/64-bit
-2. Limpieza de bibliotecas conflictivas
-3. Sistema de backup (solo en modo update)
-4. Procesamiento de fuentes Git y artefactos
-5. Ejecución de subscripts de post-procesamiento
-6. Restauración de configuraciones (solo en modo update)
-
-**Variables de entorno:**
-- `GIT_FORCE_DOWNLOAD`: Forzar descarga de repositorios
-- `REPOS_JSON`: Archivo de configuración de repositorios
-- `GITHUB_TOKEN`: Token opcional para consultar y descargar releases de GitHub
-- Variables del `.env`: Disponibles para todos los subscripts
-
-**Archivo .env compartido:**
-Este script carga el archivo `.env` ubicado en el mismo directorio, el cual:
-1. Configura el workshop downloader
-2. Proporciona variables personalizadas para subscripts de post-procesamiento
+Uso:
 
 ```bash
-# Ejemplo de variables en .env para subscripts
-GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
-COMPETITIVE_MODE=true
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/xxx/xxx
+./install_stack.sh install
+./install_stack.sh update
 ```
 
-### `l4d2_fix_install.sh`
-**Script crítico para instalación del servidor L4D2** que resuelve las limitaciones de autenticación de Steam para servidores Linux.
-
-#### 🔒 Contexto del Problema de Steam
-
-**Problema**: Steam dejó de permitir la descarga anónima de servidores de L4D2 para Linux, requiriendo ahora autenticación con cuenta Steam.
-
-**Impacto**: Los servidores Linux no pueden instalarse de forma automática sin proporcionar credenciales Steam.
-
-#### 🛠️ Solución Implementada
-
-Este script utiliza una **solución no oficial** basada en [este comentario de GitHub](https://github.com/ValveSoftware/steam-for-linux/issues/11522#issuecomment-2512232264):
-
-**Método de instalación dual:**
-1. **Descarga para Windows**: Instala el servidor completo especificando plataforma Windows
-2. **Validación para Linux**: Ejecuta validación para Linux, descargando solo archivos faltantes
-3. **Resultado**: Servidor completo funcional en Linux sin autenticación
-
-#### ⚙️ Funcionamiento Técnico
+Parametros de hook:
 
 ```bash
-# 1. Instalación completa para Windows (sin limitación de autenticación)
-steamcmd +login anonymous +@sSteamCmdForcePlatformType "windows" +app_update 222860 validate
-
-# 2. Validación para Linux (descarga solo archivos faltantes específicos de Linux)
-steamcmd +login anonymous +@sSteamCmdForcePlatformType "linux" +app_update 222860 validate
+SOURCE_DIR
+INSTALL_TYPE
+SOURCE_DOWNLOAD
+SOURCE_TYPE
 ```
 
-**Ventajas de este método:**
-- ✅ **Sin autenticación**: No requiere cuenta Steam
-- ✅ **Automático**: Instalación completamente desatendida
-- ✅ **Eficiente**: Solo descarga archivos necesarios para Linux
-- ✅ **Confiable**: Método validado por la comunidad
+### `installer/bin/sync_instances.sh`
 
-#### 🎛️ Opciones de Usuario
+Gestiona la sincronizacion de multiples instancias de L4D2 basadas en la instancia primaria.
 
-##### Opción 1: Instalación Automática (Predeterminada)
+### `installer/bin/menu_stack.sh`
+
+Menu operativo del entorno LinuxGSM para iniciar, detener, reiniciar y consultar el estado de las instancias.
+
+### `installer/bin/l4d2_fix_install.sh`
+
+Aplica correcciones posteriores a la instalacion base del juego cuando el runtime lo necesita.
+
+### `installer/bin/maps_l4d2center.sh`
+
+Descarga mapas desde L4D2Center y los integra en el serverfiles.
+
+### `installer/bin/workshop_downloader.sh`
+
+Descarga y extrae contenido del Steam Workshop.
+
+### `installer/bin/workshop.py`
+
+Helper Python usado por el downloader del Workshop.
+
+## Librerias del Installer
+
+### `installer/lib/tools_stack.sh`
+
+Libreria comun de shell. Centraliza helpers compartidos para:
+
+- logging
+- copias y sincronizacion de archivos
+- extraccion de artefactos
+- acceso a la API de GitHub
+- descargas HTTP
+- utilidades de instalacion de SourceMod y plugins
+
+Los hooks deben cargar esta libreria via:
+
 ```bash
-# En .env o docker-compose.yml
-L4D2_NO_INSTALL=false  # (o sin definir)
-```
-- **Comportamiento**: Ejecuta `l4d2_fix_install.sh` automáticamente
-- **Para quién**: Mayoría de usuarios que quieren instalación sin complicaciones
-
-##### Opción 2: Instalación Manual con Cuenta Steam
-```bash
-# En .env o docker-compose.yml
-L4D2_NO_INSTALL=true
-```
-**Proceso manual:**
-```bash
-# 1. Acceder al contenedor
-docker-compose exec comp_l4d2 bash
-
-# 2. Agregar cuenta Steam manualmente
-./l4d2server install
-
-# 3. Proporcionar credenciales cuando se solicite
-# Steam Username: tu_usuario
-# Steam Password: tu_contraseña
-```
-- **Para quién**: Usuarios que prefieren usar cuenta Steam oficial
-- **Ventaja**: Método oficialmente soportado por Steam
-- **Desventaja**: Requiere credenciales y proceso manual
-
-#### 🔧 Proceso de Instalación
-
-**Funcionalidades:**
-- Instalación dual de plataformas (Windows + Linux)
-- Creación de enlace simbólico `/app/serverfiles`
-- Validación de archivos del servidor
-- Verificación de usuario correcto
-
-**Uso automático:**
-```bash
-# Ejecutado automáticamente si L4D2_NO_INSTALL != true
-./l4d2_fix_install.sh
+source "$DIR_INSTALLER_LIB/tools_stack.sh"
 ```
 
-**Variables verificadas:**
-- `LGSM_SERVERFILES`: Directorio de archivos del servidor
-- `USER`: Usuario actual (debe ser linuxgsm)
+## Catalogo del Stack
 
-#### 📊 Comparación de Métodos
+### `stack/manifests/components.json`
 
-| Aspecto | Instalación Automática | Cuenta Steam Manual |
-|---------|----------------------|-------------------|
-| **Autenticación** | No requerida | Cuenta Steam necesaria |
-| **Automatización** | 100% automática | Requiere intervención manual |
-| **Tiempo** | ~15-30 minutos | ~15-30 minutos + tiempo manual |
-| **Seguridad** | No expone credenciales | Requiere credenciales Steam |
-| **Soporte** | Método comunitario | Método oficial Steam |
-| **Confiabilidad** | Alta (validado) | Alta (oficial) |
+Catalogo de componentes disponibles en el framework o en la distribucion derivada.
 
-#### 🚨 Notas Importantes
+### `stack/profiles/*.json`
 
-- **Método predeterminado**: Instalación automática sin autenticación
-- **Compatibilidad**: Funciona con todas las versiones actuales de L4D2
-- **Actualización**: Las actualizaciones del servidor funcionan normalmente después de la instalación inicial
-- **Referencia**: [Discusión técnica en GitHub](https://github.com/ValveSoftware/steam-for-linux/issues/11522#issuecomment-2512232264)
+Seleccionan que componentes forman el stack activo y permiten overrides por perfil.
 
-### `workshop_downloader.sh`
-Gestiona la descarga de artículos y colecciones del Steam Workshop.
+### `stack/sources.json`
 
-**Características:**
-- Procesamiento por lotes (configurable)
-- Logging detallado con timestamps
-- Expansión de variables de entorno
-- Reintentos automáticos
-- Configuración flexible via archivo .env
+Snapshot materializado del stack. Es el archivo consumido por `install_stack.sh`.
 
-**Opciones de línea de comandos:**
-```bash
-./workshop_downloader.sh [OPCIONES]
+### `stack/hooks/*.sh`
 
-Opciones:
-  -e, --env-file FILE     Archivo .env a usar (default: .env)
-  -o, --output-dir DIR    Directorio de salida
-  -b, --batch-size SIZE   Tamaño del lote (default: 5)
-  -d, --delay SECONDS     Delay entre lotes (default: 10)
-  -l, --log-file FILE     Archivo de log personalizado
-  -h, --help              Mostrar ayuda
+Hooks por componente. Sustituyen el concepto historico de `git-gameserver/`.
+
+Convencion:
+
+```text
+{folder}.{branch}.sh
 ```
 
-**Archivo de configuración (.env):**
-```bash
-WORKSHOP_ITEMS=123456789,987654321
-WORKSHOP_COLLECTIONS=3489804150,2222222222
-OUTPUT_DIR=$DIR_LEFT4DEAD2/addons/workshop
-BATCH_SIZE=5
-BATCH_DELAY=10
+Ejemplos:
+
+```text
+sir.default.sh
+bansystem.develop.sh
+l4d2_commsuite.default.sh
 ```
 
-### `workshop.py`
-Script Python para interactuar con la API de Steam Workshop.
+## Flujo de Ejecucion
 
-**Funcionalidades:**
-- Descarga de artículos individuales
-- Procesamiento de colecciones
-- Manejo de reintentos
-- Generación de archivo `addons.lst`
-
-**Uso interno:**
-```bash
-python3 workshop.py [opciones] collection_id1 collection_id2...
+```mermaid
+graph TD
+    A[container/entrypoint.sh] --> B[bootstrap/*]
+    B --> C[compile_stack.sh]
+    C --> D[entrypoint-user.sh]
+    D --> E[install_stack.sh]
+    E --> F[stack/hooks/*.sh]
+    F --> G[sync_instances.sh]
+    G --> H[menu_stack.sh]
 ```
-
-### `maps_l4d2center.sh`
-Automatiza la descarga y actualización de mapas desde L4D2Center.
-
-**Variables de entorno:**
-- `L4D2_MAPS_FORCE_DOWNLOAD`: Forzar descarga (default: false)
-- `L4D2_MAP`: Descargar solo un mapa específico
-- `L4D2_MAPS_SKIP_MD5`: Omitir verificación MD5
-
-**Uso:**
-```bash
-# Actualización normal (solo mapas modificados)
-./maps_l4d2center.sh
-
-# Forzar descarga de todos los mapas
-L4D2_MAPS_FORCE_DOWNLOAD=true ./maps_l4d2center.sh
-
-# Descargar solo un mapa específico
-L4D2_MAP=c1m1_hotel ./maps_l4d2center.sh
-```
-
-**Proceso:**
-1. Descarga del índice de L4D2Center
-2. Comparación de MD5 con caché local
-3. Descarga de mapas modificados/nuevos
-4. Verificación de integridad
-5. Actualización de caché
-
-### `tools_gameserver.sh`
-Biblioteca de funciones comunes para otros scripts.
-
-**Funciones principales:**
-
-#### Logging y errores:
-- `log(message)`: Log con timestamp
-- `error_exit(message)`: Log de error y salida
-
-#### Gestión de archivos:
-- `verify_and_delete_dir(path)`: Verificar y eliminar directorio
-- `verify_and_delete_file(path)`: Verificar y eliminar archivo
-
-#### Control de usuarios:
-- `check_user(username)`: Verificar usuario actual
-
-**Uso:**
-```bash
-source "$DIR_SCRIPTING/tools_gameserver.sh"
-
-log "Iniciando proceso..."
-verify_and_delete_dir "/ruta/temporal"
-check_user "linuxgsm"
-```
-
-## Scripts de Post-Procesamiento (`git-gameserver/`)
-
-### `sir.default.sh`
-Script específico para aplicar modificaciones al repositorio L4D2-Competitive-Rework.
-
-**Parámetros:**
-1. `REPO_DIR`: Directorio del repositorio
-2. `INSTALL_TYPE`: Tipo de instalación (install/update)
-3. `GIT_DOWNLOAD`: Si se descargó desde repositorio remoto
-
-**Proceso:**
-1. Configuración de variables de entorno
-2. Aplicación de modificaciones específicas
-3. Copia de archivos de configuración
-4. Aplicación de parches o configuraciones personalizadas
-
-### `example.default.sh`
-Plantilla para crear scripts de post-procesamiento personalizados.
-
-**Estructura básica:**
-```bash
-#!/bin/bash
-set -euo pipefail
-
-REPO_DIR="$1"
-INSTALL_TYPE="${2:-install}"
-GIT_DOWNLOAD="${3:-false}"
-
-# Función para copiar archivos
-CopyFiles() {
-    # Implementar lógica de copia
-}
-
-# Lógica principal
-if [ "$GIT_DOWNLOAD" = "true" ]; then
-    CopyFiles
-    echo "Instalación desde repositorio completada."
-else
-    CopyFiles
-    echo "Copia desde caché completada."
-fi
-```
-
-## Archivos de Configuración JSON
-
-### `repos.json`
-Define repositorios git a procesar durante la instalación.
-
-```json
-[
-  {
-    "repo_url": "https://github.com/SirPlease/L4D2-Competitive-Rework.git",
-    "folder": "sir",
-    "branch": "default"
-  }
-]
-```
-
-### `backup_gameserver.json`
-Define archivos a respaldar durante actualizaciones.
-
-```json
-{
-  "configs": ["databases.cfg", "admins_simple.ini"],
-  "data": ["system2.cfg"],
-  "plugins": ["custom_plugin.smx"]
-}
-```
-
-### `clone_exclude.json`
-Define qué archivos copiar vs. enlazar simbólicamente durante clonación.
-
-```json
-{
-  "configs": ["databases.cfg", "core.cfg"],
-  "data": ["system2.cfg"],
-  "plugins": ["custom_plugin.smx"],
-  "translations": ["es.txt"]
-}
-```
-
-## Variables de Entorno Globales
-
-### Directorios principales:
-- `DIR_SCRIPTING`: `/data/server-scripts`
-- `DIR_LEFT4DEAD2`: `/data/serverfiles/left4dead2`
-- `DIR_SOURCEMOD`: `/data/serverfiles/left4dead2/addons/sourcemod`
-- `DIR_CFG`: `/data/serverfiles/left4dead2/cfg`
-- `DIR_ADDONS`: `/data/serverfiles/left4dead2/addons`
-
-### Configuración de usuario:
-- `USER`: Usuario del contenedor (linuxgsm)
-- `GAMESERVER`: Nombre del servidor principal (l4d2server)
-
-### Archivos de configuración:
-- `REPOS_JSON`: Archivo de repositorios
-- `CACHE_FILE`: Archivo de caché de git
-- `LOG_FILE`: Archivo de logs principal
-
-## Flujo de Ejecución Típico
-
-1. **Inicio del contenedor**: `entrypoint.sh`
-2. **Configuración SSH**: `ssh.sh`
-3. **Verificación de dependencias**: `dependencies_check.sh`
-4. **Creación de enlaces**: `symlink.sh`
-5. **Cambio a usuario**: `entrypoint-user.sh`
-6. **Instalación L4D2**: `l4d2_fix_install.sh`
-7. **Instalación de gameserver**: `install_gameserver.sh`
-8. **Configuración de servidores**: `clone_l4d2server.sh`
-9. **Inicio de servidores**: `menu_gameserver.sh`

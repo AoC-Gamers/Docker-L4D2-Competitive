@@ -1,145 +1,109 @@
 # Docker-L4D2-Competitive
 
-📚 Documentación Completa
-| Documento | Descripción | Para quién |
-|-----------|-------------|------------|
-| **[🚀 Inicio Rápido](docs/quick-start.md)** | Instalación y primeros pasos | Nuevos usuarios |
-| **[⚙️ Configuración Avanzada](docs/configuration.md)** | Variables, workshop, múltiples servidores | Usuarios experimentados |
-| **[🔄 L4D2Updater](docs/l4d2-updater.md)** | Sistema de actualizaciones automáticas | Administradores |
-| **[📜 Scripts](docs/scripts.md)** | Referencia completa de todos los scripts | Administradores |
-| **[🔧 API Reference](docs/api-reference.md)** | Funciones y APIs técnicas | Integradores |=docker&logoColor=white)](https://hub.docker.com/r/aocgamers/lgsm-l4d2-competitive)
+Docker-L4D2-Competitive es el framework base para desplegar y operar entornos competitivos de Left 4 Dead 2 sobre LinuxGSM y Docker.
 
+El diseño actual separa tres capas:
 
-**Contenedor Docker para servidores competitivos de Left 4 Dead 2** con configuración automática, gestión de workshop, clonación de servidores y scripts de post-procesamiento Git.
+1. `container/`: bootstrap del contenedor y runtime base.
+2. `installer/`: comandos y librerias del framework de instalacion.
+3. `stack/`: catalogo instalable, perfiles y hooks.
 
-## 🚀 Inicio Rápido
+## Inicio Rapido
 
 ```bash
-# 1. Clonar el repositorio
 git clone https://github.com/AoC-Gamers/Docker-L4D2-Competitive.git
 cd Docker-L4D2-Competitive
-
-# 2. Configurar variables básicas (SEGURO)
 cp example.env .env
-nano .env  # Editar LGSM_PASSWORD, SSH_PORT, STEAM_USER, etc.
-chmod 600 .env  # Permisos restrictivos para seguridad
-
-# 3. Iniciar el contenedor
 docker-compose up -d
-
-# 4. Acceder por SSH (opcional)
-ssh linuxgsm@localhost -p 2222
 ```
 
-> **⚠️ Volumen Obligatorio**: El volumen `comp_data:/data` es **crítico** para persistir configuraciones, mapas y datos del servidor.
+El volumen `comp_data:/data` sigue siendo obligatorio para persistir serverfiles, configuraciones, logs, snapshots del stack y estado del installer.
 
-## ✨ Características Principales
+## Modelo de Arquitectura
 
-- **� 3 Métodos de Instalación**: Steam oficial, workaround automático, o manual
-- **�🔧 Configuración Automática**: Instalación y configuración completa del servidor L4D2
-- **🚀 L4D2Updater**: Sistema de actualizaciones automáticas usando mecanismo nativo de Valve
-- **🎮 Servidores Múltiples**: Clonación automática de instancias L4D2 independientes
-- **📦 Steam Workshop**: Descarga automática de colecciones y artículos (con procesamiento por lotes)
-- **🗺️ Gestión de Mapas**: Descarga desde L4D2Center con verificación MD5
-- **🌿 Ramas Dinámicas**: Sistema `BRANCH_*` para usar diferentes versiones por entorno
-- **🔗 Enlaces Simbólicos**: Actualizaciones automáticas de scripts vía `symlink.sh`
-- **📊 Menú Interactivo**: Control centralizado de todos los servidores
-- **🔒 Seguridad**: Gestión segura de credenciales con limpieza automática
+### Arbol principal
 
-## 🏗️ Arquitectura del Sistema
+```text
+Docker-L4D2-Competitive/
+├── container/
+│   ├── entrypoint.sh
+│   ├── entrypoint-user.sh
+│   └── bootstrap/
+├── installer/
+│   ├── bin/
+│   ├── lib/
+│   └── config/
+├── stack/
+│   ├── manifests/
+│   ├── profiles/
+│   ├── hooks/
+│   └── sources.json
+├── config-lgsm/
+└── docs/
+```
 
-### Directorios Clave
-- **`/app/`** (No persistente): Scripts actualizables con nuevas versiones
-- **`/data/`** (Persistente): Gameserver, configuraciones, logs y datos de usuario
-- **Enlaces simbólicos**: Conectan `/app` con `/data` para coherencia automática
+### Flujo de arranque
 
-### Flujo de Trabajo
 ```mermaid
 graph LR
-    A[Docker Compose] --> B[Entrypoint]
-    B --> C[Configuración SSH]
-    C --> D[Instalación L4D2]
-    D --> E[L4D2Updater]
-    E --> F[Install Gameserver]
-    F --> G[Workshop/Mapas]
-    G --> H[Servidores Listos]
+    A[Docker Compose] --> B[container/entrypoint.sh]
+    B --> C[container/bootstrap/*]
+    C --> D[compile_stack.sh]
+    D --> E[container/entrypoint-user.sh]
+    E --> F[installer/bin/install_stack.sh]
+    F --> G[installer/bin/menu_stack.sh]
+    G --> H[Servidores listos]
 ```
 
-## 📊 Variables de Entorno Principales
+## Conceptos Clave
 
-| Variable | Descripción | Ejemplo |
+### Installer
+
+El framework operativo vive en `installer/`.
+
+- `installer/bin/install_stack.sh`: instala o actualiza el stack materializado.
+- `installer/bin/sync_instances.sh`: sincroniza multiples instancias sobre la instancia primaria.
+- `installer/bin/menu_stack.sh`: control operativo del runtime.
+- `installer/lib/tools_stack.sh`: utilidades compartidas.
+
+### Stack
+
+El catalogo instalable vive en `stack/`.
+
+- `stack/manifests/components.json`: define los componentes disponibles.
+- `stack/profiles/*.json`: selecciona componentes y overrides por entorno.
+- `stack/sources.json`: snapshot materializado que consume el installer.
+- `stack/hooks/*.sh`: hooks por componente.
+
+### Overrides de entorno
+
+El bootstrap soporta dos formas de seleccionar variantes:
+
+1. `STACK_PROFILE`: elige el perfil completo.
+2. `BRANCH_*` y `RELEASE_TAG_*`: aplican overrides puntuales durante la compilacion del stack.
+
+## Variables Importantes
+
+| Variable | Descripcion | Ejemplo |
 |----------|-------------|---------|
-| `LGSM_PASSWORD` | Contraseña SSH (obligatorio) | `mi_password_seguro` |
-| `SSH_PORT` | Puerto SSH del contenedor | `2222` |
-| `STEAM_USER` | Usuario Steam (instalación oficial) | `mi_usuario_steam` |
-| `STEAM_PASSWD` | Contraseña Steam (limpieza automática) | `mi_contraseña` |
-| `L4D2_NO_INSTALL` | Evitar instalación automática | `false` |
-| `L4D2_NO_UPDATER` | Deshabilitar L4D2Updater | `false` |
-| `BRANCH_SIR` | Rama del repo L4D2-Competitive-Rework | `development` |
-| `GIT_FORCE_DOWNLOAD` | Forzar descarga de repositorios | `false` |
+| `LGSM_PASSWORD` | Contrasena SSH | `mi_password_seguro` |
+| `SSH_PORT` | Puerto SSH | `2222` |
+| `STEAM_USER` | Usuario Steam para instalacion oficial | `mi_usuario_steam` |
+| `STEAM_PASSWD` | Contrasena Steam | `mi_contrasena` |
+| `L4D2_NO_INSTALL` | Desactiva la instalacion automatica del juego | `false` |
+| `L4D2_NO_UPDATER` | Desactiva L4D2Updater | `false` |
+| `STACK_PROFILE` | Perfil de stack a materializar | `default` |
+| `GIT_FORCE_DOWNLOAD` | Fuerza redescarga de fuentes remotas | `false` |
+| `GITHUB_TOKEN` | Token opcional para releases/API | `ghp_xxx` |
 
-Ver [configuración completa](docs/configuration.md) para todas las opciones.
+## Documentacion
 
-## 🎯 Casos de Uso
+- `docs/quick-start.md`: instalacion basica.
+- `docs/configuration.md`: variables, perfiles y configuracion avanzada.
+- `docs/scripts.md`: mapa del bootstrap, installer y stack.
+- `docs/api-reference.md`: contratos tecnicos y variables internas.
+- `docs/l4d2-updater.md`: actualizaciones automaticas del binario del juego.
 
-### Instalación con Steam (Recomendado)
-```bash
-# .env
-STEAM_USER=mi_usuario_steam
-STEAM_PASSWD=mi_contraseña_steam
-LGSM_PASSWORD=mi_password_seguro
-```
+## Licencia
 
-### Desarrollo
-```yaml
-environment:
-  - BRANCH_SIR=development
-  - GIT_FORCE_DOWNLOAD=true
-  - L4D2_NO_AUTOSTART=true
-```
-
-### Producción
-```yaml
-environment:
-  - LGSM_PASSWORD=${LGSM_PASSWORD}
-  - SSH_KEY=${SSH_KEY}
-  # Sin BRANCH_* = usa ramas estables
-```
-
-## 📚 Documentación Completa
-
-| Documento | Descripción | Para quién |
-|-----------|-------------|------------|
-| **[🚀 Inicio Rápido](docs/quick-start.md)** | Instalación y primeros pasos | Nuevos usuarios |
-| **[⚙️ Configuración Avanzada](docs/configuration.md)** | Variables, workshop, múltiples servidores | Usuarios experimentados |
-| **[📜 Scripts](docs/scripts.md)** | Referencia completa de todos los scripts | Administradores |
-| **[� Diagramas de Flujo](docs/flowcharts.md)** | Flujos visuales de instalación | Desarrolladores |
-| **[🔧 API Reference](docs/api-reference.md)** | Funciones y APIs técnicas | Integradores |
-| **[🐛 Troubleshooting](docs/troubleshooting.md)** | Solución de problemas | Todos |
-| **[👨‍💻 Desarrollo](docs/development.md)** | Contribuir al proyecto | Contribuidores |
-
-### 🔐 Seguridad
-- Cambiar `LGSM_PASSWORD` por defecto
-- Configurar claves SSH para acceso remoto seguro
-- Revisar configuración de puertos según entorno
-
-## 🤝 Soporte
-
-### 🙏 Agradecimientos
-- [GameServerManagers/LinuxGSM](https://github.com/GameServerManagers/LinuxGSM) - Base de gestión de servidores
-- [SirPlease/L4D2-Competitive-Rework](https://github.com/SirPlease/L4D2-Competitive-Rework) - Configuración competitiva
-- [Geam/steam_workshop_downloader](https://github.com/Geam/steam_workshop_downloader) - Herramienta de workshop
-
-## 📜 Licencia
-
-Distribuido bajo la [**Licencia MIT**](LICENSE). Ver `LICENSE` para más información.
-
----
-
-<div align="center">
-
-**¿Nuevo en el proyecto?** → [Guía de Inicio Rápido](docs/quick-start.md)  
-**¿Necesitas ayuda?** → [Documentación Completa](docs/)  
-**¿Quieres contribuir?** → [Issues & Pull Requests](https://github.com/AoC-Gamers/Docker-L4D2-Competitive)
-
-</div>
+Distribuido bajo la licencia MIT. Consulta `LICENSE`.

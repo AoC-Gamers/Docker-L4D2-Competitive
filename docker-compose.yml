@@ -4,12 +4,15 @@ services:
     restart: unless-stopped
     container_name: comp_l4d2
     pull_policy: always
+    env_file:
+      - .env
+      - .env.secrets
     volumes:
       - comp_data:/data
     environment:
-      - LGSM_PASSWORD=${LGSM_PASSWORD}
-      - SSH_PORT=${SSH_PORT}
+      - SSH_PORT=${SSH_PORT:-422}
       - SSH_KEY=${SSH_KEY}
+      - STACK_PROFILE=${STACK_PROFILE:-latest}
     network_mode: host
 
 volumes:

@@ -6,7 +6,7 @@ set -euo pipefail
 if [ "$(id -u)" -eq 0 ]; then
     LOG_FILE="/dev/null"
 else
-    LOG_FILE="${DIR_SCRIPTING:-.}/dependencies.log"
+    LOG_FILE="${DIR_INSTALLER_BIN:-.}/dependencies.log"
 fi
 
 echo "Starting dependency check..." | tee -a "$LOG_FILE"
@@ -55,7 +55,8 @@ print_checklist() {
 
 #####################################################
 # List of packages to check
-packages=("openssh-server" "curl" "wget" "file" "tar" "bzip2" "gzip" "unzip" "bsdmainutils" "util-linux" "ca-certificates" "binutils" "bc" "jq" "tmux" "netcat-openbsd" "lib32gcc-s1" "lib32stdc++6" "libsdl2-2.0-0:i386" "steamcmd" "gdb" "lib32z1" "rsync" "libcurl4" "htop" "git" "p7zip-full" "p7zip-rar" "sed")
+# Left 4 Dead 2 server binaries are 32-bit and need the i386 libcurl runtime.
+packages=("openssh-server" "curl" "wget" "file" "tar" "bzip2" "gzip" "unzip" "bsdmainutils" "util-linux" "ca-certificates" "binutils" "bc" "jq" "tmux" "netcat-openbsd" "lib32gcc-s1" "lib32stdc++6" "libsdl2-2.0-0:i386" "steamcmd" "gdb" "lib32z1" "rsync" "libcurl4t64:i386" "htop" "git" "p7zip-full" "p7zip-rar" "sed")
 
 print_checklist "${packages[@]}"
 

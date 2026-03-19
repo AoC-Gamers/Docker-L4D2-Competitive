@@ -15,7 +15,7 @@ if [ -z "$1" ]; then
 fi
 
 # Resources
-source "$DIR_SCRIPTING/tools_gameserver.sh"
+source "$DIR_INSTALLER_LIB/tools_stack.sh"
 
 REPO_DIR="$1"
 INSTALL_TYPE="${2:-install}"

@@ -1,147 +1,145 @@
-# Guía de Inicio Rápido
+# Guia de Inicio Rapido
 
 ## Requisitos Previos
 
 - Docker y Docker Compose instalados
 - Git
-- Acceso a internet para descargar contenidos del Steam Workshop
+- Acceso a internet para descargar L4D2, releases y contenido opcional del Workshop
 
-## Instalación Básica
+## Instalacion Basica
 
-### 1. Clonación del Repositorio
+### 1. Clonacion del repositorio
 
 ```bash
 git clone https://github.com/AoC-Gamers/Docker-L4D2-Competitive.git
 cd Docker-L4D2-Competitive
 ```
 
-### 2. Configuración del Entorno
+### 2. Configuracion del entorno
 
 ```bash
-# Copia el archivo de ejemplo
 cp example.env .env
-
-# Edita las variables necesarias
-nano .env
 ```
 
-### 3. Variables de Entorno Básicas
+Variables minimas recomendadas:
 
-```bash
-# Contraseña para el usuario linuxgsm
-LGSM_PASSWORD=mi_contraseña_segura
-
-# Puerto SSH (opcional, default: 22)
+```env
+LGSM_PASSWORD=mi_password_seguro
 SSH_PORT=2222
-
-# Clave SSH pública para acceso remoto (opcional)
-SSH_KEY=ssh-rsa AAAAB3NzaC1yc2E...
-
-# Evitar instalación automática (útil para configuración manual)
 L4D2_NO_INSTALL=false
-
-# Evitar inicio automático del servidor
 L4D2_NO_AUTOSTART=false
+STACK_PROFILE=default
 ```
 
-### 4. Ejecución del Contenedor
+Si vas a resolver releases privadas o a usar la API de GitHub con limites mas altos:
+
+```env
+GITHUB_TOKEN=ghp_xxx
+```
+
+### 3. Arranque del contenedor
 
 ```bash
-# Modo desarrollo (con archivos locales)
-docker-compose -f docker-compose.dev.yml up -d
-
-# Modo producción
 docker-compose up -d
 ```
 
-### 5. Verificación del Estado
+### 4. Verificacion del estado
 
 ```bash
-# Ver logs del contenedor
+docker-compose ps
 docker-compose logs -f comp_l4d2
-
-# Acceder al contenedor
-docker-compose exec comp_l4d2 bash
-
-# Verificar estado del servidor L4D2
 docker-compose exec comp_l4d2 gosu linuxgsm ./l4d2server details
 ```
 
-## Primeros Pasos
+## Que ocurre al arrancar
 
-### Acceso SSH al Contenedor
+El flujo actual es:
+
+1. `container/entrypoint.sh` prepara el runtime.
+2. `container/bootstrap/` valida dependencias, crea symlinks y compila el stack.
+3. `container/bootstrap/compile_stack.sh` genera `stack/sources.json`.
+4. `container/entrypoint-user.sh` instala L4D2 si hace falta.
+5. `installer/bin/install_stack.sh` instala el stack materializado.
+6. `installer/bin/menu_stack.sh` opera las instancias.
+
+## Operacion Basica
+
+### Acceso al contenedor
+
+```bash
+docker-compose exec comp_l4d2 bash
+```
+
+### Acceso SSH
 
 ```bash
 ssh linuxgsm@localhost -p 2222
 ```
 
-### Gestión Básica del Servidor
+### Comandos utiles
 
 ```bash
-# Iniciar servidor
-./menu_gameserver.sh start
-
-# Detener servidor
-./menu_gameserver.sh stop
-
-# Reiniciar servidor
-./menu_gameserver.sh restart
-
-# Actualizar servidor
-./menu_gameserver.sh update
+/data/installer/bin/menu_stack.sh start
+/data/installer/bin/menu_stack.sh stop
+/data/installer/bin/menu_stack.sh restart
+/data/installer/bin/menu_stack.sh update
 ```
 
-### Configuración de Mapas y Workshop
+## Stack y perfiles
 
-El proyecto incluye dos scripts para gestionar contenido del Steam Workshop:
+El framework ya no parte de un archivo unico de fuentes como modelo canonico. El flujo correcto es:
 
-- **`workshop.py`**: Script base en Python que interactúa directamente con la API de Steam
-- **`workshop_downloader.sh`**: Script wrapper que facilita el uso mediante configuración .env
+1. `stack/manifests/components.json`
+2. `stack/profiles/{STACK_PROFILE}.json`
+3. `stack/sources.json`
+4. `install_stack.sh`
 
-#### Configuración del Workshop
+### Recompilar el stack manualmente
 
-> **📖 Documentación Completa**: Ver [Configuración del Workshop](configuration.md#configuración-del-workshop) para opciones avanzadas.
-
-**Configuración básica rápida:**
 ```bash
-# Acceder al contenedor
+docker-compose exec comp_l4d2 bash /app/container/bootstrap/compile_stack.sh
+```
+
+### Reinstalar o actualizar el stack
+
+```bash
+docker-compose exec comp_l4d2 bash /data/installer/bin/install_stack.sh update
+```
+
+## Workshop
+
+Si usas el downloader del Workshop, la configuracion ya debe vivir en el arbol operativo del installer o stack, no en el layout anterior de scripts.
+
+Ejemplo rapido:
+
+```bash
 docker-compose exec comp_l4d2 bash
-cd /data/server-scripts
-
-# Crear configuración básica
-cat > .env << EOF
-WORKSHOP_ITEMS=123456789,987654321
-WORKSHOP_COLLECTIONS=3489804150
-OUTPUT_DIR=\$DIR_LEFT4DEAD2/addons/workshop
-BATCH_SIZE=5
-BATCH_DELAY=10
-EOF
-
-# Descargar contenido
+cd /data/installer/bin
 ./workshop_downloader.sh
 ```
 
-**Ventajas del sistema:**
-- **Persistencia**: Configuración .env preservada entre reinicios
-- **Procesamiento por lotes**: Evita sobrecargar la API de Steam
-- **Logging detallado**: Registra todo el proceso para debugging
-
-## Solución de Problemas Comunes
+## Problemas Comunes
 
 ### El contenedor no inicia
-- Verificar que los puertos no estén en uso
-- Revisar los logs: `docker-compose logs comp_l4d2`
 
-### No se puede conectar por SSH
-- Verificar que `SSH_PORT` esté configurado correctamente
-- Comprobar que el servicio SSH esté activo en el contenedor
+- revisa `docker-compose logs comp_l4d2`
+- confirma que el volumen persistente este creado
+- confirma que el puerto SSH no este ocupado
 
-### El servidor L4D2 no responde
-- Verificar que la instalación se completó: revisar logs
-- Comprobar configuración del servidor en `/data/serverfiles/left4dead2/cfg/`
+### `compile_stack.sh` falla
 
-## Siguientes Pasos
+- verifica que exista el profile seleccionado por `STACK_PROFILE`
+- verifica que `jq` este disponible dentro del contenedor
+- revisa `stack/manifests/components.json` y `stack/profiles/*.json`
 
-- Lee la [Guía de Configuración Avanzada](configuration.md)
-- Consulta la [Documentación de Scripts](scripts.md)
-- Revisa la [Guía de Troubleshooting](troubleshooting.md)
+### La instancia primaria no arranca
+
+- revisa `docker-compose logs -f comp_l4d2`
+- revisa el estado de LinuxGSM con `./l4d2server details`
+- valida que la instalacion inicial de L4D2 haya terminado
+
+## Siguientes pasos
+
+- leer `configuration.md`
+- revisar `scripts.md`
+- revisar `api-reference.md`

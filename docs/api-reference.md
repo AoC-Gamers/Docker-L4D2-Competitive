@@ -1,580 +1,211 @@
 # API y Referencia de Funciones
 
-## 📑 Tabla de Contenidos
+## Tabla de Contenidos
 
-1. [Funciones de `tools_gameserver.sh`](#funciones-de-tools_gameserversh)
-2. [API de Variables de Rama Dinámicas](#api-de-variables-de-rama-dinámicas)
-3. [API del Workshop Downloader](#api-del-workshop-downloader)
-4. [API del Maps Downloader](#api-del-maps-downloader)
-5. [API del Menu Gameserver](#api-del-menu-gameserver)
+1. Variables de Runtime
+2. API del Stack
+3. API del Installer
+4. Hooks
+5. Workshop y Mapas
+6. Logs
 
 ---
 
-## Funciones de `tools_gameserver.sh`
+## Variables de Runtime
 
-### Logging y Gestión de Errores
+Variables principales exportadas por el bootstrap y consumidas por installer y hooks:
 
-#### `log(message)`
-Registra un mensaje con timestamp.
-
-**Parámetros:**
-- `message`: Mensaje a registrar
-
-**Ejemplo:**
-```bash
-log "Iniciando proceso de instalación"
-# Output: [2024-12-19 10:30:45] Iniciando proceso de instalación
-```
-
-#### `error_exit(message)`
-Registra un error y termina el script con código de salida 1.
-
-**Parámetros:**
-- `message`: Mensaje de error
-
-**Ejemplo:**
-```bash
-error_exit "No se pudo acceder al directorio $DIR_APP"
-# Output: [2024-12-19 10:30:45] ERROR: No se pudo acceder al directorio /app
-# Script termina con exit 1
-```
-
-### Gestión de Archivos y Directorios
-
-#### `github_api_request(url)`
-Realiza una petición a la API de GitHub usando `GITHUB_TOKEN` si está disponible.
-
-**Parámetros:**
-- `url`: Endpoint completo de GitHub API
-
-#### `download_file(url, destination)`
-Descarga un archivo con `curl` y añade autenticación para GitHub cuando corresponde.
-
-**Parámetros:**
-- `url`: Archivo remoto
-- `destination`: Ruta local de salida
-
-#### `extract_archive(path, destination)`
-Extrae archivos `.zip`, `.tar.gz`, `.tgz` o `.tar`.
-
-**Parámetros:**
-- `path`: Archivo comprimido
-- `destination`: Directorio destino
-
-#### `verify_and_delete_dir(path)`
-Verifica si un directorio existe y lo elimina.
-
-**Parámetros:**
-- `path`: Ruta del directorio
-
-**Retorna:**
-- `0`: Éxito (directorio eliminado o no existía)
-
-**Ejemplo:**
-```bash
-verify_and_delete_dir "/tmp/directorio_temporal"
-```
-
-#### `verify_and_delete_file(path)`
-Verifica si un archivo existe y lo elimina.
-
-**Parámetros:**
-- `path`: Ruta del archivo
-
-**Retorna:**
-- `0`: Éxito (archivo eliminado o no existía)
-
-**Ejemplo:**
-```bash
-verify_and_delete_file "/tmp/archivo_temporal.txt"
-```
-
-### Control de Usuario
-
-#### `check_user(username)`
-Verifica si el script se ejecuta como el usuario especificado.
-
-**Parámetros:**
-- `username`: Nombre del usuario requerido
-
-**Comportamiento:**
-- Si se ejecuta como root, cambia al usuario especificado
-- Si se ejecuta como usuario incorrecto, termina con error
-
-**Ejemplo:**
-```bash
-check_user "linuxgsm"
-```
-
-## Variables de Entorno Globales
-
-### Directorios del Sistema
-
-| Variable | Valor por Defecto | Descripción |
-|----------|-------------------|-------------|
-| `DIR_APP` | `/app` | Directorio base de la aplicación |
-| `DIR_TMP` | `/app/tmp` | Directorio temporal |
-| `DIR_SCRIPTING` | `/data/server-scripts` | Directorio de scripts |
-| `DIR_LEFT4DEAD2` | `/data/serverfiles/left4dead2` | Directorio del juego |
-| `DIR_SOURCEMOD` | `/data/serverfiles/left4dead2/addons/sourcemod` | Directorio SourceMod |
-| `DIR_CFG` | `/data/serverfiles/left4dead2/cfg` | Directorio de configuraciones |
-| `DIR_ADDONS` | `/data/serverfiles/left4dead2/addons` | Directorio de addons |
-
-### Configuración de LinuxGSM
-
-| Variable | Valor por Defecto | Descripción |
-|----------|-------------------|-------------|
-| `LGSM_SERVERFILES` | `/data/serverfiles` | Archivos del servidor |
-| `LGSM_CONFIG` | `/data/lgsm-config` | Configuraciones LinuxGSM |
-| `LGSM_LOGDIR` | `/data/log` | Directorio de logs |
-| `LGSM_DATADIR` | `/data/lgsm` | Datos de LinuxGSM |
-| `GAMESERVER` | `l4d2server` | Nombre del servidor |
-
-### Control de Comportamiento
-
-| Variable | Valor por Defecto | Descripción |
-|----------|-------------------|-------------|
-| `L4D2_NO_INSTALL` | `false` | Evitar instalación automática |
-| `L4D2_NO_AUTOSTART` | `false` | Evitar inicio automático |
-| `L4D2_FRESH_INSTALL` | `false` | Instalación limpia |
-| `GIT_FORCE_DOWNLOAD` | `false` | Forzar descarga de cualquier fuente remota |
-| `GITHUB_TOKEN` | vacío | Token opcional para API y assets de GitHub releases |
-
-### Variables de Rama Dinámica
-
-| Variable | Formato | Descripción |
+| Variable | Ejemplo | Descripcion |
 |----------|---------|-------------|
-| `BRANCH_*` | `BRANCH_{FOLDER_UPPERCASE}` | Modifica rama de repositorio específico |
-| `RELEASE_TAG_*` | `RELEASE_TAG_{FOLDER_UPPERCASE}` | Modifica el tag/canal de una fuente `github_release` |
+| `DIR_INSTALLER` | `/data/installer` | Raiz operativa del installer |
+| `DIR_INSTALLER_BIN` | `/data/installer/bin` | Comandos del installer |
+| `DIR_INSTALLER_LIB` | `/data/installer/lib` | Librerias compartidas |
+| `DIR_INSTALLER_CONFIG` | `/data/installer/config` | Configuracion del installer |
+| `DIR_INSTALLER_STATE` | `/data/installer/state` | Estado persistente del installer y del despliegue |
+| `DIR_STACK` | `/data/stack` | Raiz operativa del stack |
+| `DIR_STACK_HOOKS` | `/data/stack/hooks` | Hooks materializados |
+| `DIR_LEFT4DEAD2` | `/data/serverfiles/left4dead2` | Directorio del juego |
+| `STACK_PROFILE` | `default` | Perfil seleccionado para compilar el stack |
+| `GIT_FORCE_DOWNLOAD` | `false` | Fuerza redescarga de fuentes |
+| `GITHUB_TOKEN` | `ghp_xxx` | Token opcional para API y releases |
 
-**Ejemplos con repositorio actual:**
-```bash
-BRANCH_SIR=development        # Para repo folder "sir" (existente)
+## API del Stack
 
-# Ejemplos hipotéticos para futuros repositorios:
-# BRANCH_CONFIGS=testing      # Si agregar repo con folder "configs"  
-# BRANCH_PLUGINS=feature/beta # Si agregar repo con folder "plugins"
-```
+### `stack/manifests/components.json`
 
-**Proceso:**
-1. `rep_branch.sh` lee variables `BRANCH_*`
-2. `rep_branch.sh` también puede leer `RELEASE_TAG_*`
-3. Modifica `repos.json` dinámicamente
-4. `install_gameserver.sh` usa nuevas ramas o nuevos tags
-5. Ejecuta subscripts correspondientes
+Define el catalogo de componentes disponibles.
 
-## API de Fuentes de Instalación
+### `stack/profiles/*.json`
 
-### Esquema `git`
+Define que componentes se activan por entorno y que overrides aplicar.
 
-```json
-{
-  "source_type": "git",
-  "repo_url": "https://github.com/SirPlease/L4D2-Competitive-Rework.git",
-  "folder": "sir",
-  "branch": "default"
-}
-```
+### `stack/sources.json`
 
-### Esquema `github_release`
+Es el snapshot materializado que consume `install_stack.sh`.
+
+Se genera a partir de:
+
+1. `stack/manifests/components.json`
+2. `stack/profiles/{STACK_PROFILE}.json`
+3. variables `BRANCH_*` y `RELEASE_TAG_*`
+
+### Variables dinamicas
+
+| Variable | Formato | Uso |
+|----------|---------|-----|
+| `BRANCH_*` | `BRANCH_{FOLDER}` | Override de rama Git |
+| `RELEASE_TAG_*` | `RELEASE_TAG_{FOLDER}` | Override de canal o tag |
+
+### Formato de una fuente
 
 ```json
 {
   "source_type": "github_release",
-  "github_repo": "AoC-Gamers/BanSystem",
-  "release_tag": "channel/latest",
-  "asset_name_glob": "bansystem-*.zip",
+  "repo_url": "https://github.com/AoC-Gamers/BanSystem",
   "folder": "bansystem",
-  "branch": "default"
+  "branch": "default",
+  "release_tag": "latest",
+  "asset_name_glob": "*modular*.zip"
 }
 ```
 
-`github_release` admite:
+Campos comunes:
 
-1. `asset_name`: nombre exacto del asset.
-2. `asset_name_glob`: patrón glob para resolver automáticamente el ZIP correcto dentro de la release.
+- `source_type`
+- `repo_url`
+- `folder`
+- `branch`
 
-### Parámetros del hook `git-gameserver/{folder}.{branch}.sh`
+Campos especificos de `github_release`:
 
-1. `SOURCE_DIR`: Directorio del checkout Git o del artefacto extraído
-2. `INSTALL_TYPE`: `install` o `update`
-3. `SOURCE_DOWNLOAD`: `true` si se descargó la fuente, `false` si se usó caché
-4. `SOURCE_TYPE`: `git` o `github_release`
+- `release_tag`
+- `asset_name`
+- `asset_name_glob`
 
-## API del Workshop Downloader
+## API del Installer
 
-### Configuración via Archivo .env
+### `installer/bin/install_stack.sh`
 
-```bash
-# Artículos individuales (separados por comas)
-WORKSHOP_ITEMS=123456789,987654321
-
-# Colecciones (separadas por comas)  
-WORKSHOP_COLLECTIONS=3489804150,2222222222
-
-# Directorio de salida (soporta variables de entorno)
-OUTPUT_DIR=$DIR_LEFT4DEAD2/addons/workshop
-
-# Configuración de procesamiento
-BATCH_SIZE=5        # Artículos por lote
-BATCH_DELAY=10      # Segundos entre lotes
-```
-
-### Opciones de Línea de Comandos
-
-| Opción | Descripción | Valor por Defecto |
-|--------|-------------|-------------------|
-| `-e, --env-file FILE` | Archivo .env a usar | `.env` |
-| `-o, --output-dir DIR` | Directorio de salida | Del archivo .env |
-| `-b, --batch-size SIZE` | Tamaño del lote | `5` |
-| `-d, --delay SECONDS` | Delay entre lotes | `10` |
-| `-l, --log-file FILE` | Archivo de log | Auto-generado |
-| `-h, --help` | Mostrar ayuda | - |
-
-### Códigos de Salida
-
-| Código | Descripción |
-|--------|-------------|
-| `0` | Éxito completo |
-| `1` | Error en configuración o dependencias |
-| `2` | Error durante procesamiento |
-
-## API del Maps Downloader
-
-### Variables de Entorno
-
-| Variable | Tipo | Descripción |
-|----------|------|-------------|
-| `L4D2_MAPS_FORCE_DOWNLOAD` | `boolean` | Forzar descarga de todos los mapas |
-| `L4D2_MAP` | `string` | Descargar solo un mapa específico |
-| `L4D2_MAPS_SKIP_MD5` | `boolean` | Omitir verificación MD5 |
-
-### Archivos Generados
-
-| Archivo | Ubicación | Descripción |
-|---------|-----------|-------------|
-| `cache_maps_l4d2center.json` | `/data/tmp/` | Caché de mapas descargados |
-| `maps_l4d2center.log` | `/data/tmp/` | Log de actividad |
-| `index.json` | `/data/tmp/maps/` | Índice temporal |
-
-## API del Menu Gameserver
-
-### Comandos Disponibles
-
-#### Modo Interactivo
-```bash
-./menu_gameserver.sh
-```
-
-Opciones del menú:
-1. Iniciar servidores
-2. Detener servidores
-3. Reiniciar servidores
-4. Actualizar (automático)
-5. Actualizar (manual)
-
-#### Modo Comando
+Comandos soportados:
 
 ```bash
-./menu_gameserver.sh <comando> [inicio] [fin]
+./install_stack.sh install
+./install_stack.sh update
 ```
 
-| Comando | Descripción | Parámetros |
-|---------|-------------|------------|
-| `start` | Iniciar servidores | `inicio` `fin` (opcional) |
-| `stop` | Detener servidores | `inicio` `fin` (opcional) |
-| `restart` | Reiniciar servidores | `inicio` `fin` (opcional) |
-| `update` | Actualizar servidores | Tipo: `automatic`/`manual` |
+Responsabilidades:
 
-**Ejemplos:**
-```bash
-# Iniciar todos los servidores
-./menu_gameserver.sh start
+1. leer `stack/sources.json`
+2. resolver fuentes Git o GitHub Release
+3. comparar cache y estado remoto
+4. descargar o reutilizar la fuente
+5. ejecutar el hook correspondiente
+6. preservar rutas declaradas en `stack/preserve-paths.json` durante updates
 
-# Iniciar servidores 2 a 4
-./menu_gameserver.sh start 2 4
+### `installer/bin/deploy_stack.sh`
 
-# Detener servidor específico
-./menu_gameserver.sh stop 3 3
-
-# Actualización automática (con parada)
-./menu_gameserver.sh update automatic
-```
-
-## API de Clonación de Servidores
-
-### `clone_l4d2server.sh`
-
-#### Parámetros
-- `AMOUNT_CLONES`: Número entero ≥ 0
-
-#### Comportamiento por Valor
-
-| Valor | Comportamiento |
-|-------|----------------|
-| `0` | Solo configura servidor principal |
-| `1-N` | Crea N servidores adicionales |
-
-#### Archivos de Configuración
-
-##### `clone_l4d2server.json`
-```json
-{
-  "amount_clones": 3,
-  "server_prefix": "l4d2server", 
-  "sourcemod_prefix": "sourcemod"
-}
-```
-
-##### `clone_exclude.json`
-Define qué archivos copiar vs. enlazar:
-
-```json
-{
-  "bin": [],
-  "configs": ["databases.cfg", "core.cfg"],
-  "data": ["system2.cfg"],
-  "extensions": [],
-  "gamedata": [],
-  "plugins": ["custom_plugin.smx"],
-  "translations": ["es.txt"]
-}
-```
-
-#### Estructura de Servidores Generada
-
-| Servidor | Ejecutable | Directorio SourceMod |
-|----------|------------|---------------------|
-| Principal | `l4d2server` | `sourcemod1` |
-| Clon 1 | `l4d2server-2` | `sourcemod2` |
-| Clon 2 | `l4d2server-3` | `sourcemod3` |
-| Clon N | `l4d2server-N+1` | `sourcemodN+1` |
-
-## API de Instalación
-
-### `install_gameserver.sh`
-
-#### Modos de Operación
-
-| Modo | Parámetro | Descripción |
-|------|-----------|-------------|
-| Instalación | `install` o `0` | Instalación limpia |
-| Actualización | `update` o `1` | Preserva configuraciones |
-
-#### Proceso de Backup/Restore
-
-Durante actualizaciones, se usa `backup_gameserver.json`:
-
-```json
-{
-  "configs": ["databases.cfg", "admins_simple.ini"],
-  "data": ["system2.cfg", "basecommands.cfg"],
-  "plugins": ["custom_admin.smx"]
-}
-```
-
-**Secuencia:**
-1. Backup de archivos especificados
-2. Limpieza de directorios
-3. Instalación/actualización
-4. Restauración de archivos
-
-#### Variables de Control
-
-| Variable | Tipo | Efecto |
-|----------|------|--------|
-| `GIT_FORCE_DOWNLOAD` | `boolean` | Fuerza descarga de repos |
-| `REPOS_JSON` | `path` | Archivo de configuración repos |
-
-### Configuración Adicional via .env
-
-El archivo `.env` en `/data/server-scripts/` tiene una función dual:
-
-1. **Configuración del Workshop Downloader** (ver sección anterior)
-2. **Variables para subscripts de post-procesamiento**
-
-#### Variables para Subscripts
-
-Los subscripts en `git-gameserver/` pueden acceder a variables personalizadas:
+Comandos soportados:
 
 ```bash
-# Tokens de autenticación
-GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-STEAM_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-
-# Configuraciones específicas
-COMPETITIVE_MODE=true
-TOURNAMENT_MODE=false
-CUSTOM_CONFIG_URL=https://github.com/usuario/config.git
-
-# Variables para plugins
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/xxx/xxx
-DATABASE_HOST=localhost
-STATS_ENABLED=true
+./deploy_stack.sh
 ```
 
-#### Acceso desde Subscripts
+Responsabilidades:
+
+1. inicializar el estado de despliegue del runtime
+2. preparar tooling LGSM y modo developer
+3. decidir install, no-install o workaround anonimo
+4. ejecutar `install_stack.sh` cuando aplica
+5. correr bootstrap de parches y preparar perfil de usuario
+6. sincronizar o arrancar instancias segun el estado del runtime
+
+### `installer/lib/tools_stack.sh`
+
+Helpers relevantes:
+
+- `github_api_request`
+- `download_file`
+- `extract_archive`
+- helpers de logging y copiado
+
+### `installer/lib/state_stack.sh`
+
+Helpers relevantes:
+
+- inicializacion de rutas de estado
+- lectura y escritura de `deploy-state.json`
+- lectura y escritura de `instances-state.json`
+- archivado de snapshots en `state/history/`
+- metadatos de despliegue para install y update
+- cierre del estado final del despliegue runtime
+
+### `installer/lib/instance_stack.sh`
+
+Helpers relevantes:
+
+- resolucion de nombres y ejecutables de instancia
+- conteo de instancias detectadas
+- validacion de rangos para operaciones batch
+- iteracion comun sobre instancias
+
+### `installer/lib/install_stack_runtime.sh`
+
+Helpers relevantes:
+
+- resolucion de fuentes Git y GitHub Release
+- cache local de fuentes
+- limpieza previa de update
+- backup y restore de preserve-paths
+- aplicacion de hooks del stack
+
+## Hooks
+
+Ubicacion:
+
+```text
+stack/hooks/{folder}.{branch}.sh
+```
+
+Firma:
 
 ```bash
-#!/bin/bash
-# Ejemplo: mi_repo.main.sh
-set -euo pipefail
-
-# Las variables del .env están automáticamente disponibles
-if [[ "${GITHUB_TOKEN:-}" ]]; then
-    log "Usando token de GitHub para acceso autenticado"
-    git clone https://$GITHUB_TOKEN@github.com/private/repo.git
-fi
-
-if [[ "${COMPETITIVE_MODE:-false}" == "true" ]]; then
-    log "Aplicando configuración competitiva"
-    # Aplicar configuraciones específicas
-fi
-```
-
-## API de Repositorios Git
-
-### Formato `repos.json`
-
-```json
-[
-  {
-    "repo_url": "https://github.com/user/repo.git",
-    "folder": "nombre_local",
-    "branch": "rama_especifica"
-  }
-]
-```
-
-### Scripts de Post-procesamiento
-
-#### Convención de Nombres
-`{folder}.{branch}.sh`
-
-#### Parámetros de Entrada
-1. `REPO_DIR`: Directorio del repositorio
-2. `INSTALL_TYPE`: `install` o `update`
-3. `GIT_DOWNLOAD`: `true` si descargado, `false` si caché
-
-#### Ejemplo de Implementación
-```bash
-#!/bin/bash
-set -euo pipefail
-
-REPO_DIR="$1"
+SOURCE_DIR="$1"
 INSTALL_TYPE="${2:-install}"
-GIT_DOWNLOAD="${3:-false}"
-
-source "$DIR_SCRIPTING/tools_gameserver.sh"
-
-# Función de procesamiento
-procesar_repo() {
-    if [[ -d "$REPO_DIR/plugins" ]]; then
-        cp -r "$REPO_DIR/plugins/"* "$DIR_SOURCEMOD/plugins/"
-        log "Plugins copiados desde $REPO_DIR"
-    fi
-}
-
-# Lógica principal
-if [[ "$GIT_DOWNLOAD" == "true" ]]; then
-    log "Procesando descarga reciente de $REPO_DIR"
-    procesar_repo
-else
-    log "Usando caché para $REPO_DIR"
-    procesar_repo
-fi
+SOURCE_DOWNLOAD="${3:-false}"
+SOURCE_TYPE="${4:-git}"
 ```
 
-## API de Workshop.py
-
-### Parámetros de Línea de Comandos
+Carga recomendada:
 
 ```bash
-python3 workshop.py [OPCIONES] collection_id1 collection_id2...
+source "$DIR_INSTALLER_LIB/tools_stack.sh"
 ```
 
-| Opción | Descripción |
-|--------|-------------|
-| `-h` | Mostrar ayuda |
-| `-o OUTPUT_DIR` | Directorio de salida |
-| `-s SAVE_FILE` | Archivo de estado |
+Responsabilidades habituales:
 
-### Archivos Generados
+- mover archivos al `serverfiles`
+- instalar o actualizar plugins y configs
+- adaptar layouts distintos entre Git y release artifacts
+- aplicar postprocesamiento por entorno
 
-#### `addons.lst`
-Archivo JSON con estado de descargas:
+## Workshop y Mapas
 
-```json
-{
-  "collections": ["3489804150"],
-  "plugins": {
-    "123456789": {
-      "name": "Plugin Name",
-      "downloaded": true,
-      "last_update": "2024-12-19T10:30:45Z"
-    }
-  }
-}
-```
+### `installer/bin/workshop_downloader.sh`
 
-### Códigos de Retorno
+Descarga y procesa contenido del Workshop.
 
-| Código | Descripción |
-|--------|-------------|
-| `0` | Éxito |
-| `1` | Error de configuración |
-| `2` | Error de descarga |
-| `None` | Error interno Python |
+### `installer/bin/maps_l4d2center.sh`
 
-## Eventos y Hooks del Sistema
+Descarga mapas desde L4D2Center.
 
-### Puntos de Extensión
+## Logs
 
-#### 1. Pre-instalación
-Archivos en `/app/docker-scripts/` ejecutados antes de instalación.
-
-#### 2. Post-instalación  
-Scripts en `git-gameserver/` ejecutados después de clonar repos.
-
-#### 3. Pre-inicio
-Configuraciones aplicadas antes de iniciar servidores.
-
-### Variables de Estado
-
-| Variable | Ubicación | Descripción |
-|----------|-----------|-------------|
-| `L4D2_FRESH_INSTALL` | Runtime | Indica instalación nueva |
-| `GIT_DOWNLOAD` | Scripts git | Indica descarga vs caché |
-| `INSTALL_TYPE` | Scripts | Tipo de instalación |
-
-## Debugging y Logs
-
-### Niveles de Log
-
-| Función | Nivel | Uso |
-|---------|-------|-----|
-| `log()` | INFO | Información general |
-| `error_exit()` | ERROR | Errores fatales |
-| `echo` | DEBUG | Información detallada |
-
-### Archivos de Log Principales
-
-| Archivo | Ubicación | Contenido |
-|---------|-----------|-----------|
-| `install_gameserver.log` | `/data/server-scripts/` | Proceso de instalación |
-| `workshop_*.log` | `/data/server-scripts/` | Actividad del workshop |
-| `maps_l4d2center.log` | `/data/tmp/` | Descarga de mapas |
-| `l4d2server-console.log` | `/data/log/` | Consola del servidor |
-
-### Habilitación de Debug
-
-```bash
-# En scripts específicos
-DEBUG=true ./mi_script.sh
-
-# Globalmente
-export DEBUG=true
-
-# Modo bash debug
-set -x
-```
+| Archivo | Ubicacion | Uso |
+|---------|-----------|-----|
+| `install_stack.log` | `/data/installer/state/current/` | Log canonico de la instalacion o actualizacion del stack activo |
+| `install_stack.log` | `/data/installer/bin/` | Espejo legacy del log activo para compatibilidad operativa |
+| `deploy-state.json` | `/data/installer/state/current/` | Estado actual del despliegue |
+| `instances-state.json` | `/data/installer/state/current/` | Estado actual de las instancias |
+| `history/<deployment_id>/` | `/data/installer/state/history/` | Snapshots historicos por despliegue |
+| `workshop_*.log` | `/data/installer/bin/` | Descargas de Workshop |
+| logs LinuxGSM | `/data/log/` | Runtime de las instancias |

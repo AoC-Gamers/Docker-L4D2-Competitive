@@ -4,8 +4,8 @@
 #              Git sources use BRANCH_{FOLDER} and GitHub release sources can use
 #              RELEASE_TAG_{FOLDER}. If the value is "default", the update is skipped.
 
-# Path to the repos.json file
-REPOS_FILE="/app/server-scripts/repos.json"
+# Path to the sources.json file
+REPOS_FILE="/app/stack/sources.json"
 
 # Check if the file exists
 if [ ! -f "$REPOS_FILE" ]; then
@@ -43,6 +43,6 @@ done
 
 # Replace the original file with the updated version
 mv "$TMP_FILE" "$REPOS_FILE"
-echo "repos.json file updated."
+echo "sources.json file updated."
 
 exit 0

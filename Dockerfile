@@ -1,3 +1,4 @@
+# Auto-install runtime dependencies and gdb
 #
 # LinuxGSM Left 4 Dead 2 Dockerfile with SFTP Support
 #
@@ -40,7 +41,8 @@ RUN dpkg --add-architecture i386 && \
     gdb \
     lib32z1 \
     rsync \
-    libcurl4 \
+    libcurl4t64 \
+    libcurl4t64:i386 \
     htop \
     git \
     p7zip-full \
@@ -48,7 +50,7 @@ RUN dpkg --add-architecture i386 && \
     gettext && \
     apt-get -y autoremove && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Auto-install game server requirements y gdb
+# Auto-install primary runtime requirements and gdb
 RUN depshortname=$(curl --connect-timeout 10 -s https://raw.githubusercontent.com/GameServerManagers/LinuxGSM/master/lgsm/data/ubuntu-24.04.csv | \
     awk -v shortname="l4d2" -F, '$1==shortname {$1=""; print $0}') && \
     if [ -n "${depshortname}" ]; then \
@@ -59,24 +61,20 @@ RUN depshortname=$(curl --connect-timeout 10 -s https://raw.githubusercontent.co
 
 # Cambiar el shell predeterminado del usuario linuxgsm a bash y crear directorios necesarios
 RUN usermod --shell /bin/bash linuxgsm && \
-    mkdir -p /data/server-scripts/git-gameserver/
+    mkdir -p /data/installer/bin /data/installer/lib /data/installer/config /data/stack/hooks
 
 RUN date > /build-time.txt
 
-COPY entrypoint.sh /app/entrypoint.sh
-COPY entrypoint-user.sh /app/entrypoint-user.sh
-COPY entrypoint-healthcheck.sh /app/entrypoint-healthcheck.sh
+COPY container/ /app/container/
 
 # Copiar todos los archivos de /config-lgsm/l4d2server/ a /data/config-lgsm/l4d2server/
 COPY config-lgsm/l4d2server/* /data/config-lgsm/l4d2server/
 
-# Copiar todos los archivos de /server-scripts/ a /app/server-scripts/
-COPY server-scripts/ /app/server-scripts/
-
-# Copiar todos los archivos de /docker-scripts/ a /app/docker-scripts/
-COPY docker-scripts/* /app/docker-scripts/
+# Copiar el framework del instalador y el stack base
+COPY installer/ /app/installer/
+COPY stack/ /app/stack/
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD /app/entrypoint-healthcheck.sh healthcheck || exit 1
+    CMD /app/container/entrypoint-healthcheck.sh healthcheck || exit 1
 
-ENTRYPOINT ["/bin/bash", "./entrypoint.sh"]
+ENTRYPOINT ["/bin/bash", "./container/entrypoint.sh"]

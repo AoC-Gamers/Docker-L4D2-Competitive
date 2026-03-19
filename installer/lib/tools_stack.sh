@@ -1,32 +1,64 @@
 #!/bin/bash
-# tools_gameserver.sh - Inclusion file with common functions for scripts.
+# tools_stack.sh - Inclusion file with common functions for installer scripts.
 #
 # Usage:
-#   source $DIR_SCRIPTING/git-gameserver/tools_gameserver.sh
-#
-# This file includes logging functions, error handling, utilities for
-# verifying and deleting files and directories, and functions for
-# searching and modifying shared configuration files.
+#   source "$DIR_INSTALLER_LIB/tools_stack.sh"
 
 DIR_APP="/app"
 DIR_TMP="/app/tmp"
 
-#######################################
-# Function: log
-# Logs a message with a timestamp.
-# Parameters:
-#   $1: Message to log.
-#######################################
+supports_color() {
+    if [ -n "${NO_COLOR:-}" ] || [ "${TERM:-}" = "dumb" ]; then
+        return 1
+    fi
+
+    [ -t 1 ]
+}
+
+color_text() {
+    local color_code="$1"
+    shift
+
+    if supports_color; then
+        printf '\033[%sm%s\033[0m' "$color_code" "$*"
+    else
+        printf '%s' "$*"
+    fi
+}
+
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
 
-#######################################
-# Function: github_api_request
-# Performs a GitHub API request using GITHUB_TOKEN if available.
-# Parameters:
-#   $1: API URL.
-#######################################
+print_divider() {
+    color_text "2;37" "============================================================"
+    printf '\n'
+}
+
+section() {
+    printf '\n'
+    print_divider
+    color_text "1;36" "$1"
+    printf '\n'
+    print_divider
+}
+
+info() {
+    log "$(color_text "1;34" "INFO") : $1"
+}
+
+warn() {
+    log "$(color_text "1;33" "WARN") : $1"
+}
+
+success() {
+    log "$(color_text "1;32" "OK")   : $1"
+}
+
+step() {
+    log "$(color_text "1;35" "STEP") : $1"
+}
+
 github_api_request() {
     local api_url="$1"
     local -a curl_args=(
@@ -42,13 +74,6 @@ github_api_request() {
     curl "${curl_args[@]}" "$api_url"
 }
 
-#######################################
-# Function: download_file
-# Downloads a file using curl with optional GitHub token.
-# Parameters:
-#   $1: URL.
-#   $2: Destination path.
-#######################################
 download_file() {
     local url="$1"
     local destination="$2"
@@ -61,13 +86,6 @@ download_file() {
     curl "${curl_args[@]}" "$url"
 }
 
-#######################################
-# Function: extract_archive
-# Extracts supported archives into a destination directory.
-# Parameters:
-#   $1: Archive path.
-#   $2: Destination directory.
-#######################################
 extract_archive() {
     local archive_path="$1"
     local destination_dir="$2"
@@ -90,23 +108,11 @@ extract_archive() {
     esac
 }
 
-#######################################
-# Function: error_exit
-# Logs an error message and exits the script.
-# Parameters:
-#   $1: Error message.
-#######################################
 error_exit() {
-    log "ERROR: $1"
+    log "$(color_text "1;31" "ERROR"): $1"
     exit 1
 }
 
-#######################################
-# Function: verify_and_delete_dir
-# Verifies if a directory exists and deletes it.
-# Parameters:
-#   $1: Directory path.
-#######################################
 verify_and_delete_dir() {
     if [ -d "$1" ]; then
         rm -rf "$1"
@@ -116,12 +122,6 @@ verify_and_delete_dir() {
     fi
 }
 
-#######################################
-# Function: verify_and_delete_file
-# Verifies if a file exists and deletes it.
-# Parameters:
-#   $1: File path.
-#######################################
 verify_and_delete_file() {
     if [ -f "$1" ]; then
         rm "$1"
@@ -131,11 +131,6 @@ verify_and_delete_file() {
     fi
 }
 
-#######################################
-# Function: check_user
-# Verifies if the script is running as the correct user.
-# If running as root, switches to the TARGET_USER.
-#######################################
 check_user() {
     if [ "$(whoami)" != "$1" ]; then
         if [ "$(whoami)" = "root" ]; then

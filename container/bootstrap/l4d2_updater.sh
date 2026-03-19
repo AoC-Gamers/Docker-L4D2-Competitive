@@ -25,7 +25,7 @@ install_l4d2_updater() {
   
   # Check if srcds_run exists (game must be installed first)
   if [ ! -f "${SRCDS_ORIGINAL}" ]; then
-    echo -e "⚠️  srcds_run not found. L4D2 server must be installed first."
+    echo -e "Warning: srcds_run not found. L4D2 server must be installed first."
     echo -e "   Expected location: ${SRCDS_ORIGINAL}"
     return 1
   fi
@@ -42,29 +42,29 @@ install_l4d2_updater() {
     # Check if the variables exist before trying to modify them
     if grep -q 'AUTO_UPDATE=""' "${SRCDS_L4D2}"; then
       sed -i 's/AUTO_UPDATE=""/AUTO_UPDATE="yes"/' "${SRCDS_L4D2}"
-      echo -e "  ✓ AUTO_UPDATE set to 'yes'"
+      echo -e "  AUTO_UPDATE set to 'yes'"
     else
-      echo -e "  ⚠️  AUTO_UPDATE variable not found, adding manually..."
+      echo -e "  Warning: AUTO_UPDATE variable not found, adding manually..."
       echo 'AUTO_UPDATE="yes"' >> "${SRCDS_L4D2}"
     fi
     
     if grep -q 'STEAM_DIR=""' "${SRCDS_L4D2}"; then
       sed -i 's|STEAM_DIR=""|STEAM_DIR="$HOME/.steam/steam/steamcmd"|' "${SRCDS_L4D2}"
-      echo -e "  ✓ STEAM_DIR configured"
+      echo -e "  STEAM_DIR configured"
     else
-      echo -e "  ⚠️  STEAM_DIR variable not found, adding manually..."
+      echo -e "  Warning: STEAM_DIR variable not found, adding manually..."
       echo 'STEAM_DIR="$HOME/.steam/steam/steamcmd"' >> "${SRCDS_L4D2}"
     fi
     
     if grep -q 'STEAMCMD_SCRIPT=""' "${SRCDS_L4D2}"; then
       sed -i 's|STEAMCMD_SCRIPT=""|STEAMCMD_SCRIPT="$HOME/serverfiles/update_l4d2.txt"|' "${SRCDS_L4D2}"
-      echo -e "  ✓ STEAMCMD_SCRIPT configured"
+      echo -e "  STEAMCMD_SCRIPT configured"
     else
-      echo -e "  ⚠️  STEAMCMD_SCRIPT variable not found, adding manually..."
+      echo -e "  Warning: STEAMCMD_SCRIPT variable not found, adding manually..."
       echo 'STEAMCMD_SCRIPT="$HOME/serverfiles/update_l4d2.txt"' >> "${SRCDS_L4D2}"
     fi
     
-    echo -e "✅ srcds_l4d2 created and configured"
+    echo -e "srcds_l4d2 created and configured"
   else
     echo -e "srcds_l4d2 already exists, skipping creation"
   fi
@@ -78,7 +78,7 @@ install_l4d2_updater() {
     echo -e "Using anonymous login for updates (avoids SteamGuard prompts)"
     create_anonymous_update_script "${UPDATE_SCRIPT}"
     
-    echo -e "✅ update_l4d2.txt created"
+    echo -e "update_l4d2.txt created"
   else
     echo -e "update_l4d2.txt already exists, skipping creation"
   fi
@@ -90,16 +90,16 @@ install_l4d2_updater() {
       echo "" >> "${LGSM_COMMON_CFG}"
       echo "## Game Server Directories" >> "${LGSM_COMMON_CFG}"
       echo 'executable="./srcds_l4d2"' >> "${LGSM_COMMON_CFG}"
-      echo -e "✅ LGSM configured to use srcds_l4d2"
+      echo -e "LGSM configured to use srcds_l4d2"
     else
       echo -e "LGSM already configured to use srcds_l4d2"
     fi
   else
-    echo -e "⚠️  LGSM common.cfg not found at: ${LGSM_COMMON_CFG}"
+    echo -e "Warning: LGSM common.cfg not found at: ${LGSM_COMMON_CFG}"
     echo -e "   Will be configured when LGSM creates the file"
   fi
   
-  echo -e "🚀 L4D2Updater system installation completed!"
+  echo -e "L4D2Updater system installation completed."
   echo -e "   The server will now automatically check for updates using Valve's native system."
   echo -e "   Files created:"
   echo -e "   - ${SRCDS_L4D2}"
@@ -132,16 +132,20 @@ main() {
   
   # Check if server files exist
   if [ ! -d "${LGSM_SERVERFILES}" ]; then
-    echo -e "⚠️  Server files directory not found: ${LGSM_SERVERFILES}"
-    echo -e "   L4D2Updater requires the server to be installed first."
-    return 1
+    echo -e "Skipping L4D2Updater installation"
+    echo -e "================================="
+    echo -e "Server files directory not found yet: ${LGSM_SERVERFILES}"
+    echo -e "   L4D2Updater will be installed after the base server is present."
+    return 0
   fi
   
   # Check if srcds_run exists
   if [ ! -f "${LGSM_SERVERFILES}/srcds_run" ]; then
-    echo -e "⚠️  srcds_run not found in: ${LGSM_SERVERFILES}"
-    echo -e "   L4D2Updater requires the L4D2 server to be fully installed."
-    return 1
+    echo -e "Skipping L4D2Updater installation"
+    echo -e "================================="
+    echo -e "srcds_run not found in: ${LGSM_SERVERFILES}"
+    echo -e "   L4D2Updater will be installed after the L4D2 server is fully installed."
+    return 0
   fi
   
   # Install L4D2Updater system

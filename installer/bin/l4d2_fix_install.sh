@@ -6,7 +6,7 @@ set -euo pipefail
 
 #####################################################
 # Function library
-source "$DIR_SCRIPTING/tools_gameserver.sh"
+source "$DIR_INSTALLER_LIB/tools_stack.sh"
 
 # Verify if the script is run as the user ${USER}
 check_user "${USER}"
@@ -17,15 +17,22 @@ update_server() {
 }
 
 # Update the server for both platforms
+section "L4D2 base install repair"
+info "Serverfiles directory: ${LGSM_SERVERFILES}"
+
+step "Validating Windows platform payload"
 update_server "windows"
+step "Validating Linux platform payload"
 update_server "linux"
 
 # If the symbolic link exists in /app/serverfiles, remove it
 if [ -L "/app/serverfiles" ]; then
+    step "Refreshing /app/serverfiles symlink"
     rm "/app/serverfiles"
 fi
 
 # Create the symbolic link pointing to LGSM_SERVERFILES
 ln -s "${LGSM_SERVERFILES}" "/app/serverfiles"
+success "Base install repair completed"
 
 # Reference: https://github.com/ValveSoftware/steam-for-linux/issues/11522#issuecomment-2512232264
