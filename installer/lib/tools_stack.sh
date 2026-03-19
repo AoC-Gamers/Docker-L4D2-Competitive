@@ -141,3 +141,79 @@ check_user() {
         fi
     fi
 }
+
+managed_paths_state_root() {
+    local state_base="${DIR_SCRIPTING:-$DIR_LEFT4DEAD2}"
+    printf '%s' "$state_base/.managed-paths"
+}
+
+prune_empty_parent_dirs() {
+    local target_path="$1"
+    local stop_dir="$2"
+    local current_dir
+
+    current_dir="$(dirname "$target_path")"
+    while [ "$current_dir" != "$stop_dir" ] && [ "$current_dir" != "/" ]; do
+        rmdir "$current_dir" 2>/dev/null || break
+        current_dir="$(dirname "$current_dir")"
+    done
+}
+
+deploy_managed_paths() {
+    local manifest_id="$1"
+    local source_base="$2"
+    local target_root="$3"
+    local state_root state_file current_manifest temp_name
+    local relative_path source_path target_path
+    shift 3
+
+    state_root="$(managed_paths_state_root)"
+    state_file="$state_root/${manifest_id}.txt"
+    temp_name="${manifest_id//[^A-Za-z0-9_.-]/_}"
+
+    mkdir -p "$state_root"
+    current_manifest="$(mktemp "${DIR_TMP:-/tmp}/${temp_name}.XXXXXX")"
+    : > "$current_manifest"
+
+    for relative_path in "$@"; do
+        source_path="$source_base/$relative_path"
+
+        if [ -f "$source_path" ]; then
+            printf '%s\n' "$relative_path" >> "$current_manifest"
+            continue
+        fi
+
+        if [ -d "$source_path" ]; then
+            while IFS= read -r -d '' source_path; do
+                printf '%s\n' "${source_path#"$source_base/"}" >> "$current_manifest"
+            done < <(find "$source_base/$relative_path" -type f -print0)
+        fi
+    done
+
+    sort -u "$current_manifest" -o "$current_manifest"
+
+    if [ -f "$state_file" ]; then
+        while IFS= read -r relative_path; do
+            [ -n "$relative_path" ] || continue
+
+            if ! grep -Fxq "$relative_path" "$current_manifest"; then
+                target_path="$target_root/$relative_path"
+                if [ -f "$target_path" ] || [ -L "$target_path" ]; then
+                    rm -f "$target_path"
+                    log "Managed file '$target_path' deleted."
+                fi
+                prune_empty_parent_dirs "$target_path" "$target_root"
+            fi
+        done < "$state_file"
+    fi
+
+    while IFS= read -r relative_path; do
+        [ -n "$relative_path" ] || continue
+
+        mkdir -p "$(dirname "$target_root/$relative_path")"
+        cp "$source_base/$relative_path" "$target_root/$relative_path"
+    done < "$current_manifest"
+
+    cp "$current_manifest" "$state_file"
+    rm -f "$current_manifest"
+}
