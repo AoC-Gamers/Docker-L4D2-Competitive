@@ -290,13 +290,14 @@ apply_stack_sources() {
     local asset_name
     local asset_name_glob
     local source_download
+    local source_download_raw
     local subscript_file
 
     section "Applying stack sources"
     while IFS= read -r repo_item; do
         source_type=$(echo "$repo_item" | jq -r '.source_type // "git"')
         folder=$(echo "$repo_item" | jq -r '.folder')
-        branch=$(echo "$repo_item" | jq -r '.branch // "default"')
+        branch=$(echo "$repo_item" | jq -r '.branch // "default"' | envsubst)
 
         section "Component: ${folder}"
         info "Source type: ${source_type}"
@@ -307,7 +308,8 @@ apply_stack_sources() {
         case "$source_type" in
             git)
                 repo_url=$(echo "$repo_item" | jq -r '.repo_url' | envsubst)
-                source_download=$(download_git_source "$repo_url" "$folder" "$branch")
+                source_download_raw=$(download_git_source "$repo_url" "$folder" "$branch")
+                source_download=$(printf '%s\n' "$source_download_raw" | tail -n 1 | tr -d '\r')
                 ;;
             github_release)
                 github_repo=$(echo "$repo_item" | jq -r '.github_repo' | envsubst)
@@ -327,12 +329,21 @@ apply_stack_sources() {
                     error_exit "The field 'asset_name' or 'asset_name_glob' is required for github_release sources."
                 fi
 
-                source_download=$(download_github_release_source "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob" "$folder")
+                source_download_raw=$(download_github_release_source "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob" "$folder")
+                source_download=$(printf '%s\n' "$source_download_raw" | tail -n 1 | tr -d '\r')
+                ;;
+            hook_only)
+                source_download=false
+                info "Hook-only component $folder does not download external sources."
                 ;;
             *)
                 error_exit "Unsupported source_type '$source_type' for folder '$folder'."
                 ;;
         esac
+
+        if [[ "$source_download" != "true" && "$source_download" != "false" ]]; then
+            error_exit "Invalid source download state for '$folder': '$source_download'."
+        fi
 
         subscript_file="$DIR_STACK_HOOKS/${folder}.${branch}.sh"
         if [[ -f "$subscript_file" ]]; then

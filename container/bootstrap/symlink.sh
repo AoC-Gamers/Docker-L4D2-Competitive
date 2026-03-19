@@ -27,7 +27,12 @@ create_symlinks() {
         local filename
         filename=$(basename "$src")
         local target="$dest_dir/$filename"
-        if [ ! -L "$target" ]; then
+        if [ -e "$target" ] && [ ! -L "$target" ]; then
+            rm -f "$target"
+        fi
+
+        if [ ! -L "$target" ] || [ "$(readlink "$target" 2>/dev/null || true)" != "$src" ]; then
+            rm -f "$target"
             ln -s "$src" "$target"
             echo "Symlink created: $target"
         fi

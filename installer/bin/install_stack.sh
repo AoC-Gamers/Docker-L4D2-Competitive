@@ -98,8 +98,10 @@ check_user "${USER}"
 #####################################################
 # Load variables from .env
 if [[ -f "$DIR_STACK/.env" ]]; then
-    # Load variables ignoring commented lines
-    export $(grep -v '^#' "$DIR_STACK/.env" | xargs)
+    # Load variables preserving full values (tokens/URLs) and tolerating CRLF.
+    set -o allexport
+    source <(grep -E '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=' "$DIR_STACK/.env" | sed 's/\r$//')
+    set +o allexport
 else
     echo "The .env file was not found in $DIR_STACK."
 fi
