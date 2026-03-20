@@ -1,7 +1,19 @@
 #!/bin/bash
 
 source "/app/installer/lib/tools_stack.sh"
-source "/app/installer/lib/env_stack.sh"
+
+export DIR_INSTALLER="/data/installer"
+export DIR_INSTALLER_BIN="/data/installer/bin"
+export DIR_INSTALLER_LIB="/data/installer/lib"
+export DIR_INSTALLER_CONFIG="/data/installer/config"
+export DIR_INSTALLER_STATE="/data/installer/state"
+export DIR_STACK="/data/stack"
+export DIR_STACK_HOOKS="/data/stack/hooks"
+export DIR_LEFT4DEAD2="${LGSM_SERVERFILES}/left4dead2"
+export DIR_ADDONS="${DIR_LEFT4DEAD2}/addons"
+export DIR_SOURCEMOD="${DIR_ADDONS}/sourcemod"
+export DIR_CFG="${DIR_LEFT4DEAD2}/cfg"
+export GAMESERVER="${GAMESERVER:-l4d2server}"
 
 exit_handler() {
   # Execute the shutdown commands
@@ -62,13 +74,17 @@ step "Persisting runtime environment to /etc/environment"
   echo -e "LGSM_SERVERFILES=${LGSM_SERVERFILES}"
   echo -e "LGSM_DATADIR=${LGSM_DATADIR}"
   echo -e "LGSM_CONFIG=${LGSM_CONFIG}"
-  
-  echo -e "DIR_LEFT4DEAD2=${LGSM_SERVERFILES}/left4dead2"
-  echo -e "DIR_ADDONS=${LGSM_SERVERFILES}/left4dead2/addons"
-  echo -e "DIR_SOURCEMOD=${LGSM_SERVERFILES}/left4dead2/addons/sourcemod"
-  echo -e "DIR_CFG=${LGSM_SERVERFILES}/left4dead2/cfg"
-  echo -e "DIR_INSTALLER=/data/installer"
-  env_stack_dump
+  echo -e "DIR_INSTALLER=${DIR_INSTALLER}"
+  echo -e "DIR_INSTALLER_BIN=${DIR_INSTALLER_BIN}"
+  echo -e "DIR_INSTALLER_LIB=${DIR_INSTALLER_LIB}"
+  echo -e "DIR_INSTALLER_CONFIG=${DIR_INSTALLER_CONFIG}"
+  echo -e "DIR_INSTALLER_STATE=${DIR_INSTALLER_STATE}"
+  echo -e "DIR_STACK=${DIR_STACK}"
+  echo -e "DIR_STACK_HOOKS=${DIR_STACK_HOOKS}"
+  echo -e "DIR_LEFT4DEAD2=${DIR_LEFT4DEAD2}"
+  echo -e "DIR_ADDONS=${DIR_ADDONS}"
+  echo -e "DIR_SOURCEMOD=${DIR_SOURCEMOD}"
+  echo -e "DIR_CFG=${DIR_CFG}"
   echo -e "SSH_PORT=${SSH_PORT:-22}"
   echo -e "STACK_PROFILE=${STACK_PROFILE:-default}"
   echo -e "L4D2_NO_INSTALL=${L4D2_NO_INSTALL:-false}"

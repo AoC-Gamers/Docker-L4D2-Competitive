@@ -1,8 +1,6 @@
 #!/bin/bash
 set -euo pipefail
 
-source "/data/installer/lib/env_stack.sh"
-
 if ! command -v jq &> /dev/null; then
     echo -e "\e[31mError:\e[0m jq no esta instalado."
     exit 1

@@ -3,11 +3,8 @@
 #
 # Usage:
 #   source "$DIR_INSTALLER_LIB/tools_stack.sh"
-
-TOOLS_STACK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${TOOLS_STACK_DIR}/env_stack.sh"
-
-DIR_TMP="/app/tmp"
+DIR_APP="${DIR_APP:-/app}"
+DIR_TMP="${DIR_TMP:-/app/tmp}"
 
 supports_color() {
     if [ -n "${NO_COLOR:-}" ] || [ "${TERM:-}" = "dumb" ]; then
