@@ -4,7 +4,9 @@
 # Usage:
 #   source "$DIR_INSTALLER_LIB/tools_stack.sh"
 
-DIR_APP="/app"
+TOOLS_STACK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${TOOLS_STACK_DIR}/env_stack.sh"
+
 DIR_TMP="/app/tmp"
 
 supports_color() {

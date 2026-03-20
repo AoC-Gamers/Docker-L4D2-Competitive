@@ -1,6 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
+source "/data/installer/lib/env_stack.sh"
+
 : "${DIR_INSTALLER_BIN:?Error: The DIR_INSTALLER_BIN variable is not defined.}"
 : "${DIR_INSTALLER_LIB:?Error: The DIR_INSTALLER_LIB variable is not defined.}"
 : "${DIR_INSTALLER:?Error: The DIR_INSTALLER variable is not defined.}"

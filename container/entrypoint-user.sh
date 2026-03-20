@@ -1,5 +1,6 @@
 #!/bin/bash
 
+source "/app/installer/lib/env_stack.sh"
 source "$DIR_INSTALLER_LIB/tools_stack.sh"
 
 exit_handler_user() {

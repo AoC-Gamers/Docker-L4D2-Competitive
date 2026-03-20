@@ -1,6 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
+source "/data/installer/lib/env_stack.sh"
+
 #####################################################
 # Basic configuration
 : "${DIR_INSTALLER_BIN:?Error: The DIR_INSTALLER_BIN variable is not defined.}"

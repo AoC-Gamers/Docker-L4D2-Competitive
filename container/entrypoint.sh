@@ -1,6 +1,7 @@
 #!/bin/bash
 
 source "/app/installer/lib/tools_stack.sh"
+source "/app/installer/lib/env_stack.sh"
 
 exit_handler() {
   # Execute the shutdown commands
@@ -67,12 +68,7 @@ step "Persisting runtime environment to /etc/environment"
   echo -e "DIR_SOURCEMOD=${LGSM_SERVERFILES}/left4dead2/addons/sourcemod"
   echo -e "DIR_CFG=${LGSM_SERVERFILES}/left4dead2/cfg"
   echo -e "DIR_INSTALLER=/data/installer"
-  echo -e "DIR_INSTALLER_BIN=/data/installer/bin"
-  echo -e "DIR_INSTALLER_LIB=/data/installer/lib"
-  echo -e "DIR_INSTALLER_CONFIG=/data/installer/config"
-  echo -e "DIR_INSTALLER_STATE=/data/installer/state"
-  echo -e "DIR_STACK=/data/stack"
-  echo -e "DIR_STACK_HOOKS=/data/stack/hooks"
+  env_stack_dump
   echo -e "SSH_PORT=${SSH_PORT:-22}"
   echo -e "STACK_PROFILE=${STACK_PROFILE:-default}"
   echo -e "L4D2_NO_INSTALL=${L4D2_NO_INSTALL:-false}"
