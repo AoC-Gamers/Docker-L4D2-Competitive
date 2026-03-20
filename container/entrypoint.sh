@@ -87,8 +87,9 @@ step "Persisting runtime environment to /etc/environment"
   echo -e "DIR_CFG=${DIR_CFG}"
   echo -e "SSH_PORT=${SSH_PORT:-22}"
   echo -e "STACK_PROFILE=${STACK_PROFILE:-default}"
-  echo -e "L4D2_NO_INSTALL=${L4D2_NO_INSTALL:-false}"
-  echo -e "L4D2_NO_AUTOSTART=${L4D2_NO_AUTOSTART:-false}"
+  echo -e "L4D2_INSTALL=${L4D2_INSTALL:-normal}"
+  echo -e "L4D2_AUTOSTART=${L4D2_AUTOSTART:-true}"
+  echo -e "L4D2_UPDATER=${L4D2_UPDATER:-true}"
 } >> /etc/environment
 
 # Export environment variables

@@ -26,8 +26,8 @@ Variables minimas recomendadas:
 ```env
 LGSM_PASSWORD=mi_password_seguro
 SSH_PORT=2222
-L4D2_NO_INSTALL=false
-L4D2_NO_AUTOSTART=false
+L4D2_INSTALL=normal
+L4D2_AUTOSTART=true
 STACK_PROFILE=default
 ```
 

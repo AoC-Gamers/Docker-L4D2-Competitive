@@ -7,13 +7,21 @@ LGSM_PASSWORD=mi_password_seguro
 SSH_PORT=2222
 STEAM_USER=mi_usuario_steam
 STEAM_PASSWD=mi_contrasena_steam
-L4D2_NO_INSTALL=false
-L4D2_NO_AUTOSTART=false
-L4D2_NO_UPDATER=false
+L4D2_INSTALL=normal
+L4D2_AUTOSTART=true
+L4D2_UPDATER=true
 STACK_PROFILE=default
 GIT_FORCE_DOWNLOAD=false
 GITHUB_TOKEN=ghp_xxx
 ```
+
+## Control de instalacion y arranque
+
+- `L4D2_INSTALL=normal`: instala solo si el servidor base no existe.
+- `L4D2_INSTALL=skip`: no instala automaticamente.
+- `L4D2_INSTALL=force`: fuerza la ruta de instalacion o reparacion del servidor base.
+- `L4D2_AUTOSTART=true|false`: controla si el runtime arranca automaticamente despues del deploy.
+- `L4D2_UPDATER=true|false`: controla el bootstrap legacy `l4d2_updater.sh` de la base competitiva.
 
 ## Configuracion del Stack
 

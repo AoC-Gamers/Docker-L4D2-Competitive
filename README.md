@@ -90,8 +90,9 @@ El bootstrap soporta dos formas de seleccionar variantes:
 | `SSH_PORT` | Puerto SSH | `2222` |
 | `STEAM_USER` | Usuario Steam para instalacion oficial | `mi_usuario_steam` |
 | `STEAM_PASSWD` | Contrasena Steam | `mi_contrasena` |
-| `L4D2_NO_INSTALL` | Desactiva la instalacion automatica del juego | `false` |
-| `L4D2_NO_UPDATER` | Desactiva L4D2Updater | `false` |
+| `L4D2_INSTALL` | Modo de instalacion base: `normal`, `skip`, `force` | `normal` |
+| `L4D2_AUTOSTART` | Controla el inicio automatico del servidor | `true` |
+| `L4D2_UPDATER` | Habilita o deshabilita el updater legacy de la base | `true` |
 | `STACK_PROFILE` | Perfil de stack a materializar | `default` |
 | `GIT_FORCE_DOWNLOAD` | Fuerza redescarga de fuentes remotas | `false` |
 | `GITHUB_TOKEN` | Token opcional para releases/API | `ghp_xxx` |

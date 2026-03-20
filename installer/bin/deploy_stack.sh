@@ -48,6 +48,43 @@ clean_steam_password() {
   fi
 }
 
+get_l4d2_install_mode() {
+  local mode="${L4D2_INSTALL:-}"
+
+  if [ -z "$mode" ]; then
+    mode="normal"
+  fi
+
+  case "$mode" in
+    normal|skip|force)
+      printf '%s\n' "$mode"
+      ;;
+    *)
+      error_exit "Invalid L4D2_INSTALL value '$mode'. Expected: normal, skip or force."
+      ;;
+  esac
+}
+
+is_l4d2_autostart_enabled() {
+  local value="${L4D2_AUTOSTART:-}"
+
+  if [ -z "$value" ]; then
+    return 0
+  fi
+
+  case "${value,,}" in
+    true|1|yes|on)
+      return 0
+      ;;
+    false|0|no|off)
+      return 1
+      ;;
+    *)
+      error_exit "Invalid L4D2_AUTOSTART value '$value'. Expected a boolean value."
+      ;;
+  esac
+}
+
 initialize_deploy_state() {
   if [ ! -d "$DIR_INSTALLER" ]; then
     section "Prepare runtime directories"
@@ -94,9 +131,16 @@ prepare_lgsm_tooling() {
   fi
 }
 
+is_gameserver_installed() {
+  [ -f "${LGSM_SERVERFILES}/srcds_run" ]
+}
+
 install_primary_instance() {
   section "Prepare primary instance runtime"
   info "Primary instance: ${GAMESERVER}"
+  local install_mode
+  install_mode="$(get_l4d2_install_mode)"
+  info "Install mode: ${install_mode}"
 
   if [ -n "${STEAM_USER:-}" ] && [ -n "${STEAM_PASSWD:-}" ]; then
     local secrets_config
@@ -122,7 +166,14 @@ install_primary_instance() {
 
     warn "If your Steam account uses SteamGuard Mobile Authenticator, authorize the login from your mobile device when prompted."
 
-    if [ -z "$(ls -A -- "/data/serverfiles" 2> /dev/null)" ]; then
+    if [ "$install_mode" = "skip" ]; then
+      warn "Skipping primary instance installation because L4D2_INSTALL=skip"
+      info "Manual installation command: ./${GAMESERVER} auto-install"
+      clean_steam_password
+      return 0
+    fi
+
+    if [ "$install_mode" = "force" ] || ! is_gameserver_installed; then
       step "Installing the primary instance using the official Steam method"
       ./"${GAMESERVER}" auto-install
       L4D2_FRESH_INSTALL="true"
@@ -131,27 +182,27 @@ install_primary_instance() {
       return 0
     fi
 
-    info "Skipping installation because /data/serverfiles is not empty"
+    info "Skipping installation because the primary instance is already installed"
     ./"${GAMESERVER}" sponsor
     clean_steam_password
     return 0
   fi
 
-  if [ "${L4D2_NO_INSTALL:-false}" = "true" ]; then
-    warn "Skipping primary instance installation because L4D2_NO_INSTALL=true"
+  if [ "$install_mode" = "skip" ]; then
+    warn "Skipping primary instance installation because L4D2_INSTALL=skip"
     info "Manual installation command: ./${GAMESERVER} auto-install"
     return 0
   fi
 
   section "Install primary instance"
   info "No Steam credentials provided. Using anonymous installation path."
-  step "Running l4d2_fix_install.sh workaround"
 
-  if [ -n "$(ls -A -- "${LGSM_SERVERFILES}" 2> /dev/null)" ]; then
-    info "Skipping installation because ${LGSM_SERVERFILES} is not empty"
+  if [ "$install_mode" != "force" ] && is_gameserver_installed; then
+    info "Skipping installation because the primary instance is already installed"
     return 0
   fi
 
+  step "Running l4d2_fix_install.sh workaround"
   bash "$DIR_INSTALLER_BIN/l4d2_fix_install.sh"
   L4D2_FRESH_INSTALL="true"
 }
@@ -225,8 +276,8 @@ start_runtime() {
     return 0
   fi
 
-  if [ "${L4D2_NO_AUTOSTART:-false}" = "true" ]; then
-    warn "Skipping start because L4D2_NO_AUTOSTART=true"
+  if ! is_l4d2_autostart_enabled; then
+    warn "Skipping start because L4D2_AUTOSTART=false"
     return 0
   fi
 

@@ -35,7 +35,7 @@ quit
 Por defecto, el sistema queda activo salvo que se deshabilite con:
 
 ```bash
-L4D2_NO_UPDATER=true
+L4D2_UPDATER=false
 ```
 
 ## Archivos implicados

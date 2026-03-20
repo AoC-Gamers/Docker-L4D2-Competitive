@@ -15,11 +15,10 @@ services:
       - dev_comp_data:/data
     environment:
       - SSH_PORT=${SSH_PORT:-422}
-      - SSH_KEY=${SSH_KEY}
-      - L4D2_NO_INSTALL=${L4D2_NO_INSTALL:-true}
-      - L4D2_NO_AUTOSTART=${L4D2_NO_AUTOSTART:-true}
-      - L4D2_NO_UPDATER=${L4D2_NO_UPDATER:-true}
-      - STACK_PROFILE=${STACK_PROFILE:-latest}
+      - L4D2_INSTALL=${L4D2_INSTALL:-skip}
+      - L4D2_AUTOSTART=${L4D2_AUTOSTART:-false}
+      - L4D2_UPDATER=${L4D2_UPDATER:-false}
+      - STACK_PROFILE=${STACK_PROFILE:-default}
     ports:
       - "27015:27015"
       - "27115:27115"

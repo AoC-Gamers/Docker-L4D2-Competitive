@@ -12,6 +12,27 @@ set -euo pipefail
 : "${LGSM_CONFIG:?The LGSM_CONFIG variable is not defined.}"
 : "${GAMESERVER:?The GAMESERVER variable is not defined.}"
 
+is_l4d2_updater_enabled() {
+  local value="${L4D2_UPDATER:-}"
+
+  if [ -z "$value" ]; then
+    return 0
+  fi
+
+  case "${value,,}" in
+    true|1|yes|on)
+      return 0
+      ;;
+    false|0|no|off)
+      return 1
+      ;;
+    *)
+      echo -e "Invalid L4D2_UPDATER value: ${value}"
+      exit 1
+      ;;
+  esac
+}
+
 # Function to install L4D2Updater system
 install_l4d2_updater() {
   echo -e ""
@@ -123,7 +144,7 @@ EOF
 # Main execution
 main() {
   # Check if L4D2Updater is disabled
-  if [ "${L4D2_NO_UPDATER:-false}" == "true" ]; then
+  if ! is_l4d2_updater_enabled; then
     echo -e ""
     echo -e "L4D2Updater installation skipped"
     echo -e "================================="
