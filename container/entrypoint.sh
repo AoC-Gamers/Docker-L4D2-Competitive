@@ -124,6 +124,11 @@ else
   info "No .sh files found in /app/container/bootstrap"
 fi
 
+step "Reloading environment after bootstrap scripts"
+set -o allexport
+source /etc/environment
+set +o allexport
+
 # Change owner and permissions
 step "Setting executable permissions on /app and /data"
 chown -R linuxgsm:linuxgsm /app /data
