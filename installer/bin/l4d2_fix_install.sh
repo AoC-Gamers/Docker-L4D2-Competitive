@@ -16,10 +16,16 @@ update_server() {
     steamcmd +force_install_dir "${LGSM_SERVERFILES}" +login anonymous +@sSteamCmdForcePlatformType "$platform" +app_update 222860 validate +quit
 }
 
+prime_steamcmd() {
+    step "Priming SteamCMD runtime"
+    steamcmd +login anonymous +quit
+}
+
 # Update the server for both platforms
 section "L4D2 base install repair"
 info "Serverfiles directory: ${LGSM_SERVERFILES}"
 
+prime_steamcmd
 step "Validating Windows platform payload"
 update_server "windows"
 step "Validating Linux platform payload"
