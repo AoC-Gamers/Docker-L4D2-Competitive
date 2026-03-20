@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-source "/data/installer/lib/env_stack.sh"
+source "/app/installer/lib/env_stack.sh"
 
 # =============================================================================
 # L4D2Updater - Sistema de Actualizaciones Automáticas
