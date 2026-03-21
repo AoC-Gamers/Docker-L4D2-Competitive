@@ -23,6 +23,19 @@ GITHUB_TOKEN=ghp_xxx
 - `L4D2_AUTOSTART=true|false`: controla si el runtime arranca automaticamente despues del deploy.
 - `L4D2_UPDATER=true|false`: controla el bootstrap legacy `l4d2_updater.sh` de la base competitiva.
 
+## GeoIP
+
+- `GEOIPUPDATE_ENABLED=true|false`: habilita la actualizacion del GeoIP de MaxMind.
+- `GEOIPUPDATE_ACCOUNT_ID`: account ID de MaxMind.
+- `GEOIPUPDATE_LICENSE_KEY`: licencia para descargar GeoLite. Debe definirse en `.env.secrets`.
+- `GEOIPUPDATE_EDITION_ID`: edicion a descargar, por defecto `GeoLite2-City`.
+
+Cuando esta habilitado, el bootstrap deja el `.mmdb` actualizado en:
+
+```text
+/data/serverfiles/left4dead2/addons/sourcemod/configs/geoip/
+```
+
 ## Configuracion del Stack
 
 La configuracion del stack se divide en tres piezas:

@@ -37,6 +37,8 @@ Si vas a resolver releases privadas o a usar la API de GitHub con limites mas al
 GITHUB_TOKEN=ghp_xxx
 ```
 
+Credenciales sensibles como `STEAM_PASSWD` o `GEOIPUPDATE_LICENSE_KEY` deben ir en `.env.secrets`.
+
 ### 3. Arranque del contenedor
 
 ```bash

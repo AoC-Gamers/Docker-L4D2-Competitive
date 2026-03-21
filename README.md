@@ -97,6 +97,8 @@ El bootstrap soporta dos formas de seleccionar variantes:
 | `GIT_FORCE_DOWNLOAD` | Fuerza redescarga de fuentes remotas | `false` |
 | `GITHUB_TOKEN` | Token opcional para releases/API | `ghp_xxx` |
 
+Credenciales sensibles, como `STEAM_PASSWD` o `GEOIPUPDATE_LICENSE_KEY`, deben ir en `.env.secrets`.
+
 ## Documentacion
 
 - `docs/quick-start.md`: instalacion basica.
