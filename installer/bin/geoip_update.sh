@@ -57,7 +57,9 @@ EOF
   step "Downloading ${edition_id} database from MaxMind"
   curl -fsSL "$download_url" -o "$archive_path"
 
-  verify_and_delete_dir "${work_dir}/extract"
+  if [ -d "${work_dir}/extract" ]; then
+    rm -rf "${work_dir}/extract"
+  fi
   mkdir -p "${work_dir}/extract"
   tar -xzf "$archive_path" -C "${work_dir}/extract"
 
