@@ -2,6 +2,8 @@
 
 source "/app/installer/lib/tools_stack.sh"
 
+export DIR_APP="/app"
+export DIR_TMP="/app/tmp"
 export DIR_INSTALLER="/data/installer"
 export DIR_INSTALLER_BIN="/data/installer/bin"
 export DIR_INSTALLER_LIB="/data/installer/lib"
@@ -56,41 +58,47 @@ else
   warn "Password is empty. Skipping password change."
 fi
 
+persist_runtime_environment() {
+  cat > /etc/environment <<EOF
+PATH=${PATH}
+GAMESERVER=${GAMESERVER}
+DISTRO="${DISTRO}"
+USER=${USER}
+UID=${UID}
+GID=${GID}
+LGSM_GITHUBUSER=${LGSM_GITHUBUSER}
+LGSM_GITHUBREPO=${LGSM_GITHUBREPO}
+LGSM_GITHUBBRANCH=${LGSM_GITHUBBRANCH}
+LGSM_LOGDIR=${LGSM_LOGDIR}
+LGSM_SERVERFILES=${LGSM_SERVERFILES}
+LGSM_DATADIR=${LGSM_DATADIR}
+LGSM_CONFIG=${LGSM_CONFIG}
+DIR_APP=${DIR_APP}
+DIR_TMP=${DIR_TMP}
+DIR_INSTALLER=${DIR_INSTALLER}
+DIR_INSTALLER_BIN=${DIR_INSTALLER_BIN}
+DIR_INSTALLER_LIB=${DIR_INSTALLER_LIB}
+DIR_INSTALLER_CONFIG=${DIR_INSTALLER_CONFIG}
+DIR_INSTALLER_STATE=${DIR_INSTALLER_STATE}
+DIR_STACK=${DIR_STACK}
+DIR_STACK_HOOKS=${DIR_STACK_HOOKS}
+DIR_LEFT4DEAD2=${DIR_LEFT4DEAD2}
+DIR_ADDONS=${DIR_ADDONS}
+DIR_SOURCEMOD=${DIR_SOURCEMOD}
+DIR_CFG=${DIR_CFG}
+SSH_PORT=${SSH_PORT:-22}
+STACK_PROFILE=${STACK_PROFILE:-default}
+L4D2_INSTALL=${L4D2_INSTALL:-normal}
+L4D2_AUTOSTART=${L4D2_AUTOSTART:-true}
+L4D2_UPDATER=${L4D2_UPDATER:-true}
+EOF
+}
+
 section "Runtime initialization"
 
 # Add environment variables to /etc/environment to make them permanent
 step "Persisting runtime environment to /etc/environment"
-{
-  echo -e "GAMESERVER=${GAMESERVER}"
-  echo -e "DISTRO=\"${DISTRO}\""
-  echo -e "USER=${USER}"
-  echo -e "UID=${UID}"
-  echo -e "GID=${GID}"
-
-  echo -e "LGSM_GITHUBUSER=${LGSM_GITHUBUSER}"
-  echo -e "LGSM_GITHUBREPO=${LGSM_GITHUBREPO}"
-  echo -e "LGSM_GITHUBBRANCH=${LGSM_GITHUBBRANCH}"
-  echo -e "LGSM_LOGDIR=${LGSM_LOGDIR}"
-  echo -e "LGSM_SERVERFILES=${LGSM_SERVERFILES}"
-  echo -e "LGSM_DATADIR=${LGSM_DATADIR}"
-  echo -e "LGSM_CONFIG=${LGSM_CONFIG}"
-  echo -e "DIR_INSTALLER=${DIR_INSTALLER}"
-  echo -e "DIR_INSTALLER_BIN=${DIR_INSTALLER_BIN}"
-  echo -e "DIR_INSTALLER_LIB=${DIR_INSTALLER_LIB}"
-  echo -e "DIR_INSTALLER_CONFIG=${DIR_INSTALLER_CONFIG}"
-  echo -e "DIR_INSTALLER_STATE=${DIR_INSTALLER_STATE}"
-  echo -e "DIR_STACK=${DIR_STACK}"
-  echo -e "DIR_STACK_HOOKS=${DIR_STACK_HOOKS}"
-  echo -e "DIR_LEFT4DEAD2=${DIR_LEFT4DEAD2}"
-  echo -e "DIR_ADDONS=${DIR_ADDONS}"
-  echo -e "DIR_SOURCEMOD=${DIR_SOURCEMOD}"
-  echo -e "DIR_CFG=${DIR_CFG}"
-  echo -e "SSH_PORT=${SSH_PORT:-22}"
-  echo -e "STACK_PROFILE=${STACK_PROFILE:-default}"
-  echo -e "L4D2_INSTALL=${L4D2_INSTALL:-normal}"
-  echo -e "L4D2_AUTOSTART=${L4D2_AUTOSTART:-true}"
-  echo -e "L4D2_UPDATER=${L4D2_UPDATER:-true}"
-} >> /etc/environment
+persist_runtime_environment
 
 # Export environment variables
 set -o allexport
