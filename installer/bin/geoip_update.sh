@@ -1,10 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
+if [ -f /etc/environment ]; then
+  set -o allexport
+  source /etc/environment
+  set +o allexport
+fi
+
 : "${DIR_SOURCEMOD:?The DIR_SOURCEMOD variable is not defined.}"
 : "${DIR_INSTALLER_STATE:?The DIR_INSTALLER_STATE variable is not defined.}"
+: "${DIR_INSTALLER_LIB:?The DIR_INSTALLER_LIB variable is not defined.}"
 
-source "/app/installer/lib/tools_stack.sh"
+source "$DIR_INSTALLER_LIB/tools_stack.sh"
 
 is_geoip_update_enabled() {
   local value="${GEOIPUPDATE_ENABLED:-false}"
@@ -25,7 +32,7 @@ download_geoip_database() {
   local license_key="${GEOIPUPDATE_LICENSE_KEY:-}"
   local geoip_dir="${DIR_SOURCEMOD}/configs/geoip"
   local state_dir="${DIR_INSTALLER_STATE}/geoip"
-  local work_dir="/app/tmp/geoipupdate"
+  local work_dir="${DIR_TMP}/geoipupdate"
   local archive_path="${work_dir}/${edition_id}.tar.gz"
   local extracted_mmdb=""
   local target_mmdb="${geoip_dir}/${edition_id}.mmdb"
@@ -64,7 +71,7 @@ EOF
 
 main() {
   if ! is_geoip_update_enabled; then
-    info "GeoIP update bootstrap disabled. Set GEOIPUPDATE_ENABLED=true to enable it."
+    info "GeoIP update disabled. Set GEOIPUPDATE_ENABLED=true to enable it."
     return 0
   fi
 

@@ -179,6 +179,12 @@ fi
 # Source installation
 apply_stack_sources
 
+#####################################################
+# Shared post-install maintenance
+section "Post-install maintenance"
+step "Running shared GeoIP updater"
+bash "$DIR_INSTALLER_BIN/geoip_update.sh"
+
 section "Stack ${INSTALL_TYPE} completed"
 success "L4D2 competitive stack finished successfully"
 info "Mode: $INSTALL_TYPE"
