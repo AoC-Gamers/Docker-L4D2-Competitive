@@ -27,7 +27,7 @@ GITHUB_TOKEN=ghp_xxx
 
 - `GEOIPUPDATE_ENABLED=true|false`: habilita la actualizacion del GeoIP de MaxMind durante `install_stack.sh install|update`.
 - `GEOIPUPDATE_ACCOUNT_ID`: account ID de MaxMind.
-- `GEOIPUPDATE_LICENSE_KEY`: licencia para descargar GeoLite. Debe definirse en `.env.secrets`.
+- `GEOIPUPDATE_LICENSE_KEY`: licencia para descargar GeoLite. Se define en `.env` para que el updater siga funcionando en runtime.
 - `GEOIPUPDATE_EDITION_ID`: edicion a descargar, por defecto `GeoLite2-City`.
 
 Cuando esta habilitado, el installer deja el `.mmdb` actualizado en:

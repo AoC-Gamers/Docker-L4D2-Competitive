@@ -44,6 +44,7 @@ download_geoip_database() {
     return 0
   fi
 
+  umask 077
   mkdir -p "$geoip_dir" "$state_dir" "$work_dir"
 
   cat > "$config_file" <<EOF
@@ -66,6 +67,7 @@ EOF
   fi
 
   cp "$extracted_mmdb" "$target_mmdb"
+  rm -f "$config_file"
   success "GeoIP database updated: ${target_mmdb}"
 }
 

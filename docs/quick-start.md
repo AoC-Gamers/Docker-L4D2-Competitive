@@ -37,7 +37,7 @@ Si vas a resolver releases privadas o a usar la API de GitHub con limites mas al
 GITHUB_TOKEN=ghp_xxx
 ```
 
-Credenciales sensibles como `STEAM_PASSWD` o `GEOIPUPDATE_LICENSE_KEY` deben ir en `.env.secrets`.
+Credenciales sensibles como `STEAM_PASSWD` deben ir en `.env.secrets`. `GEOIPUPDATE_LICENSE_KEY` se mantiene en `.env` para que el updater siga operativo en runtime.
 
 ### 3. Arranque del contenedor
 
