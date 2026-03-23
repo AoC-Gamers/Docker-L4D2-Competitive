@@ -287,6 +287,7 @@ start_runtime() {
 
 initialize_deploy_state
 prepare_lgsm_tooling
+prepare_user_profile
 install_primary_instance
 apply_stack_if_needed
 
@@ -294,7 +295,6 @@ section "Update runtime patches"
 step "Running L4D2 updater bootstrap"
 bash /app/container/bootstrap/l4d2_updater.sh
 
-prepare_user_profile
 start_runtime
 
 success "Deployment orchestration completed"

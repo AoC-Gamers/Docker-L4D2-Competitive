@@ -61,6 +61,10 @@ fi
 
 section "Run deployment orchestrator"
 step "Delegating runtime flow to deploy_stack.sh"
-bash "$DIR_INSTALLER_BIN/deploy_stack.sh"
+if bash "$DIR_INSTALLER_BIN/deploy_stack.sh"; then
+  success "Deployment orchestrator completed"
+else
+  error_exit "Deployment orchestrator failed"
+fi
 
 success "User entrypoint completed"
