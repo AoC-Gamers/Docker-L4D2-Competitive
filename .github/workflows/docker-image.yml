@@ -49,31 +49,39 @@ jobs:
       - name: Activar Workflow AoC para develop
         if: ${{ github.ref == 'refs/heads/develop' }}
         run: |
-          curl -X POST \
+          curl --fail --silent --show-error -X POST \
             https://api.github.com/repos/AoC-Gamers/Docker-L4D2-AoC/actions/workflows/docker-image.yml/dispatches \
-            -H "Authorization: token ${{ secrets.TOKEN_WEBHOOK }}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.TOKEN_WEBHOOK }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
             -d '{"ref":"develop"}'
 
       - name: Activar Workflow AoC para main
         if: ${{ github.ref == 'refs/heads/main' }}
         run: |
-          curl -X POST \
+          curl --fail --silent --show-error -X POST \
             https://api.github.com/repos/AoC-Gamers/Docker-L4D2-AoC/actions/workflows/docker-image.yml/dispatches \
-            -H "Authorization: token ${{ secrets.TOKEN_WEBHOOK }}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.TOKEN_WEBHOOK }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
             -d '{"ref":"main"}'
 
       - name: Activar Workflow AoC Vanilla para develop
         if: ${{ github.ref == 'refs/heads/develop' }}
         run: |
-          curl -X POST \
+          curl --fail --silent --show-error -X POST \
             https://api.github.com/repos/AoC-Gamers/Docker-L4D2-AoC-Vanilla/actions/workflows/docker-image.yml/dispatches \
-            -H "Authorization: token ${{ secrets.TOKEN_WEBHOOK }}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.TOKEN_WEBHOOK }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
             -d '{"ref":"develop"}'
 
       - name: Activar Workflow AoC Vanilla para main
         if: ${{ github.ref == 'refs/heads/main' }}
         run: |
-          curl -X POST \
+          curl --fail --silent --show-error -X POST \
             https://api.github.com/repos/AoC-Gamers/Docker-L4D2-AoC-Vanilla/actions/workflows/docker-image.yml/dispatches \
-            -H "Authorization: token ${{ secrets.TOKEN_WEBHOOK }}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.TOKEN_WEBHOOK }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
             -d '{"ref":"main"}'
