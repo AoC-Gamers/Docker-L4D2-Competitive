@@ -28,6 +28,7 @@ LGSM_PASSWORD=mi_password_seguro
 SSH_PORT=2222
 L4D2_INSTALL=normal
 L4D2_AUTOSTART=true
+L4D2_STACK_AUTOUPDATE=false
 STACK_PROFILE=default
 ```
 
@@ -62,7 +63,8 @@ El flujo actual es:
 3. `container/bootstrap/compile_stack.sh` genera `stack/sources.json`.
 4. `container/entrypoint-user.sh` instala L4D2 si hace falta.
 5. `installer/bin/install_stack.sh` instala el stack materializado.
-6. `installer/bin/menu_stack.sh` opera las instancias.
+6. si `L4D2_STACK_AUTOUPDATE=true`, se ejecuta `install_stack.sh update` antes de iniciar los gameservers.
+7. `installer/bin/menu_stack.sh` opera las instancias.
 
 ## Operacion Basica
 

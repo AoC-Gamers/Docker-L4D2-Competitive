@@ -9,6 +9,7 @@ STEAM_USER=mi_usuario_steam
 STEAM_PASSWD=mi_contrasena_steam
 L4D2_INSTALL=normal
 L4D2_AUTOSTART=true
+L4D2_STACK_AUTOUPDATE=false
 L4D2_UPDATER=true
 STACK_PROFILE=default
 GIT_FORCE_DOWNLOAD=false
@@ -21,6 +22,7 @@ GITHUB_TOKEN=ghp_xxx
 - `L4D2_INSTALL=skip`: no instala automaticamente.
 - `L4D2_INSTALL=force`: fuerza la ruta de instalacion o reparacion del servidor base.
 - `L4D2_AUTOSTART=true|false`: controla si el runtime arranca automaticamente despues del deploy.
+- `L4D2_STACK_AUTOUPDATE=true|false`: ejecuta `install_stack.sh update` durante el arranque del contenedor, antes de iniciar los gameservers. En instalaciones frescas se omite porque el stack ya fue aplicado por la ruta de `install`.
 - `L4D2_UPDATER=true|false`: controla el bootstrap legacy `l4d2_updater.sh` de la base competitiva.
 
 ## GeoIP

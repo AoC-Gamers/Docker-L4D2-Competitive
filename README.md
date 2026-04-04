@@ -92,6 +92,7 @@ El bootstrap soporta dos formas de seleccionar variantes:
 | `STEAM_PASSWD` | Contrasena Steam | `mi_contrasena` |
 | `L4D2_INSTALL` | Modo de instalacion base: `normal`, `skip`, `force` | `normal` |
 | `L4D2_AUTOSTART` | Controla el inicio automatico del servidor | `true` |
+| `L4D2_STACK_AUTOUPDATE` | Ejecuta `install_stack.sh update` antes del arranque de los gameservers | `false` |
 | `L4D2_UPDATER` | Habilita o deshabilita el updater legacy de la base | `true` |
 | `STACK_PROFILE` | Perfil de stack a materializar | `default` |
 | `GIT_FORCE_DOWNLOAD` | Fuerza redescarga de fuentes remotas | `false` |

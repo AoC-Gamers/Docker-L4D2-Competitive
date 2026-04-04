@@ -85,6 +85,26 @@ is_l4d2_autostart_enabled() {
   esac
 }
 
+is_stack_autoupdate_enabled() {
+  local value="${L4D2_STACK_AUTOUPDATE:-}"
+
+  if [ -z "$value" ]; then
+    return 1
+  fi
+
+  case "${value,,}" in
+    true|1|yes|on)
+      return 0
+      ;;
+    false|0|no|off)
+      return 1
+      ;;
+    *)
+      error_exit "Invalid L4D2_STACK_AUTOUPDATE value '$value'. Expected a boolean value."
+      ;;
+  esac
+}
+
 initialize_deploy_state() {
   if [ ! -d "$DIR_INSTALLER" ]; then
     section "Prepare runtime directories"
@@ -219,6 +239,23 @@ apply_stack_if_needed() {
   bash "$DIR_INSTALLER_BIN/install_stack.sh" install
 }
 
+run_stack_autoupdate_before_start() {
+  if ! is_stack_autoupdate_enabled; then
+    info "Pre-start stack auto-update disabled"
+    return 0
+  fi
+
+  section "Pre-start stack auto-update"
+
+  if [ "$L4D2_FRESH_INSTALL" = "true" ]; then
+    info "Skipping pre-start update because the stack was just installed during fresh setup"
+    return 0
+  fi
+
+  step "Running install_stack.sh update before server startup"
+  bash "$DIR_INSTALLER_BIN/install_stack.sh" 1
+}
+
 prepare_user_profile() {
   section "Prepare user profile"
   local key
@@ -294,6 +331,8 @@ apply_stack_if_needed
 section "Update runtime patches"
 step "Running L4D2 updater bootstrap"
 bash /app/container/bootstrap/l4d2_updater.sh
+
+run_stack_autoupdate_before_start
 
 start_runtime
 
