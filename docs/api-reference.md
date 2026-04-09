@@ -23,7 +23,7 @@ Variables principales exportadas por el bootstrap y consumidas por installer y h
 | `DIR_INSTALLER_CONFIG` | `/data/installer/config` | Configuracion del installer |
 | `DIR_INSTALLER_STATE` | `/data/installer/state` | Estado persistente del installer y del despliegue |
 | `DIR_STACK` | `/data/stack` | Raiz operativa del stack |
-| `DIR_STACK_HOOKS` | `/data/stack/hooks` | Hooks materializados |
+| `DIR_STACK_HOOKS` | `/data/stack/hooks` | Hooks del stack |
 | `DIR_LEFT4DEAD2` | `/data/serverfiles/left4dead2` | Directorio del juego |
 | `STACK_PROFILE` | `default` | Perfil seleccionado para compilar el stack |
 | `GIT_FORCE_DOWNLOAD` | `false` | Fuerza redescarga de fuentes |
@@ -88,11 +88,11 @@ Responsabilidades:
 1. leer `stack/manifests/components.json`
 2. leer `stack/profiles/{STACK_PROFILE}.json`
 3. aplicar overrides `BRANCH_*` y `RELEASE_TAG_*`
-2. resolver fuentes Git o GitHub Release
-3. comparar cache y estado remoto
-4. descargar o reutilizar la fuente
-5. ejecutar el hook correspondiente
-6. preservar rutas declaradas en `stack/preserve-paths.json` durante updates
+4. resolver fuentes Git o GitHub Release
+5. comparar cache y estado remoto
+6. descargar o reutilizar la fuente
+7. ejecutar el hook correspondiente
+8. preservar rutas declaradas en `stack/preserve-paths.json` durante updates
 
 ### `installer/bin/deploy_stack.sh`
 
@@ -127,7 +127,7 @@ Helpers relevantes:
 - inicializacion de rutas de estado
 - lectura y escritura de `deploy-state.json`
 - lectura y escritura de `instances-state.json`
-- archivado de snapshots en `state/history/`
+- archivado de historial de despliegues en `state/history/`
 - metadatos de despliegue para install y update
 - cierre del estado final del despliegue runtime
 
@@ -198,6 +198,6 @@ Descarga mapas desde L4D2Center.
 | `install_stack.log` | `/data/installer/bin/` | Espejo legacy del log activo para compatibilidad operativa |
 | `deploy-state.json` | `/data/installer/state/current/` | Estado actual del despliegue |
 | `instances-state.json` | `/data/installer/state/current/` | Estado actual de las instancias |
-| `history/<deployment_id>/` | `/data/installer/state/history/` | Snapshots historicos por despliegue |
+| `history/<deployment_id>/` | `/data/installer/state/history/` | Historial por despliegue |
 | `workshop_*.log` | `/data/installer/bin/` | Descargas de Workshop |
 | logs LinuxGSM | `/data/log/` | Runtime de las instancias |

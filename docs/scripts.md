@@ -33,7 +33,7 @@ Orquesta la fase de usuario LinuxGSM. Su flujo principal es:
 
 1. Instalar o validar L4D2.
 2. Ejecutar `l4d2_fix_install.sh` cuando corresponde.
-3. Ejecutar `install_stack.sh` para materializar el stack.
+3. Ejecutar `install_stack.sh` para resolver e instalar el stack.
 4. Ejecutar `install_stack.sh update` antes del arranque si `L4D2_STACK_AUTOUPDATE=true`.
 5. Sincronizar instancias adicionales con `sync_instances.sh`.
 6. Lanzar `menu_stack.sh`.
@@ -144,7 +144,7 @@ Seleccionan que componentes forman el stack activo y permiten overrides por perf
 
 ### `stack/hooks/*.sh`
 
-Hooks por componente. Sustituyen el concepto historico de `git-gameserver/`.
+Hooks por componente.
 
 Convencion:
 

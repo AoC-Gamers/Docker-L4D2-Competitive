@@ -17,7 +17,7 @@ cp example.env .env
 docker-compose up -d
 ```
 
-El volumen `comp_data:/data` sigue siendo obligatorio para persistir serverfiles, configuraciones, logs, snapshots del stack y estado del installer.
+El volumen `comp_data:/data` sigue siendo obligatorio para persistir serverfiles, configuraciones, logs y estado del installer.
 
 ## Modelo de Arquitectura
 
@@ -60,7 +60,7 @@ graph LR
 
 El framework operativo vive en `installer/`.
 
-- `installer/bin/install_stack.sh`: instala o actualiza el stack materializado.
+- `installer/bin/install_stack.sh`: resuelve e instala o actualiza el stack.
 - `installer/bin/sync_instances.sh`: sincroniza multiples instancias sobre la instancia primaria.
 - `installer/bin/menu_stack.sh`: control operativo del runtime.
 - `installer/lib/tools_stack.sh`: utilidades compartidas.

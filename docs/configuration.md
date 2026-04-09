@@ -114,12 +114,6 @@ Flujo real:
 
 ## Operacion manual util
 
-### Recompilar el stack
-
-```bash
-docker-compose exec comp_l4d2 bash /data/installer/bin/install_stack.sh update
-```
-
 ### Reinstalar o actualizar el stack
 
 ```bash
