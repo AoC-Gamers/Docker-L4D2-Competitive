@@ -9,7 +9,8 @@ set -euo pipefail
 : "${DIR_STACK_HOOKS:?Error: The DIR_STACK_HOOKS variable is not defined.}"
 : "${DIR_LEFT4DEAD2:?Error: The DIR_LEFT4DEAD2 variable is not defined.}"
 : "${DIR_CFG:?Error: The DIR_CFG variable is not defined.}"
-: "${REPOS_JSON:=$DIR_STACK/sources.json}"
+: "${COMPONENTS_JSON:=$DIR_STACK/manifests/components.json}"
+: "${PROFILE_JSON:=$DIR_STACK/profiles/${STACK_PROFILE:-latest}.json}"
 : "${DIR_INSTALLER_STATE:=${DIR_INSTALLER}/state}"
 
 #####################################################
@@ -23,12 +24,12 @@ state_init_paths
 #####################################################
 # Variables
 GIT_FORCE_DOWNLOAD="${GIT_FORCE_DOWNLOAD:-false}"
-SUBSCRIPT_DIR="$DIR_STACK_HOOKS"
 CACHE_FILE="$DIR_TMP/cache_gameserver.log"
 LOG_FILE="$STATE_INSTALL_LOG_FILE"
 LEGACY_LOG_FILE="$DIR_INSTALLER_BIN/install_stack.log"
 INSTALLER_MANAGED_DEPLOY_STATE=false
 DEPLOYMENT_ID=""
+RESOLVED_COMPONENTS_JSON=""
 
 initialize_install_logging() {
     mkdir -p "$STATE_CURRENT_DIR"
@@ -51,7 +52,7 @@ ensure_deploy_state_context() {
     previous_deployment_id="$(state_archive_current_deployment)"
 
     DEPLOYMENT_ID="$(date -u +%Y%m%dT%H%M%SZ)-${STACK_PROFILE:-default}"
-    state_create_deploy_state "$DEPLOYMENT_ID" "$previous_deployment_id" "installing" "${STACK_PROFILE:-default}" "$STATE_SOURCES_FILE" "" "${GAMESERVER:-}"
+    state_create_deploy_state "$DEPLOYMENT_ID" "$previous_deployment_id" "installing" "${STACK_PROFILE:-default}" "$STATE_RESOLVED_COMPONENTS_FILE" "" "${GAMESERVER:-}"
     INSTALLER_MANAGED_DEPLOY_STATE=true
 }
 
@@ -67,33 +68,19 @@ finalize_installer_deploy_state() {
 }
 
 update_deploy_state_installer_metadata() {
-    local sources_sha256=""
-    local components_json='[]'
+    local resolved_components_sha256=""
+    local resolved_components_summary_json='[]'
 
     mkdir -p "$STATE_CURRENT_DIR"
 
-    if [[ -f "$REPOS_JSON" ]]; then
-        sources_sha256=$(sha256sum "$REPOS_JSON" | awk '{print $1}')
-        cp "$REPOS_JSON" "$STATE_SOURCES_FILE"
-        components_json=$(jq -c '[.[] | {folder, source_type, repo_url: (.repo_url // null), github_repo: (.github_repo // null), branch: (.branch // "default"), release_tag: (.release_tag // null)}]' "$REPOS_JSON")
+    if [[ -n "$RESOLVED_COMPONENTS_JSON" ]]; then
+        resolved_components_sha256=$(printf '%s\n' "$RESOLVED_COMPONENTS_JSON" | sha256sum | awk '{print $1}')
+        printf '%s\n' "$RESOLVED_COMPONENTS_JSON" > "$STATE_RESOLVED_COMPONENTS_FILE"
+        resolved_components_summary_json=$(printf '%s\n' "$RESOLVED_COMPONENTS_JSON" | jq -c '[.[] | {id, folder, source_type, repo_url: (.repo_url // null), github_repo: (.github_repo // null), branch: (.branch // "default"), release_tag: (.release_tag // null)}]')
     fi
 
-    state_update_deploy_install_metadata "$INSTALL_TYPE" "$STATE_SOURCES_FILE" "$sources_sha256" "$components_json"
+    state_update_deploy_install_metadata "$INSTALL_TYPE" "$STATE_RESOLVED_COMPONENTS_FILE" "$resolved_components_sha256" "$resolved_components_summary_json"
 }
-
-#####################################################
-# Check for repos.json existence
-if [[ ! -f "$REPOS_JSON" ]]; then
-    echo "Error: The sources.json file was not found in $DIR_STACK."
-    exit 1
-fi
-
-# JSON file with the list of paths to be backuped
-BACKUP_JSON="$DIR_STACK/preserve-paths.json"
-
-#####################################################
-# Verify if the script is run as the user ${USER}
-check_user "${USER}"
 
 #####################################################
 # Load variables from .env
@@ -105,6 +92,27 @@ if [[ -f "$DIR_STACK/.env" ]]; then
 else
     echo "The .env file was not found in $DIR_STACK."
 fi
+
+#####################################################
+# Verify if the script is run as the user ${USER}
+check_user "${USER}"
+
+#####################################################
+# Check for stack manifest/profile existence
+if [[ ! -f "$COMPONENTS_JSON" ]]; then
+    echo "Error: The components.json file was not found in $DIR_STACK/manifests."
+    exit 1
+fi
+
+if [[ ! -f "$PROFILE_JSON" ]]; then
+    echo "Error: The stack profile file was not found: $PROFILE_JSON"
+    exit 1
+fi
+
+RESOLVED_COMPONENTS_JSON="$(build_resolved_components_json "$COMPONENTS_JSON" "$PROFILE_JSON")"
+
+# JSON file with the list of paths to be backuped
+BACKUP_JSON="$DIR_STACK/preserve-paths.json"
 
 #####################################################
 # Define installation type (install/update)
@@ -130,35 +138,8 @@ update_deploy_state_installer_metadata
 section "Stack ${INSTALL_TYPE}"
 info "Deployment ID: ${DEPLOYMENT_ID:-$(jq -r '.deployment_id // "n/a"' "$DEPLOY_STATE_FILE" 2> /dev/null || echo n/a)}"
 info "Stack profile: ${STACK_PROFILE:-default}"
-info "Sources file: $REPOS_JSON"
-
-#####################################################
-# Prepare 32-bit libraries and remove duplicates
-if [ -d "$HOME/.steam/sdk32" ]; then
-    rm -rf "$HOME/.steam/sdk32"
-fi
-if [ -d "$HOME/.steam/sdk64" ]; then
-    rm -rf "$HOME/.steam/sdk64"
-fi
-
-mkdir -p "$HOME/.steam/sdk32" "$HOME/.steam/sdk64"
-
-find "$HOME/.local/share/Steam/steamcmd/linux32/" -maxdepth 1 -type f -exec cp -v {} "$HOME/.steam/sdk32" \;
-cp -v "$HOME/.local/share/Steam/steamcmd/linux64/steamclient.so" "$HOME/.steam/sdk64/steamclient.so"
-
-if [[ -e "$LGSM_SERVERFILES/bin/libstdc++.so.6" ]]; then
-    rm "$LGSM_SERVERFILES/bin/libstdc++.so.6" "$LGSM_SERVERFILES/bin/dedicated/libstdc++.so.6"
-    log "Removed libstdc++.so.6 for compatibility with extensions."
-else
-    log "libstdc++.so.6 not detected locally."
-fi
-
-if [[ -e "$LGSM_SERVERFILES/bin/libgcc_s.so.1" ]]; then
-    rm "$LGSM_SERVERFILES/bin/libgcc_s.so.1" "$LGSM_SERVERFILES/bin/dedicated/libgcc_s.so.1"
-    log "Removed libgcc_s.so.1 for compatibility with extensions."
-else
-    log "libgcc_s.so.1 not detected locally."
-fi
+info "Components file: $COMPONENTS_JSON"
+info "Profile file: $PROFILE_JSON"
 
 #####################################################
 # Temporary directory

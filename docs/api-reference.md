@@ -39,16 +39,6 @@ Define el catalogo de componentes disponibles.
 
 Define que componentes se activan por entorno y que overrides aplicar.
 
-### `stack/sources.json`
-
-Es el snapshot materializado que consume `install_stack.sh`.
-
-Se genera a partir de:
-
-1. `stack/manifests/components.json`
-2. `stack/profiles/{STACK_PROFILE}.json`
-3. variables `BRANCH_*` y `RELEASE_TAG_*`
-
 ### Variables dinamicas
 
 | Variable | Formato | Uso |
@@ -95,7 +85,9 @@ Comandos soportados:
 
 Responsabilidades:
 
-1. leer `stack/sources.json`
+1. leer `stack/manifests/components.json`
+2. leer `stack/profiles/{STACK_PROFILE}.json`
+3. aplicar overrides `BRANCH_*` y `RELEASE_TAG_*`
 2. resolver fuentes Git o GitHub Release
 3. comparar cache y estado remoto
 4. descargar o reutilizar la fuente

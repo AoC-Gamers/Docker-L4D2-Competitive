@@ -1,6 +1,23 @@
 name: Construcción y Publicación de Imagen Docker
 
+run-name: >-
+  Docker Competitive (${{
+    github.event_name == 'workflow_dispatch' &&
+    format('{0}/{1}', github.event.inputs.trigger_source || 'manual', github.event.inputs.trigger_channel || github.ref_name) ||
+    format('push/{0}', github.ref_name)
+  }})
+
 on:
+  workflow_dispatch:
+    inputs:
+      trigger_source:
+        description: Repo o flujo que disparo esta ejecucion
+        required: false
+        default: manual
+      trigger_channel:
+        description: Canal esperado (develop o latest)
+        required: false
+        default: manual
   push:
     branches:
       - main
@@ -54,7 +71,7 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ secrets.TOKEN_WEBHOOK }}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            -d '{"ref":"develop"}'
+            -d '{"ref":"develop","inputs":{"trigger_source":"docker-l4d2-competitive","trigger_channel":"develop"}}'
 
       - name: Activar Workflow AoC para main
         if: ${{ github.ref == 'refs/heads/main' }}
@@ -64,24 +81,4 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ secrets.TOKEN_WEBHOOK }}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            -d '{"ref":"main"}'
-
-      - name: Activar Workflow AoC Vanilla para develop
-        if: ${{ github.ref == 'refs/heads/develop' }}
-        run: |
-          curl --fail --silent --show-error -X POST \
-            https://api.github.com/repos/AoC-Gamers/Docker-L4D2-AoC-Vanilla/actions/workflows/docker-image.yml/dispatches \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.TOKEN_WEBHOOK }}" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            -d '{"ref":"develop"}'
-
-      - name: Activar Workflow AoC Vanilla para main
-        if: ${{ github.ref == 'refs/heads/main' }}
-        run: |
-          curl --fail --silent --show-error -X POST \
-            https://api.github.com/repos/AoC-Gamers/Docker-L4D2-AoC-Vanilla/actions/workflows/docker-image.yml/dispatches \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.TOKEN_WEBHOOK }}" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            -d '{"ref":"main"}'
+            -d '{"ref":"main","inputs":{"trigger_source":"docker-l4d2-competitive","trigger_channel":"latest"}}'

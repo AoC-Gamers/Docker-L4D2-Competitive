@@ -37,7 +37,7 @@ Docker-L4D2-Competitive/
 │   ├── manifests/
 │   ├── profiles/
 │   ├── hooks/
-│   └── sources.json
+│   └── preserve-paths.json
 ├── config-lgsm/
 └── docs/
 ```
@@ -48,11 +48,10 @@ Docker-L4D2-Competitive/
 graph LR
     A[Docker Compose] --> B[container/entrypoint.sh]
     B --> C[container/bootstrap/*]
-    C --> D[compile_stack.sh]
-    D --> E[container/entrypoint-user.sh]
-    E --> F[installer/bin/install_stack.sh]
-    F --> G[installer/bin/menu_stack.sh]
-    G --> H[Servidores listos]
+    C --> D[container/entrypoint-user.sh]
+    D --> E[installer/bin/install_stack.sh]
+    E --> F[installer/bin/menu_stack.sh]
+    F --> G[Servidores listos]
 ```
 
 ## Conceptos Clave
@@ -70,9 +69,8 @@ El framework operativo vive en `installer/`.
 
 El catalogo instalable vive en `stack/`.
 
-- `stack/manifests/components.json`: define los componentes disponibles.
+- `stack/manifests/components.json`: define el catalogo completo de componentes y sus fuentes.
 - `stack/profiles/*.json`: selecciona componentes y overrides por entorno.
-- `stack/sources.json`: snapshot materializado que consume el installer.
 - `stack/hooks/*.sh`: hooks por componente.
 
 ### Overrides de entorno

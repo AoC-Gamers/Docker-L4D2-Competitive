@@ -24,9 +24,11 @@ create_symlinks() {
     mkdir -p "$dest_dir"
     
     find "$src_dir" -type f "${find_filters[@]}" | while IFS= read -r src; do
-        local filename
-        filename=$(basename "$src")
-        local target="$dest_dir/$filename"
+        local relative_path
+        relative_path="${src#$src_dir/}"
+        local target="$dest_dir/$relative_path"
+
+        mkdir -p "$(dirname "$target")"
         if [ -e "$target" ] && [ ! -L "$target" ]; then
             rm -f "$target"
         fi
@@ -52,8 +54,8 @@ echo "Creating symlinks for installer config"
 create_symlinks "/app/installer/config" "$DIR_INSTALLER/config"
 
 echo ""
-echo "Creating symlinks for stack root"
-create_symlinks "/app/stack" "$DIR_STACK" ! -path "/app/stack/hooks/*"
+echo "Creating symlinks for stack root files"
+create_symlinks "/app/stack" "$DIR_STACK" -maxdepth 1 -type f
 
 echo ""
 echo "Creating symlinks for stack hooks"

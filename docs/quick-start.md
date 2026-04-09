@@ -59,12 +59,11 @@ docker-compose exec comp_l4d2 gosu linuxgsm ./l4d2server details
 El flujo actual es:
 
 1. `container/entrypoint.sh` prepara el runtime.
-2. `container/bootstrap/` valida dependencias, crea symlinks y compila el stack.
-3. `container/bootstrap/compile_stack.sh` genera `stack/sources.json`.
-4. `container/entrypoint-user.sh` instala L4D2 si hace falta.
-5. `installer/bin/install_stack.sh` instala el stack materializado.
-6. si `L4D2_STACK_AUTOUPDATE=true`, se ejecuta `install_stack.sh update` antes de iniciar los gameservers.
-7. `installer/bin/menu_stack.sh` opera las instancias.
+2. `container/bootstrap/` valida dependencias y crea symlinks.
+3. `container/entrypoint-user.sh` instala L4D2 si hace falta.
+4. `installer/bin/install_stack.sh` resuelve e instala el stack.
+5. si `L4D2_STACK_AUTOUPDATE=true`, se ejecuta `install_stack.sh update` antes de iniciar los gameservers.
+6. `installer/bin/menu_stack.sh` opera las instancias.
 
 ## Operacion Basica
 
@@ -95,14 +94,7 @@ El framework ya no parte de un archivo unico de fuentes como modelo canonico. El
 
 1. `stack/manifests/components.json`
 2. `stack/profiles/{STACK_PROFILE}.json`
-3. `stack/sources.json`
-4. `install_stack.sh`
-
-### Recompilar el stack manualmente
-
-```bash
-docker-compose exec comp_l4d2 bash /app/container/bootstrap/compile_stack.sh
-```
+3. `install_stack.sh`
 
 ### Reinstalar o actualizar el stack
 
@@ -130,7 +122,7 @@ cd /data/installer/bin
 - confirma que el volumen persistente este creado
 - confirma que el puerto SSH no este ocupado
 
-### `compile_stack.sh` falla
+### `install_stack.sh` falla
 
 - verifica que exista el profile seleccionado por `STACK_PROFILE`
 - verifica que `jq` este disponible dentro del contenedor

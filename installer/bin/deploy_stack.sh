@@ -123,7 +123,7 @@ initialize_deploy_state() {
   fi
 
   PREVIOUS_DEPLOYMENT_ID="$(state_archive_current_deployment)"
-  state_create_deploy_state "$DEPLOYMENT_ID" "$PREVIOUS_DEPLOYMENT_ID" "preparing" "${STACK_PROFILE:-default}" "${DIR_STACK}/sources.json" "$(state_compute_sources_sha256 "${DIR_STACK}/sources.json")" "$GAMESERVER"
+  state_create_deploy_state "$DEPLOYMENT_ID" "$PREVIOUS_DEPLOYMENT_ID" "preparing" "${STACK_PROFILE:-default}" "$STATE_RESOLVED_COMPONENTS_FILE" "" "$GAMESERVER"
   DEPLOY_STATE_INITIALIZED=true
 }
 
@@ -149,6 +149,24 @@ prepare_lgsm_tooling() {
     info "Developer mode enabled"
     ./"${GAMESERVER}" developer
   fi
+}
+
+prepare_steam_runtime_libraries() {
+  section "Prepare Steam runtime libraries"
+
+  if [ -d "$HOME/.steam/sdk32" ]; then
+    rm -rf "$HOME/.steam/sdk32"
+  fi
+
+  if [ -d "$HOME/.steam/sdk64" ]; then
+    rm -rf "$HOME/.steam/sdk64"
+  fi
+
+  mkdir -p "$HOME/.steam/sdk32" "$HOME/.steam/sdk64"
+
+  step "Syncing Steam runtime libraries"
+  find "$HOME/.local/share/Steam/steamcmd/linux32/" -maxdepth 1 -type f -exec cp -v {} "$HOME/.steam/sdk32" \;
+  cp -v "$HOME/.local/share/Steam/steamcmd/linux64/steamclient.so" "$HOME/.steam/sdk64/steamclient.so"
 }
 
 is_gameserver_installed() {
@@ -326,6 +344,7 @@ initialize_deploy_state
 prepare_lgsm_tooling
 prepare_user_profile
 install_primary_instance
+prepare_steam_runtime_libraries
 apply_stack_if_needed
 
 section "Update runtime patches"

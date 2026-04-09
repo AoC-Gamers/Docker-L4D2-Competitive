@@ -46,7 +46,7 @@ Docker-L4D2-Competitive/
 │   ├── manifests/
 │   ├── profiles/
 │   ├── hooks/
-│   └── sources.json
+│   └── preserve-paths.json
 └── docs/
 ```
 
@@ -55,17 +55,15 @@ Docker-L4D2-Competitive/
 ```mermaid
 graph TD
     A[Inicio del contenedor] --> B[container/bootstrap/*]
-    B --> C[compile_stack.sh]
-    C --> D[entrypoint-user.sh]
-    D --> E[install_stack.sh]
-    E --> F[menu_stack.sh]
+    B --> C[entrypoint-user.sh]
+    C --> D[install_stack.sh]
+    D --> E[menu_stack.sh]
 ```
 
 ## Recomendaciones
 
 - usa `STACK_PROFILE` como selector principal del stack
 - deja `BRANCH_*` y `RELEASE_TAG_*` para pruebas puntuales
-- trata `stack/sources.json` como snapshot materializado, no como modelo canonico
 
 ## Soporte
 

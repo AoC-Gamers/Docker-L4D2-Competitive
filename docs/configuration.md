@@ -44,11 +44,10 @@ La configuracion del stack se divide en tres piezas:
 
 1. `stack/manifests/components.json`: catalogo de componentes.
 2. `stack/profiles/*.json`: seleccion por entorno.
-3. `stack/sources.json`: snapshot materializado consumido por `install_stack.sh`.
 
 ### Perfil activo
 
-`STACK_PROFILE` controla el perfil compilado por `container/bootstrap/compile_stack.sh`.
+`STACK_PROFILE` controla el perfil consumido por `install_stack.sh`.
 
 Ejemplo:
 
@@ -70,9 +69,8 @@ Flujo real:
 
 1. se carga el manifest
 2. se carga el profile activo
-3. se genera `stack/sources.json`
-4. se aplican los overrides de entorno
-5. `install_stack.sh` consume el snapshot resultante
+3. se aplican los overrides de entorno
+4. `install_stack.sh` resuelve e instala los componentes resultantes
 
 ## Tipos de fuente soportados
 
@@ -119,7 +117,7 @@ Flujo real:
 ### Recompilar el stack
 
 ```bash
-docker-compose exec comp_l4d2 bash /app/container/bootstrap/compile_stack.sh
+docker-compose exec comp_l4d2 bash /data/installer/bin/install_stack.sh update
 ```
 
 ### Reinstalar o actualizar el stack
@@ -138,5 +136,4 @@ docker-compose exec comp_l4d2 bash /app/container/bootstrap/l4d2_updater.sh
 
 - usa `STACK_PROFILE` como mecanismo principal
 - reserva `BRANCH_*` y `RELEASE_TAG_*` para testing puntual
-- deja `stack/sources.json` como snapshot generado, no como modelo canonico
 - documenta nuevos componentes en manifest y profile, no solo en compose
