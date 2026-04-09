@@ -17,7 +17,7 @@ state_init_paths() {
     STATE_HISTORY_DIR="$STATE_ROOT/history"
     DEPLOY_STATE_FILE="$STATE_CURRENT_DIR/deploy-state.json"
     INSTANCES_STATE_FILE="$STATE_CURRENT_DIR/instances-state.json"
-    STATE_SOURCES_FILE="$STATE_CURRENT_DIR/sources.json"
+    STATE_RESOLVED_COMPONENTS_FILE="$STATE_CURRENT_DIR/resolved-components.json"
     STATE_INSTALL_LOG_FILE="$STATE_CURRENT_DIR/install_stack.log"
 }
 
@@ -25,11 +25,11 @@ state_ensure_directories() {
     mkdir -p "$STATE_CURRENT_DIR" "$STATE_HISTORY_DIR"
 }
 
-state_compute_sources_sha256() {
-    local sources_file="${1:-${DIR_STACK}/sources.json}"
+state_compute_resolved_components_sha256() {
+    local resolved_components_file="${1:-$STATE_RESOLVED_COMPONENTS_FILE}"
 
-    if [ -f "$sources_file" ]; then
-        sha256sum "$sources_file" | awk '{print $1}'
+    if [ -f "$resolved_components_file" ]; then
+        sha256sum "$resolved_components_file" | awk '{print $1}'
         return 0
     fi
 
@@ -64,7 +64,7 @@ state_archive_snapshot() {
     snapshot_dir="${STATE_HISTORY_DIR}/${deployment_id}"
     mkdir -p "$snapshot_dir"
 
-    for state_file in deploy-state.json sources.json install_stack.log instances-state.json; do
+    for state_file in deploy-state.json resolved-components.json install_stack.log instances-state.json; do
         if [ -f "${STATE_CURRENT_DIR}/${state_file}" ]; then
             cp "${STATE_CURRENT_DIR}/${state_file}" "${snapshot_dir}/${state_file}"
         fi
@@ -87,8 +87,8 @@ state_create_deploy_state() {
     local previous_deployment_id="$2"
     local status="$3"
     local stack_profile="$4"
-    local sources_file="$5"
-    local sources_sha256="$6"
+    local resolved_components_file="$5"
+    local resolved_components_sha256="$6"
     local gameserver="$7"
     local started_at="${8:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 
@@ -99,8 +99,8 @@ state_create_deploy_state() {
         --arg previous_deployment_id "$previous_deployment_id" \
         --arg status "$status" \
         --arg stack_profile "$stack_profile" \
-        --arg sources_file "$sources_file" \
-        --arg sources_sha256 "$sources_sha256" \
+        --arg resolved_components_file "$resolved_components_file" \
+        --arg resolved_components_sha256 "$resolved_components_sha256" \
         --arg gameserver "$gameserver" \
         --arg started_at "$started_at" \
         '
@@ -111,8 +111,8 @@ state_create_deploy_state() {
                 status: $status,
                 stack: {
                     profile: $stack_profile,
-                    sources_file: $sources_file,
-                    sources_sha256: $sources_sha256
+                    resolved_components_file: $resolved_components_file,
+                    resolved_components_sha256: $resolved_components_sha256
                 },
                 runtime: {
                     gameserver: $gameserver,
@@ -134,8 +134,8 @@ state_create_deploy_state() {
 
 state_update_deploy_install_metadata() {
     local install_type="$1"
-    local sources_file="$2"
-    local sources_sha256="$3"
+    local resolved_components_file="$2"
+    local resolved_components_sha256="$3"
     local components_json="$4"
 
     if [ ! -f "$DEPLOY_STATE_FILE" ]; then
@@ -145,13 +145,13 @@ state_update_deploy_install_metadata() {
     jq \
         --arg install_type "$install_type" \
         --arg stack_profile "${STACK_PROFILE:-default}" \
-        --arg sources_file "$sources_file" \
-        --arg sources_sha256 "$sources_sha256" \
+        --arg resolved_components_file "$resolved_components_file" \
+        --arg resolved_components_sha256 "$resolved_components_sha256" \
         --argjson components "$components_json" \
         '
             .stack.profile = $stack_profile |
-            .stack.sources_file = $sources_file |
-            .stack.sources_sha256 = $sources_sha256 |
+            .stack.resolved_components_file = $resolved_components_file |
+            .stack.resolved_components_sha256 = $resolved_components_sha256 |
             .installer.install_type = $install_type |
             .components = $components
         ' "$DEPLOY_STATE_FILE" > "${DEPLOY_STATE_FILE}.tmp" && mv "${DEPLOY_STATE_FILE}.tmp" "$DEPLOY_STATE_FILE"
@@ -211,7 +211,7 @@ state_finalize_deploy_state() {
     local fresh_install_flag="$2"
     local last_error_json="$3"
     local completed_at="${4:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
-    local sources_sha256
+    local resolved_components_sha256
     local detected_instances
     local additional_instances
 
@@ -219,7 +219,7 @@ state_finalize_deploy_state() {
         return 0
     fi
 
-    sources_sha256="$(state_compute_sources_sha256 "${DIR_STACK}/sources.json")"
+    resolved_components_sha256="$(state_compute_resolved_components_sha256 "$STATE_RESOLVED_COMPONENTS_FILE")"
     detected_instances="$(state_count_detected_instances)"
     additional_instances="$(state_read_additional_instances)"
 
@@ -227,8 +227,8 @@ state_finalize_deploy_state() {
         --arg status "$status" \
         --arg completed_at "$completed_at" \
         --arg stack_profile "${STACK_PROFILE:-}" \
-        --arg sources_file "${DIR_STACK:-}/sources.json" \
-        --arg sources_sha256 "$sources_sha256" \
+        --arg resolved_components_file "$STATE_RESOLVED_COMPONENTS_FILE" \
+        --arg resolved_components_sha256 "$resolved_components_sha256" \
         --arg gameserver "${GAMESERVER:-}" \
         --argjson fresh_install "$( [ "$fresh_install_flag" = "true" ] && echo true || echo false )" \
         --argjson additional_instances "$additional_instances" \
@@ -238,8 +238,8 @@ state_finalize_deploy_state() {
             .status = $status |
             .timestamps.completed_at = $completed_at |
             .stack.profile = (if $stack_profile == "" then .stack.profile else $stack_profile end) |
-            .stack.sources_file = (if $sources_file == "/sources.json" then .stack.sources_file else $sources_file end) |
-            .stack.sources_sha256 = $sources_sha256 |
+            .stack.resolved_components_file = (if $resolved_components_file == "" then .stack.resolved_components_file else $resolved_components_file end) |
+            .stack.resolved_components_sha256 = $resolved_components_sha256 |
             .runtime.gameserver = (if $gameserver == "" then .runtime.gameserver else $gameserver end) |
             .runtime.fresh_install = $fresh_install |
             .instances.additional_instances = $additional_instances |

@@ -19,7 +19,7 @@ Competitive ya no organiza su logica operativa como `docker-scripts/` y `server-
 2. `installer/bin/`: comandos ejecutables del framework.
 3. `installer/lib/`: utilidades compartidas.
 4. `installer/config/`: configuracion operativa del installer.
-5. `stack/`: catalogo, perfiles, snapshot y hooks.
+5. `stack/`: catalogo, perfiles y hooks.
 
 ## Bootstrap del Contenedor
 
@@ -37,16 +37,6 @@ Orquesta la fase de usuario LinuxGSM. Su flujo principal es:
 4. Ejecutar `install_stack.sh update` antes del arranque si `L4D2_STACK_AUTOUPDATE=true`.
 5. Sincronizar instancias adicionales con `sync_instances.sh`.
 6. Lanzar `menu_stack.sh`.
-
-### `container/bootstrap/compile_stack.sh`
-
-Materializa `stack/sources.json` a partir de:
-
-1. `stack/manifests/components.json`
-2. `stack/profiles/{STACK_PROFILE}.json`
-3. overrides `BRANCH_*` y `RELEASE_TAG_*`
-
-Es el reemplazo semantico del flujo historico basado en `repos.json` y `rep_branch.sh`.
 
 ### `container/bootstrap/symlink.sh`
 
@@ -73,7 +63,7 @@ Estructura enlazada:
 
 ### `installer/bin/install_stack.sh`
 
-Es el comando principal del framework. Instala o actualiza el stack materializado en `stack/sources.json`.
+Es el comando principal del framework. Resuelve e instala el stack a partir de `stack/manifests/components.json` y `stack/profiles/{STACK_PROFILE}.json`.
 
 Capacidades:
 
@@ -152,10 +142,6 @@ Catalogo de componentes disponibles en el framework o en la distribucion derivad
 
 Seleccionan que componentes forman el stack activo y permiten overrides por perfil.
 
-### `stack/sources.json`
-
-Snapshot materializado del stack. Es el archivo consumido por `install_stack.sh`.
-
 ### `stack/hooks/*.sh`
 
 Hooks por componente. Sustituyen el concepto historico de `git-gameserver/`.
@@ -179,10 +165,9 @@ l4d2_commsuite.default.sh
 ```mermaid
 graph TD
     A[container/entrypoint.sh] --> B[bootstrap/*]
-    B --> C[compile_stack.sh]
-    C --> D[entrypoint-user.sh]
-    D --> E[install_stack.sh]
-    E --> F[stack/hooks/*.sh]
-    F --> G[sync_instances.sh]
-    G --> H[menu_stack.sh]
+    B --> C[entrypoint-user.sh]
+    C --> D[install_stack.sh]
+    D --> E[stack/hooks/*.sh]
+    E --> F[sync_instances.sh]
+    F --> G[menu_stack.sh]
 ```

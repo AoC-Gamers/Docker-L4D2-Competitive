@@ -1,25 +1,81 @@
 #!/bin/bash
 # install_stack_runtime.sh - Helpers for install_stack orchestration.
 
-save_source_state() {
-    local source_name="$1"
-    local source_state="$2"
+build_resolved_components_json() {
+    local components_file="$1"
+    local profile_file="$2"
+    local resolved_rows
+    local component_id
+    local component_json
+    local folder
+    local branch_var_name
+    local branch_value
+    local release_tag_var_name
+    local release_tag_value
+    local first=true
+
+    resolved_rows="$(
+        jq -r \
+            --slurpfile profile "$profile_file" \
+            '
+              . as $catalog |
+              ($profile[0].components // []) as $selected |
+              ($profile[0].overrides // {}) as $overrides |
+              $selected[] as $id |
+              ($catalog[$id] // error("Unknown component in profile: " + $id)) as $component |
+              ($overrides[$id] // {}) as $override |
+              ($component + $override + {id: $id}) as $resolved |
+              [$id, $resolved.folder, ($resolved | @json)] | @tsv
+            ' "$components_file"
+    )"
+
+    printf '['
+    while IFS=$'\t' read -r component_id folder component_json; do
+        [[ -n "$component_id" ]] || continue
+
+        branch_var_name="BRANCH_$(echo "$folder" | tr '[:lower:]' '[:upper:]')"
+        branch_value=${!branch_var_name:-default}
+        release_tag_var_name="RELEASE_TAG_$(echo "$folder" | tr '[:lower:]' '[:upper:]')"
+        release_tag_value=${!release_tag_var_name:-default}
+
+        if [ "$branch_value" != "default" ]; then
+            component_json="$(printf '%s\n' "$component_json" | jq -c --arg val "$branch_value" '.branch = $val')"
+        fi
+
+        if [ "$release_tag_value" != "default" ]; then
+            component_json="$(printf '%s\n' "$component_json" | jq -c --arg val "$release_tag_value" '.release_tag = $val')"
+        fi
+
+        if [ "$first" = true ]; then
+            first=false
+        else
+            printf ','
+        fi
+
+        printf '%s' "$component_json"
+    done <<< "$selected_ids"
+    printf ']\n'
+}
+
+save_component_state() {
+    local component_name="$1"
+    local component_state="$2"
 
     if [[ -f "$CACHE_FILE" ]]; then
-        grep -Fv "${source_name}:" "$CACHE_FILE" > "${CACHE_FILE}.tmp" || true
+        grep -Fv "${component_name}:" "$CACHE_FILE" > "${CACHE_FILE}.tmp" || true
         mv "${CACHE_FILE}.tmp" "$CACHE_FILE"
     fi
 
-    echo "$source_name:$source_state" >> "$CACHE_FILE"
+    echo "$component_name:$component_state" >> "$CACHE_FILE"
 }
 
-has_source_changed() {
-    local source_name="$1"
+has_component_changed() {
+    local component_name="$1"
     local new_state="$2"
 
     if [[ -f "$CACHE_FILE" ]]; then
         local old_state
-        old_state=$(grep -F "${source_name}:" "$CACHE_FILE" | tail -n 1 | cut -d':' -f2-)
+        old_state=$(grep -F "${component_name}:" "$CACHE_FILE" | tail -n 1 | cut -d':' -f2-)
         if [[ "$old_state" == "$new_state" ]]; then
             return 1
         fi
@@ -116,7 +172,7 @@ download_git_source() {
             remote_state=$(git ls-remote -h "$repo_url" "$branch" | awk '{print $1}')
         fi
 
-        if has_source_changed "$folder" "$remote_state"; then
+        if has_component_changed "$folder" "$remote_state"; then
             source_download=true
             info "Repository $folder changed. Refreshing local cache." >&2
             rm -rf "$folder"
@@ -135,7 +191,7 @@ download_git_source() {
             git clone -b "$branch" "$repo_url" "$folder" || error_exit "Failed to clone $sanitized_repo_url on branch $branch"
         fi
         remote_state=$(get_latest_commit_hash "$folder")
-        save_source_state "$folder" "$remote_state"
+        save_component_state "$folder" "$remote_state"
         success "Git source ready for $folder" >&2
     fi
 
@@ -171,7 +227,7 @@ download_github_release_source() {
         rm -rf "$folder"
     elif [[ -d "$folder" ]]; then
         step "Checking artifact source state for $folder" >&2
-        if has_source_changed "$folder" "$remote_state"; then
+        if has_component_changed "$folder" "$remote_state"; then
             source_download=true
             info "Artifact source $folder changed. Refreshing local cache." >&2
             rm -rf "$folder"
@@ -191,7 +247,7 @@ download_github_release_source() {
         rm -rf "$folder"
         mkdir -p "$folder"
         extract_archive "$archive_path" "$folder"
-        save_source_state "$folder" "$remote_state"
+        save_component_state "$folder" "$remote_state"
         success "Release artifact ready for $folder" >&2
     fi
 
@@ -277,7 +333,6 @@ prepare_update_cleanup() {
 }
 
 apply_stack_sources() {
-    local repo_item
     local source_type
     local folder
     local branch
@@ -291,10 +346,8 @@ apply_stack_sources() {
     local subscript_file
 
     section "Applying stack sources"
-    while IFS= read -r repo_item; do
-        source_type=$(echo "$repo_item" | jq -r '.source_type // "git"')
-        folder=$(echo "$repo_item" | jq -r '.folder')
-        branch=$(echo "$repo_item" | jq -r '.branch // "default"' | envsubst)
+    while IFS=$'\t' read -r source_type folder branch repo_url github_repo release_tag asset_name asset_name_glob; do
+        branch="$(printf '%s\n' "$branch" | envsubst)"
 
         section "Component: ${folder}"
         info "Source type: ${source_type}"
@@ -304,15 +357,15 @@ apply_stack_sources() {
 
         case "$source_type" in
             git)
-                repo_url=$(echo "$repo_item" | jq -r '.repo_url' | envsubst)
+                repo_url="$(printf '%s\n' "$repo_url" | envsubst)"
                 source_download_raw=$(download_git_source "$repo_url" "$folder" "$branch")
                 source_download=$(printf '%s\n' "$source_download_raw" | tail -n 1 | tr -d '\r')
                 ;;
             github_release)
-                github_repo=$(echo "$repo_item" | jq -r '.github_repo' | envsubst)
-                release_tag=$(echo "$repo_item" | jq -r '.release_tag' | envsubst)
-                asset_name=$(echo "$repo_item" | jq -r '.asset_name // empty' | envsubst)
-                asset_name_glob=$(echo "$repo_item" | jq -r '.asset_name_glob // empty' | envsubst)
+                github_repo="$(printf '%s\n' "$github_repo" | envsubst)"
+                release_tag="$(printf '%s\n' "$release_tag" | envsubst)"
+                asset_name="$(printf '%s\n' "$asset_name" | envsubst)"
+                asset_name_glob="$(printf '%s\n' "$asset_name_glob" | envsubst)"
 
                 if [[ -z "$github_repo" || "$github_repo" == "null" ]]; then
                     error_exit "The field 'github_repo' is required for github_release sources."
@@ -350,5 +403,19 @@ apply_stack_sources() {
         else
             warn "No hook found for $folder. Skipping post-processing."
         fi
-    done < <(jq -c '.[]' "$REPOS_JSON")
+    done < <(
+        printf '%s\n' "$RESOLVED_COMPONENTS_JSON" | jq -r '
+            .[] |
+            [
+                (.source_type // "git"),
+                .folder,
+                (.branch // "default"),
+                (.repo_url // ""),
+                (.github_repo // ""),
+                (.release_tag // ""),
+                (.asset_name // ""),
+                (.asset_name_glob // "")
+            ] | @tsv
+        '
+    )
 }
