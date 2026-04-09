@@ -50,8 +50,8 @@ docker-compose up -d
 
 ```bash
 docker-compose ps
-docker-compose logs -f comp_l4d2
-docker-compose exec comp_l4d2 gosu linuxgsm ./l4d2server details
+docker-compose logs -f l4d2
+docker-compose exec l4d2 gosu linuxgsm ./l4d2server details
 ```
 
 ## Que ocurre al arrancar
@@ -70,7 +70,7 @@ El flujo actual es:
 ### Acceso al contenedor
 
 ```bash
-docker-compose exec comp_l4d2 bash
+docker-compose exec l4d2 bash
 ```
 
 ### Acceso SSH
@@ -99,7 +99,7 @@ El framework ya no parte de un archivo unico de fuentes como modelo canonico. El
 ### Reinstalar o actualizar el stack
 
 ```bash
-docker-compose exec comp_l4d2 bash /data/installer/bin/install_stack.sh update
+docker-compose exec l4d2 bash /data/installer/bin/install_stack.sh update
 ```
 
 ## Workshop
@@ -109,7 +109,7 @@ Si usas el downloader del Workshop, la configuracion ya debe vivir en el arbol o
 Ejemplo rapido:
 
 ```bash
-docker-compose exec comp_l4d2 bash
+docker-compose exec l4d2 bash
 cd /data/installer/bin
 ./workshop_downloader.sh
 ```
@@ -118,7 +118,7 @@ cd /data/installer/bin
 
 ### El contenedor no inicia
 
-- revisa `docker-compose logs comp_l4d2`
+- revisa `docker-compose logs l4d2`
 - confirma que el volumen persistente este creado
 - confirma que el puerto SSH no este ocupado
 
@@ -130,7 +130,7 @@ cd /data/installer/bin
 
 ### La instancia primaria no arranca
 
-- revisa `docker-compose logs -f comp_l4d2`
+- revisa `docker-compose logs -f l4d2`
 - revisa el estado de LinuxGSM con `./l4d2server details`
 - valida que la instalacion inicial de L4D2 haya terminado
 

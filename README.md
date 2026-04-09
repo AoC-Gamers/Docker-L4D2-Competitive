@@ -17,7 +17,7 @@ cp example.env .env
 docker-compose up -d
 ```
 
-El volumen `comp_data:/data` sigue siendo obligatorio para persistir serverfiles, configuraciones, logs y estado del installer.
+El volumen `data:/data` sigue siendo obligatorio para persistir serverfiles, configuraciones, logs y estado del installer.
 
 ## Modelo de Arquitectura
 
@@ -97,6 +97,8 @@ El bootstrap soporta dos formas de seleccionar variantes:
 | `GITHUB_TOKEN` | Token opcional para releases/API | `ghp_xxx` |
 
 Credenciales sensibles, como `STEAM_PASSWD`, deben ir en `.env.secrets`. `GEOIPUPDATE_LICENSE_KEY` se mantiene en `.env` para que el updater pueda ejecutarse manualmente en runtime.
+
+Los dos archivos Compose del repo consumen la misma base de variables de entorno. La diferencia entre `docker-compose.yml` y `docker-compose.dev.yml` queda en el origen de la imagen o el build local, no en un segundo juego de variables `DEV_*`.
 
 ## Documentacion
 

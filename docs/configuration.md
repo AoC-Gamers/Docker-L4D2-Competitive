@@ -16,6 +16,8 @@ GIT_FORCE_DOWNLOAD=false
 GITHUB_TOKEN=ghp_xxx
 ```
 
+`docker-compose.yml` y `docker-compose.dev.yml` comparten esta misma base de variables. La diferencia operativa entre ambos queda en si consumen una imagen publicada o un build local del repo.
+
 ## Control de instalacion y arranque
 
 - `L4D2_INSTALL=normal`: instala solo si el servidor base no existe.
@@ -117,13 +119,13 @@ Flujo real:
 ### Reinstalar o actualizar el stack
 
 ```bash
-docker-compose exec comp_l4d2 bash /data/installer/bin/install_stack.sh update
+docker-compose exec l4d2 bash /data/installer/bin/install_stack.sh update
 ```
 
 ### Reinstalar L4D2Updater
 
 ```bash
-docker-compose exec comp_l4d2 bash /app/container/bootstrap/l4d2_updater.sh
+docker-compose exec l4d2 bash /app/container/bootstrap/l4d2_updater.sh
 ```
 
 ## Recomendaciones

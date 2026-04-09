@@ -1,23 +1,23 @@
-name: ${DEV_COMPOSE_PROJECT_NAME:-docker-l4d2-competitive-dev}
+name: ${PROJECT_NAME:-docker-l4d2-competitive}
 
 services:
-  dev_comp:
+  l4d2:
     build:
       dockerfile: Dockerfile
       context: .
-    image: dev_comp
-    container_name: ${DEV_COMP_CONTAINER_NAME:-dev_comp}
+    image: l4d2-dev
+    container_name: ${CONTAINER_NAME:-l4d2}
     pull_policy: always
     env_file:
       - .env
       - .env.secrets
     volumes:
-      - dev_comp_data:/data
+      - data:/data
     environment:
       - SSH_PORT=${SSH_PORT:-422}
-      - L4D2_INSTALL=${L4D2_INSTALL:-skip}
-      - L4D2_AUTOSTART=${L4D2_AUTOSTART:-false}
-      - L4D2_UPDATER=${L4D2_UPDATER:-false}
+      - L4D2_INSTALL=${L4D2_INSTALL:-normal}
+      - L4D2_AUTOSTART=${L4D2_AUTOSTART:-true}
+      - L4D2_UPDATER=${L4D2_UPDATER:-true}
       - STACK_PROFILE=${STACK_PROFILE:-default}
     ports:
       - "27015:27015"
@@ -25,5 +25,5 @@ services:
       - "${SSH_PORT:-422}:${SSH_PORT:-422}"
 
 volumes:
-  dev_comp_data:
-    name: ${DEV_COMP_DATA_VOLUME_NAME:-dev_comp_data}
+  data:
+    name: ${DATA_VOLUME_NAME:-l4d2_data}
