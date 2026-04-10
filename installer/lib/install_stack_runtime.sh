@@ -333,6 +333,7 @@ prepare_update_cleanup() {
 }
 
 apply_stack_sources() {
+    local component_json
     local source_type
     local folder
     local branch
@@ -346,7 +347,18 @@ apply_stack_sources() {
     local subscript_file
 
     section "Applying stack sources"
-    while IFS=$'\t' read -r source_type folder branch repo_url github_repo release_tag asset_name asset_name_glob; do
+    while IFS= read -r component_json; do
+        [[ -n "$component_json" ]] || continue
+
+        source_type="$(printf '%s\n' "$component_json" | jq -r '.source_type // "git"')"
+        folder="$(printf '%s\n' "$component_json" | jq -r '.folder')"
+        branch="$(printf '%s\n' "$component_json" | jq -r '.branch // "default"')"
+        repo_url="$(printf '%s\n' "$component_json" | jq -r '.repo_url // ""')"
+        github_repo="$(printf '%s\n' "$component_json" | jq -r '.github_repo // ""')"
+        release_tag="$(printf '%s\n' "$component_json" | jq -r '.release_tag // ""')"
+        asset_name="$(printf '%s\n' "$component_json" | jq -r '.asset_name // ""')"
+        asset_name_glob="$(printf '%s\n' "$component_json" | jq -r '.asset_name_glob // ""')"
+
         branch="$(printf '%s\n' "$branch" | envsubst)"
 
         section "Component: ${folder}"
@@ -404,18 +416,6 @@ apply_stack_sources() {
             warn "No hook found for $folder. Skipping post-processing."
         fi
     done < <(
-        printf '%s\n' "$RESOLVED_COMPONENTS_JSON" | jq -r '
-            .[] |
-            [
-                (.source_type // "git"),
-                .folder,
-                (.branch // "default"),
-                (.repo_url // ""),
-                (.github_repo // ""),
-                (.release_tag // ""),
-                (.asset_name // ""),
-                (.asset_name_glob // "")
-            ] | @tsv
-        '
+        printf '%s\n' "$RESOLVED_COMPONENTS_JSON" | jq -c '.[]'
     )
 }
