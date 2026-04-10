@@ -124,14 +124,28 @@ chown -R "${USER}":"${USER}" /app
 export HOME=/data
 
 section "Container bootstrap scripts"
+run_bootstrap_script() {
+  local script="$1"
+
+  step "Running $script"
+  if bash "$script"; then
+    success "Completed $script"
+  else
+    error_exit "Bootstrap script failed: $script"
+  fi
+}
+
 if ls /app/container/bootstrap/*.sh 1> /dev/null 2>&1; then
+  if [ -f /app/container/bootstrap/symlink.sh ]; then
+    run_bootstrap_script "/app/container/bootstrap/symlink.sh"
+  fi
+
   for script in /app/container/bootstrap/*.sh; do
-    step "Running $script"
-    if bash "$script"; then
-      success "Completed $script"
-    else
-      error_exit "Bootstrap script failed: $script"
+    if [ "$script" = "/app/container/bootstrap/symlink.sh" ]; then
+      continue
     fi
+
+    run_bootstrap_script "$script"
   done
 else
   info "No .sh files found in /app/container/bootstrap"
