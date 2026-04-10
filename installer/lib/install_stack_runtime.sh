@@ -53,7 +53,7 @@ build_resolved_components_json() {
         fi
 
         printf '%s' "$component_json"
-    done <<< "$selected_ids"
+    done <<< "$resolved_rows"
     printf ']\n'
 }
 

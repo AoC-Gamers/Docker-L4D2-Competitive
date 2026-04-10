@@ -58,6 +58,19 @@ else
   warn "Password is empty. Skipping password change."
 fi
 
+apply_data_tree_action() {
+  local action="$1"
+  shift
+  local resources_dir="${REPO_RESOURCES_DIR:-/data/resources}"
+
+  if [ -d "$resources_dir" ] && [[ "$resources_dir" == /data/* ]]; then
+    find /data -path "$resources_dir" -prune -o -exec "$action" "$@" {} +
+    return 0
+  fi
+
+  "$action" "$@" /data
+}
+
 persist_runtime_environment() {
   cat > /etc/environment <<EOF
 PATH=${PATH}
@@ -118,7 +131,7 @@ usermod -u "${UID}" -m -d /data linuxgsm > /dev/null 2>&1
 step "Setting GID to ${GID}"
 groupmod -g "${GID}" linuxgsm
 step "Updating ownership for /data"
-chown -R "${USER}":"${USER}" /data
+apply_data_tree_action chown "${USER}:${USER}"
 step "Updating ownership for /app"
 chown -R "${USER}":"${USER}" /app
 export HOME=/data
@@ -158,8 +171,10 @@ set +o allexport
 
 # Change owner and permissions
 step "Setting executable permissions on /app and /data"
-chown -R linuxgsm:linuxgsm /app /data
-chmod -R +x /app /data
+chown -R linuxgsm:linuxgsm /app
+apply_data_tree_action chown linuxgsm:linuxgsm
+chmod -R +x /app
+apply_data_tree_action chmod +x
 
 section "Hand-off to user runtime"
 info "Switching to user ${USER}"
