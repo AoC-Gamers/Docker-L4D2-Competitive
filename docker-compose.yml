@@ -1,16 +1,17 @@
-name: ${COMPOSE_PROJECT_NAME:-docker-l4d2-competitive}
+name: ${PROJECT_NAME:-docker-l4d2-competitive}
 
 services:
-  comp_l4d2:
-    image: ghcr.io/aoc-gamers/lgsm-l4d2-competitive:${COMP_IMAGE_TAG:-latest}
+  l4d2:
+    image: ghcr.io/aoc-gamers/lgsm-l4d2-competitive:${IMAGE_TAG:-latest}
     restart: unless-stopped
-    container_name: ${COMP_CONTAINER_NAME:-comp_l4d2}
+    container_name: ${CONTAINER_NAME:-l4d2}
     pull_policy: always
     env_file:
       - .env
       - .env.secrets
     volumes:
-      - comp_data:/data
+      - data:/data
+      - ${HOST_REPO_RESOURCES_DIR:-./resources}:${REPO_RESOURCES_DIR:-/data/resources}:ro
     environment:
       - SSH_PORT=${SSH_PORT:-422}
       - SSH_KEY=${SSH_KEY}
@@ -18,5 +19,5 @@ services:
     network_mode: host
 
 volumes:
-  comp_data:
-    name: ${COMP_DATA_VOLUME_NAME:-comp_data}
+  data:
+    name: ${DATA_VOLUME_NAME:-l4d2_data}

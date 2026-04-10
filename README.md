@@ -17,7 +17,7 @@ cp example.env .env
 docker-compose up -d
 ```
 
-El volumen `comp_data:/data` sigue siendo obligatorio para persistir serverfiles, configuraciones, logs, snapshots del stack y estado del installer.
+El volumen `data:/data` sigue siendo obligatorio para persistir serverfiles, configuraciones, logs y estado del installer.
 
 ## Modelo de Arquitectura
 
@@ -60,7 +60,7 @@ graph LR
 
 El framework operativo vive en `installer/`.
 
-- `installer/bin/install_stack.sh`: instala o actualiza el stack materializado.
+- `installer/bin/install_stack.sh`: resuelve e instala o actualiza el stack.
 - `installer/bin/sync_instances.sh`: sincroniza multiples instancias sobre la instancia primaria.
 - `installer/bin/menu_stack.sh`: control operativo del runtime.
 - `installer/lib/tools_stack.sh`: utilidades compartidas.
@@ -93,10 +93,14 @@ El bootstrap soporta dos formas de seleccionar variantes:
 | `L4D2_STACK_AUTOUPDATE` | Ejecuta `install_stack.sh update` antes del arranque de los gameservers | `false` |
 | `L4D2_UPDATER` | Habilita o deshabilita el updater legacy de la base | `true` |
 | `STACK_PROFILE` | Perfil de stack a materializar | `default` |
+| `HOST_REPO_RESOURCES_DIR` | Carpeta local montada de forma read-only dentro del contenedor | `./resources` |
+| `REPO_RESOURCES_DIR` | Ruta interna para artefactos locales del repo | `/data/resources` |
 | `GIT_FORCE_DOWNLOAD` | Fuerza redescarga de fuentes remotas | `false` |
 | `GITHUB_TOKEN` | Token opcional para releases/API | `ghp_xxx` |
 
 Credenciales sensibles, como `STEAM_PASSWD`, deben ir en `.env.secrets`. `GEOIPUPDATE_LICENSE_KEY` se mantiene en `.env` para que el updater pueda ejecutarse manualmente en runtime.
+
+Los dos archivos Compose del repo consumen la misma base de variables de entorno. La diferencia entre `docker-compose.yml` y `docker-compose.dev.yml` queda en el origen de la imagen o el build local, no en un segundo juego de variables `DEV_*`.
 
 ## Documentacion
 
