@@ -18,6 +18,13 @@ GITHUB_TOKEN=ghp_xxx
 
 `docker-compose.yml` y `docker-compose.dev.yml` comparten esta misma base de variables. La diferencia operativa entre ambos queda en si consumen una imagen publicada o un build local del repo.
 
+Para artefactos locales montados desde el host:
+
+```env
+HOST_REPO_RESOURCES_DIR=./resources
+REPO_RESOURCES_DIR=/data/resources
+```
+
 ## Control de instalacion y arranque
 
 - `L4D2_INSTALL=normal`: instala solo si el servidor base no existe.

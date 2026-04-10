@@ -57,7 +57,7 @@ Estructura enlazada:
 
 - `dependencies_check.sh`: valida dependencias de runtime.
 - `l4d2_updater.sh`: instala o actualiza el binario base del juego.
-- `ssh_config.sh`: prepara acceso SSH y permisos.
+- `ssh.sh`: prepara acceso SSH y permisos.
 
 ## Comandos del Installer
 
@@ -120,16 +120,35 @@ Helper Python usado por el downloader del Workshop.
 Libreria comun de shell. Centraliza helpers compartidos para:
 
 - logging
-- copias y sincronizacion de archivos
 - extraccion de artefactos
 - acceso a la API de GitHub
 - descargas HTTP
-- utilidades de instalacion de SourceMod y plugins
+- utilidades generales del installer
 
 Los hooks deben cargar esta libreria via:
 
 ```bash
 source "$DIR_INSTALLER_LIB/tools_stack.sh"
+```
+
+### `installer/lib/stack_component_lib.sh`
+
+Libreria base para hooks de componentes. Centraliza helpers compartidos para:
+
+- persistencia puntual de variables en `/etc/environment`
+- sincronizacion de arboles `addons/`, `sourcemod/`, `cfg/` y `scripts/`
+- movimiento de plugins a subdirectorios como `custom/`
+- limpieza de paths excluidos luego del deploy
+- validacion de comandos requeridos
+- resolucion y descarga de tarballs remotos
+- validacion y extraccion cacheada de artefactos locales en `REPO_RESOURCES_DIR`
+- edicion por lotes de archivos con `sed`
+
+Los hooks que manipulan componentes deben cargarla junto a `tools_stack.sh`:
+
+```bash
+source "$DIR_INSTALLER_LIB/tools_stack.sh"
+source "$DIR_INSTALLER_LIB/stack_component_lib.sh"
 ```
 
 ## Catalogo del Stack
@@ -159,6 +178,8 @@ sir.default.sh
 bansystem.develop.sh
 l4d2_commsuite.default.sh
 ```
+
+En general, los hooks `*.develop.sh` deben ser wrappers minimos que delegan al `*.default.sh`. Solo conviene mantener logica propia en `develop` cuando realmente hay comportamiento distinto para ese canal.
 
 ## Flujo de Ejecucion
 
