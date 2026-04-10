@@ -205,28 +205,28 @@ stack_download_release_tarball_if_changed() {
 
     remote_filename=$(stack_get_filename_from_url "$download_url")
     if [ -z "$remote_filename" ]; then
-        log "Error: Could not get the filename for ${package_name} from the URL."
+        log "Error: Could not get the filename for ${package_name} from the URL." >&2
         return 1
     fi
-    log "The remote filename for ${package_name} is: ${remote_filename}"
+    log "The remote filename for ${package_name} is: ${remote_filename}" >&2
 
     remote_git=$(echo "$remote_filename" | grep -oP 'git\d+' || true)
 
     local_file=$(ls $file_pattern 2>/dev/null | head -n 1 || true)
     if [ -z "$local_file" ]; then
-        log "No local file found matching the pattern: $file_pattern"
+        log "No local file found matching the pattern: $file_pattern" >&2
     else
         local_git=$(echo "$local_file" | grep -oP 'git\d+' || true)
-        log "Local version of ${package_name}: ${local_git:-unknown}"
+        log "Local version of ${package_name}: ${local_git:-unknown}" >&2
     fi
 
     if [ -n "$local_file" ] && [ -n "$remote_git" ] && [ "$local_git" = "$remote_git" ]; then
-        log "${package_name} is already up to date (version ${local_git})."
+        log "${package_name} is already up to date (version ${local_git})." >&2
         printf '%s\n' "$local_file"
         return 0
     fi
 
-    log "${package_name} is outdated or has no local copy. Downloading version ${remote_git:-unknown}."
+    log "${package_name} is outdated or has no local copy. Downloading version ${remote_git:-unknown}." >&2
     wget --directory-prefix="$DIR_TMP" --content-disposition -q "$download_url"
 
     target_file="$DIR_TMP/$remote_filename"
@@ -236,16 +236,16 @@ stack_download_release_tarball_if_changed() {
     done
 
     if [ ! -s "$target_file" ]; then
-        log "Error: The download of ${package_name} did not complete in the expected time."
+        log "Error: The download of ${package_name} did not complete in the expected time." >&2
         return 1
     fi
 
     if [ -n "$local_file" ] && [ -n "$remote_git" ] && [ "$local_git" != "$remote_git" ]; then
-        verify_and_delete_dir "$local_file"
-        log "The old version of ${package_name} ($local_file) was deleted."
+        verify_and_delete_file "$local_file" >&2
+        log "The old version of ${package_name} ($local_file) was deleted." >&2
     fi
 
-    log "${package_name} updated to version ${remote_git:-unknown}."
+    log "${package_name} updated to version ${remote_git:-unknown}." >&2
     printf '%s\n' "$target_file"
 }
 
