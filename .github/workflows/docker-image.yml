@@ -55,6 +55,8 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
+          provenance: false
+          sbom: false
           tags: ghcr.io/aoc-gamers/lgsm-l4d2-competitive:develop
 
       - name: Construir y publicar imagen Docker para main
@@ -64,6 +66,8 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
+          provenance: false
+          sbom: false
           tags: ghcr.io/aoc-gamers/lgsm-l4d2-competitive:latest
 
       - name: Activar Workflow AoC para develop
