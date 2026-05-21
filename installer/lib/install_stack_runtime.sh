@@ -61,26 +61,65 @@ save_component_state() {
     local component_name="$1"
     local component_state="$2"
 
+    mkdir -p "$(dirname "$CACHE_FILE")"
+
+    if command -v flock > /dev/null 2>&1; then
+        exec 9>>"$CACHE_LOCK_FILE"
+        flock 9
+    fi
+
     if [[ -f "$CACHE_FILE" ]]; then
         grep -Fv "${component_name}:" "$CACHE_FILE" > "${CACHE_FILE}.tmp" || true
         mv "${CACHE_FILE}.tmp" "$CACHE_FILE"
     fi
 
     echo "$component_name:$component_state" >> "$CACHE_FILE"
+
+    if command -v flock > /dev/null 2>&1; then
+        flock -u 9
+        exec 9>&-
+    fi
 }
 
 has_component_changed() {
     local component_name="$1"
     local new_state="$2"
 
-    if [[ -f "$CACHE_FILE" ]]; then
-        local old_state
-        old_state=$(grep -F "${component_name}:" "$CACHE_FILE" | tail -n 1 | cut -d':' -f2-)
-        if [[ "$old_state" == "$new_state" ]]; then
-            return 1
-        fi
+    if [[ "$(get_component_cached_state "$component_name")" == "$new_state" ]]; then
+        return 1
     fi
+
     return 0
+}
+
+get_component_cached_state() {
+    local component_name="$1"
+    local old_state=""
+
+    if command -v flock > /dev/null 2>&1; then
+        exec 9>>"$CACHE_LOCK_FILE"
+        flock 9
+    fi
+
+    if [[ -f "$CACHE_FILE" ]]; then
+        old_state=$(grep -F "${component_name}:" "$CACHE_FILE" | tail -n 1 | cut -d':' -f2-)
+    fi
+
+    if command -v flock > /dev/null 2>&1; then
+        flock -u 9
+        exec 9>&-
+    fi
+
+    printf '%s\n' "$old_state"
+}
+
+component_cache_matches_source_prefix() {
+    local component_name="$1"
+    local expected_prefix="$2"
+    local cached_state=""
+
+    cached_state="$(get_component_cached_state "$component_name")"
+    [[ -n "$cached_state" && "$cached_state" == "${expected_prefix}"* ]]
 }
 
 get_latest_commit_hash() {
@@ -116,7 +155,10 @@ resolve_github_release_asset() {
 
     encoded_tag=$(jq -rn --arg value "$release_tag" '$value|@uri')
     api_url="https://api.github.com/repos/${github_repo}/releases/tags/${encoded_tag}"
-    release_json=$(github_api_request "$api_url") || error_exit "Could not fetch release metadata for ${github_repo}@${release_tag}."
+    release_json=$(github_api_request "$api_url") || {
+        warn "Could not fetch release metadata for ${github_repo}@${release_tag}." >&2
+        return 1
+    }
 
     if [[ -n "$asset_name" && "$asset_name" != "null" ]]; then
         matched_asset_name="$asset_name"
@@ -138,17 +180,116 @@ resolve_github_release_asset() {
 
     if [[ -z "$asset_download_url" || "$asset_download_url" == "null" ]]; then
         if [[ -n "$asset_name_glob" && "$asset_name_glob" != "null" ]]; then
-            error_exit "No asset matching '${asset_name_glob}' was found in ${github_repo}@${release_tag}."
+            warn "No asset matching '${asset_name_glob}' was found in ${github_repo}@${release_tag}." >&2
+            return 1
         fi
 
-        error_exit "Asset '${asset_name}' not found in ${github_repo}@${release_tag}."
+        warn "Asset '${asset_name}' not found in ${github_repo}@${release_tag}." >&2
+        return 1
     fi
 
     if [[ -z "$asset_updated_at" || "$asset_updated_at" == "null" ]]; then
-        error_exit "Could not determine update state for asset '${matched_asset_name}' in ${github_repo}@${release_tag}."
+        warn "Could not determine update state for asset '${matched_asset_name}' in ${github_repo}@${release_tag}." >&2
+        return 1
     fi
 
     printf '%s\n%s\n%s\n' "$matched_asset_name" "$asset_download_url" "$asset_updated_at"
+}
+
+preflight_github_release_access() {
+    local github_repo="$1"
+    local release_tag="$2"
+    local asset_name="$3"
+    local asset_name_glob="$4"
+    local encoded_tag
+    local api_url
+    local body_file
+    local http_status
+    local release_json
+    local matched_asset_name=""
+    local asset_download_url=""
+    local asset_updated_at=""
+    local candidate_name
+    local candidate_url
+    local candidate_updated_at
+    local body_message=""
+
+    encoded_tag=$(jq -rn --arg value "$release_tag" '$value|@uri')
+    api_url="https://api.github.com/repos/${github_repo}/releases/tags/${encoded_tag}"
+    body_file="$DIR_TMP/github-release-preflight-$$.json"
+    rm -f "$body_file"
+
+    http_status="$(github_http_status "$api_url" "$body_file")" || http_status="000"
+
+    if [[ -f "$body_file" ]]; then
+        body_message="$(jq -r '.message // empty' "$body_file" 2> /dev/null || true)"
+        release_json="$(cat "$body_file")"
+    else
+        release_json=""
+    fi
+
+    case "$http_status" in
+        200)
+            ;;
+        401)
+            error_exit "GitHub authentication failed for ${github_repo}@${release_tag}. Check the configured token."
+            ;;
+        403)
+            error_exit "GitHub access forbidden for ${github_repo}@${release_tag}. The configured token lacks permission or hit a policy/rate limit${body_message:+: ${body_message}}."
+            ;;
+        404)
+            error_exit "GitHub release ${github_repo}@${release_tag} is not accessible. Verify the tag exists and that the configured token can read the repository."
+            ;;
+        *)
+            error_exit "GitHub preflight failed for ${github_repo}@${release_tag} with HTTP ${http_status}${body_message:+: ${body_message}}."
+            ;;
+    esac
+
+    if [[ -n "$asset_name" && "$asset_name" != "null" ]]; then
+        matched_asset_name="$asset_name"
+        asset_download_url=$(echo "$release_json" | jq -r --arg value "$asset_name" '.assets[] | select(.name == $value) | .browser_download_url' | head -n 1)
+        asset_updated_at=$(echo "$release_json" | jq -r --arg value "$asset_name" '.assets[] | select(.name == $value) | .updated_at' | head -n 1)
+    else
+        while IFS=$'\t' read -r candidate_name candidate_url candidate_updated_at; do
+            [[ -n "$candidate_name" ]] || continue
+            if [[ "$candidate_name" == $asset_name_glob ]]; then
+                if [[ -z "$asset_updated_at" || "$candidate_updated_at" > "$asset_updated_at" ]]; then
+                    matched_asset_name="$candidate_name"
+                    asset_download_url="$candidate_url"
+                    asset_updated_at="$candidate_updated_at"
+                fi
+            fi
+        done < <(echo "$release_json" | jq -r '.assets[] | [.name, .browser_download_url, .updated_at] | @tsv')
+    fi
+
+    if [[ -z "$asset_download_url" || "$asset_download_url" == "null" ]]; then
+        if [[ -n "$asset_name_glob" && "$asset_name_glob" != "null" ]]; then
+            error_exit "GitHub preflight could read ${github_repo}@${release_tag}, but no asset matching '${asset_name_glob}' was found."
+        fi
+        error_exit "GitHub preflight could read ${github_repo}@${release_tag}, but asset '${asset_name}' was not found."
+    fi
+
+    success "GitHub release access verified for ${github_repo}@${release_tag} (${matched_asset_name})" >&2
+}
+
+resolve_component_github_token() {
+    local github_token_env="$1"
+    local github_auth_token=""
+
+    if [[ -z "$github_token_env" || "$github_token_env" == "null" ]]; then
+        return 1
+    fi
+
+    if [[ ! "$github_token_env" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+        error_exit "Invalid github_token_env '${github_token_env}'."
+    fi
+
+    github_auth_token="${!github_token_env:-}"
+    if [[ -z "$github_auth_token" ]]; then
+        error_exit "The environment variable '${github_token_env}' is required for this github_release source but is empty or undefined."
+    fi
+
+    printf '%s\n' "$github_auth_token"
 }
 
 download_git_source() {
@@ -157,9 +298,12 @@ download_git_source() {
     local branch="$3"
     local source_download=false
     local remote_state
+    local remote_state_raw=""
     local sanitized_repo_url
+    local source_prefix=""
 
     sanitized_repo_url="$(sanitize_url_for_log "$repo_url")"
+    source_prefix="git:${repo_url}@${branch}:"
 
     if [[ "${GIT_FORCE_DOWNLOAD:-false}" == "true" ]]; then
         source_download=true
@@ -167,10 +311,22 @@ download_git_source() {
     elif [[ -d "$folder" ]]; then
         step "Checking Git source state for $folder" >&2
         if [[ "$branch" == "default" ]]; then
-            remote_state=$(git ls-remote "$repo_url" HEAD | awk '{print $1}')
+            remote_state_raw="$(git ls-remote "$repo_url" HEAD 2>/dev/null | awk '{print $1}' | head -n 1 || true)"
         else
-            remote_state=$(git ls-remote -h "$repo_url" "$branch" | awk '{print $1}')
+            remote_state_raw="$(git ls-remote -h "$repo_url" "$branch" 2>/dev/null | awk '{print $1}' | head -n 1 || true)"
         fi
+
+        if [[ -z "$remote_state_raw" ]]; then
+            if component_cache_matches_source_prefix "$folder" "$source_prefix"; then
+                warn "Could not resolve remote Git state for $folder. Reusing compatible local cache."
+                printf '%s\n' "false"
+                return 0
+            fi
+
+            error_exit "Could not resolve remote Git state for $folder and no compatible local cache is available."
+        fi
+
+        remote_state="${source_prefix}${remote_state_raw}"
 
         if has_component_changed "$folder" "$remote_state"; then
             source_download=true
@@ -190,7 +346,7 @@ download_git_source() {
         else
             git clone -b "$branch" "$repo_url" "$folder" || error_exit "Failed to clone $sanitized_repo_url on branch $branch"
         fi
-        remote_state=$(get_latest_commit_hash "$folder")
+        remote_state="git:${repo_url}@${branch}:$(get_latest_commit_hash "$folder")"
         save_component_state "$folder" "$remote_state"
         success "Git source ready for $folder" >&2
     fi
@@ -204,23 +360,43 @@ download_github_release_source() {
     local asset_name="$3"
     local asset_name_glob="$4"
     local folder="$5"
+    local github_auth_token="${6:-}"
     local source_download=false
     local asset_metadata=()
+    local asset_metadata_raw=""
     local resolved_asset_name
     local asset_download_url
     local remote_state
     local archive_path
     local sanitized_asset_download_url
+    local source_prefix=""
 
-    mapfile -t asset_metadata < <(resolve_github_release_asset "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob")
+    source_prefix="github_release:${github_repo}@${release_tag}:"
+
+    if [[ -n "$github_auth_token" ]]; then
+        asset_metadata_raw="$(GITHUB_AUTH_TOKEN="$github_auth_token" resolve_github_release_asset "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob" 2>/dev/null || true)"
+    else
+        asset_metadata_raw="$(resolve_github_release_asset "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob" 2>/dev/null || true)"
+    fi
+
+    if [[ -n "$asset_metadata_raw" ]]; then
+        mapfile -t asset_metadata <<< "$asset_metadata_raw"
+    fi
+
     if [[ ${#asset_metadata[@]} -lt 3 ]]; then
-        error_exit "Could not resolve release asset metadata for ${github_repo}@${release_tag}."
+        if [[ -d "$folder" ]] && component_cache_matches_source_prefix "$folder" "$source_prefix"; then
+            warn "Could not resolve release asset metadata for ${github_repo}@${release_tag}. Reusing compatible local cache."
+            printf '%s\n' "false"
+            return 0
+        fi
+
+        error_exit "Could not resolve release asset metadata for ${github_repo}@${release_tag} and no compatible local cache is available."
     fi
 
     resolved_asset_name="${asset_metadata[0]}"
     asset_download_url="${asset_metadata[1]}"
     sanitized_asset_download_url="$(sanitize_url_for_log "$asset_download_url")"
-    remote_state="${resolved_asset_name}@${asset_metadata[2]}"
+    remote_state="github_release:${github_repo}@${release_tag}:${resolved_asset_name}@${asset_metadata[2]}"
 
     if [[ "${GIT_FORCE_DOWNLOAD:-false}" == "true" ]]; then
         source_download=true
@@ -242,8 +418,17 @@ download_github_release_source() {
         archive_path="$DIR_TMP/$resolved_asset_name"
         rm -f "$archive_path"
         mkdir -p "$folder"
+        if [[ -n "$github_auth_token" ]]; then
+            GITHUB_AUTH_TOKEN="$github_auth_token" preflight_github_release_access "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob"
+        else
+            preflight_github_release_access "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob"
+        fi
         step "Downloading release asset $resolved_asset_name from $github_repo@$release_tag" >&2
-        download_file "$asset_download_url" "$archive_path" || error_exit "Failed to download $resolved_asset_name from $sanitized_asset_download_url"
+        if [[ -n "$github_auth_token" ]]; then
+            GITHUB_AUTH_TOKEN="$github_auth_token" download_file "$asset_download_url" "$archive_path" || error_exit "Failed to download $resolved_asset_name from $sanitized_asset_download_url"
+        else
+            download_file "$asset_download_url" "$archive_path" || error_exit "Failed to download $resolved_asset_name from $sanitized_asset_download_url"
+        fi
         rm -rf "$folder"
         mkdir -p "$folder"
         extract_archive "$archive_path" "$folder"
@@ -342,6 +527,8 @@ apply_stack_sources() {
     local release_tag
     local asset_name
     local asset_name_glob
+    local github_token_env
+    local github_auth_token
     local source_download
     local source_download_raw
     local subscript_file
@@ -358,12 +545,17 @@ apply_stack_sources() {
         release_tag="$(printf '%s\n' "$component_json" | jq -r '.release_tag // ""')"
         asset_name="$(printf '%s\n' "$component_json" | jq -r '.asset_name // ""')"
         asset_name_glob="$(printf '%s\n' "$component_json" | jq -r '.asset_name_glob // ""')"
+        github_token_env="$(printf '%s\n' "$component_json" | jq -r '.github_token_env // ""')"
 
         branch="$(printf '%s\n' "$branch" | envsubst)"
 
         section "Component: ${folder}"
         info "Source type: ${source_type}"
-        info "Branch/channel: ${branch}"
+        if [[ "$source_type" == "github_release" ]]; then
+            info "Release tag: ${release_tag}"
+        else
+            info "Branch/channel: ${branch}"
+        fi
 
         source_download=false
 
@@ -378,6 +570,8 @@ apply_stack_sources() {
                 release_tag="$(printf '%s\n' "$release_tag" | envsubst)"
                 asset_name="$(printf '%s\n' "$asset_name" | envsubst)"
                 asset_name_glob="$(printf '%s\n' "$asset_name_glob" | envsubst)"
+                github_token_env="$(printf '%s\n' "$github_token_env" | envsubst)"
+                github_auth_token="$(resolve_component_github_token "$github_token_env" || true)"
 
                 if [[ -z "$github_repo" || "$github_repo" == "null" ]]; then
                     error_exit "The field 'github_repo' is required for github_release sources."
@@ -391,7 +585,7 @@ apply_stack_sources() {
                     error_exit "The field 'asset_name' or 'asset_name_glob' is required for github_release sources."
                 fi
 
-                source_download_raw=$(download_github_release_source "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob" "$folder")
+                source_download_raw=$(download_github_release_source "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob" "$folder" "$github_auth_token")
                 source_download=$(printf '%s\n' "$source_download_raw" | tail -n 1 | tr -d '\r')
                 ;;
             hook_only)

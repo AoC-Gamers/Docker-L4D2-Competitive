@@ -61,6 +61,7 @@ graph LR
 El framework operativo vive en `installer/`.
 
 - `installer/bin/install_stack.sh`: resuelve e instala o actualiza el stack.
+- `installer/bin/deploy_stack.sh`: orquesta el deploy completo del runtime.
 - `installer/bin/sync_instances.sh`: sincroniza multiples instancias sobre la instancia primaria.
 - `installer/bin/menu_stack.sh`: control operativo del runtime.
 - `installer/lib/tools_stack.sh`: utilidades compartidas.
@@ -80,6 +81,18 @@ El bootstrap soporta dos formas de seleccionar variantes:
 1. `STACK_PROFILE`: elige el perfil completo.
 2. `BRANCH_*` y `RELEASE_TAG_*`: aplican overrides puntuales durante la compilacion del stack.
 
+### Flujo operativo actual
+
+El deploy ya no se limita a "instalar y arrancar". El comportamiento actual es:
+
+1. `deploy_stack.sh` resuelve el stack efectivo y registra su hash.
+2. instala o repara L4D2 segun `L4D2_INSTALL`.
+3. aplica `install_stack.sh install|update` si el stack cambio o si es fresh install.
+4. sincroniza instancias con `L4D2_ADDITIONAL_INSTANCES`.
+5. arranca solo si `L4D2_AUTOSTART=true`.
+
+`install_stack.sh` mantiene cache persistente por perfil en `/data/installer/state/cache/` y usa temporales aislados por corrida bajo `/app/tmp/install_stack/`.
+
 ## Variables Importantes
 
 | Variable | Descripcion | Ejemplo |
@@ -90,6 +103,7 @@ El bootstrap soporta dos formas de seleccionar variantes:
 | `STEAM_PASSWD` | Contrasena Steam | `mi_contrasena` |
 | `L4D2_INSTALL` | Modo de instalacion base: `normal`, `skip`, `force` | `normal` |
 | `L4D2_AUTOSTART` | Controla el inicio automatico del servidor | `true` |
+| `L4D2_ADDITIONAL_INSTANCES` | Cantidad de instancias adicionales a sincronizar | `0` |
 | `L4D2_STACK_AUTOUPDATE` | Ejecuta `install_stack.sh update` antes del arranque de los gameservers | `false` |
 | `L4D2_UPDATER` | Habilita o deshabilita el updater legacy de la base | `true` |
 | `STACK_PROFILE` | Perfil de stack a materializar | `default` |

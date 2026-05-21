@@ -30,6 +30,83 @@ L4D2_DEFAULT_SERVERCFG="${L4D2_DEFAULT_SERVERCFG:-server.cfg}"
 INSTANCE_EXCLUDE_JSON="$DIR_INSTALLER_CONFIG/instances_exclude.json"
 
 #####################################################
+# Helper functions
+remove_path_if_present() {
+    local target_path="$1"
+
+    if [ -L "$target_path" ] || [ -f "$target_path" ]; then
+        rm -f "$target_path" || error_exit "Error deleting $target_path"
+        info "Deleted file/symlink: $target_path"
+        return 0
+    fi
+
+    if [ -d "$target_path" ]; then
+        rm -rf "$target_path" || error_exit "Error deleting $target_path"
+        info "Deleted directory: $target_path"
+    fi
+}
+
+sync_sourcemod_layout() {
+    local dest_dir="$1"
+
+    if [ -e "$dest_dir" ] || [ -L "$dest_dir" ]; then
+        step "Refreshing SourceMod layout in $dest_dir"
+        remove_path_if_present "$dest_dir"
+    else
+        step "Creating SourceMod directory $dest_dir"
+    fi
+
+    mkdir "$dest_dir" || error_exit "Error creating the directory $dest_dir"
+    create_sourcemod_links "$dest_dir"
+}
+
+cleanup_extra_instances() {
+    local target_total_instances="$1"
+    local max_index="$target_total_instances"
+    local file=""
+    local file_name=""
+    local suffix=""
+    local sourcemod_base=""
+    local i=0
+    local instance_name=""
+
+    sourcemod_base="$(basename "$DIR_SOURCEMOD")"
+
+    shopt -s nullglob
+
+    for file in "$DIR_APP/$GAMESERVER"-* "$DIR_CFG/$GAMESERVER"-*.cfg "${DIR_SOURCEMOD}"*; do
+        file_name="$(basename "$file")"
+        suffix=""
+
+        if [[ "$file" == "$DIR_APP/$GAMESERVER"-* ]]; then
+            suffix="${file_name#${GAMESERVER}-}"
+        elif [[ "$file" == "$DIR_CFG/$GAMESERVER"-*.cfg ]]; then
+            suffix="${file_name#${GAMESERVER}-}"
+            suffix="${suffix%.cfg}"
+        elif [[ "$file" == "${DIR_SOURCEMOD}"* ]]; then
+            suffix="${file_name#${sourcemod_base}}"
+        fi
+
+        if [[ "$suffix" =~ ^[0-9]+$ ]] && (( suffix > max_index )); then
+            max_index="$suffix"
+        fi
+    done
+
+    shopt -u nullglob
+
+    if (( max_index <= target_total_instances )); then
+        return 0
+    fi
+
+    for (( i=target_total_instances+1; i<=max_index; i++ )); do
+        instance_name="$(instance_name_for_index "$i")"
+        step "Removing runtime artifacts for extra instance ${instance_name}"
+        remove_path_if_present "$DIR_APP/$instance_name"
+        remove_path_if_present "$DIR_CFG/${instance_name}.cfg"
+        remove_path_if_present "${DIR_SOURCEMOD}${i}"
+    done
+}
+
 # Function to create symbolic links or copy according to the JSON
 create_sourcemod_links() {
     local dest_dir="$1"
@@ -102,28 +179,21 @@ cd "$DIR_APP" || error_exit "Could not access the directory $DIR_APP"
 mkdir -p "$(dirname "$INSTANCES_STATE_FILE")"
 
 #####################################################
-# Create directories for the primary instance
-if [ "$ADDITIONAL_INSTANCES" -eq 0 ]; then
-
-    if [ ! -f "$DIR_APP/l4d2server" ]; then
-        step "Primary instance executable not found. Creating ${GAMESERVER}."
-        $LGSM_PRIMARY_INSTANCE_SETUP
-        ./l4d2server details > /dev/null
-    fi
-
-    if [ ! -d "${DIR_SOURCEMOD}1" ]; then
-        step "Creating sourcemod1 for the primary instance"
-        mkdir "${DIR_SOURCEMOD}1" || error_exit "Error creating the subdirectory sourcemod1"
-        create_sourcemod_links "${DIR_SOURCEMOD}1"
-    fi
-
-    if [ ! -f "$DIR_CFG/$L4D2_DEFAULT_SERVERCFG" ]; then
-        warn "Default configuration file not found: $DIR_CFG/$L4D2_DEFAULT_SERVERCFG"
-    elif [ ! -f "$DIR_CFG/$GAMESERVER.cfg" ]; then
-        step "Copying configuration for primary instance ${GAMESERVER}"
-        cp "$DIR_CFG/$L4D2_DEFAULT_SERVERCFG" "$DIR_CFG/$GAMESERVER.cfg"
-    fi
+# Ensure the primary instance exists
+if [ ! -f "$DIR_APP/$GAMESERVER" ]; then
+    step "Primary instance executable not found. Creating ${GAMESERVER}."
+    $LGSM_PRIMARY_INSTANCE_SETUP
+    ./"$GAMESERVER" details > /dev/null
 fi
+
+if [ ! -f "$DIR_CFG/$L4D2_DEFAULT_SERVERCFG" ]; then
+    warn "Default configuration file not found: $DIR_CFG/$L4D2_DEFAULT_SERVERCFG"
+elif [ ! -f "$DIR_CFG/$GAMESERVER.cfg" ]; then
+    step "Copying configuration for primary instance ${GAMESERVER}"
+    cp "$DIR_CFG/$L4D2_DEFAULT_SERVERCFG" "$DIR_CFG/$GAMESERVER.cfg"
+fi
+
+cleanup_extra_instances "$((ADDITIONAL_INSTANCES + 1))"
 
 #####################################################
 # Loop to create and align additional instances
@@ -147,14 +217,7 @@ for (( i=1; i<=ADDITIONAL_INSTANCES+1; i++ )); do
         cp "$DIR_CFG/$L4D2_DEFAULT_SERVERCFG" "$DIR_CFG/${instance_name}.cfg"
     fi
 
-    if [ -d "$DIR_NEW_SOURCEMOD" ]; then
-        info "Directory $DIR_NEW_SOURCEMOD already exists. Skipping SourceMod layout creation."
-        continue
-    fi
-
-    step "Creating SourceMod directory $DIR_NEW_SOURCEMOD"
-    mkdir "$DIR_NEW_SOURCEMOD" || error_exit "Error creating the directory $DIR_NEW_SOURCEMOD"
-    create_sourcemod_links "$DIR_NEW_SOURCEMOD"
+    sync_sourcemod_layout "$DIR_NEW_SOURCEMOD"
 
 done
 

@@ -188,6 +188,8 @@ state_write_instances_state() {
 state_count_detected_instances() {
     local count=0
     local file
+    local file_name=""
+    local suffix=""
 
     if [ -n "${GAMESERVER:-}" ] && [ -x "/app/${GAMESERVER}" ]; then
         count=1
@@ -196,7 +198,10 @@ state_count_detected_instances() {
     if [ -n "${GAMESERVER:-}" ]; then
         shopt -s nullglob
         for file in /app/${GAMESERVER}-*; do
-            if [ -x "$file" ]; then
+            file_name="$(basename "$file")"
+            suffix="${file_name#${GAMESERVER}-}"
+
+            if [[ "$suffix" != "$file_name" && "$suffix" =~ ^[0-9]+$ && -x "$file" ]]; then
                 count=$((count + 1))
             fi
         done

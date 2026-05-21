@@ -58,6 +58,28 @@ step() {
     log "$(color_text "1;35" "STEP") : $1"
 }
 
+github_auth_token() {
+    if [ -n "${GITHUB_AUTH_TOKEN:-}" ]; then
+        printf '%s\n' "${GITHUB_AUTH_TOKEN}"
+        return 0
+    fi
+
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
+        printf '%s\n' "${GITHUB_TOKEN}"
+        return 0
+    fi
+
+    return 1
+}
+
+github_auth_curl_args() {
+    local auth_token=""
+
+    if auth_token="$(github_auth_token)"; then
+        printf '%s\n' "-H" "Authorization: Bearer ${auth_token}"
+    fi
+}
+
 github_api_request() {
     local api_url="$1"
     local -a curl_args=(
@@ -66,11 +88,27 @@ github_api_request() {
         -H "X-GitHub-Api-Version: 2022-11-28"
     )
 
-    if [ -n "${GITHUB_TOKEN:-}" ]; then
-        curl_args+=( -H "Authorization: Bearer ${GITHUB_TOKEN}" )
-    fi
+    mapfile -t auth_args < <(github_auth_curl_args)
+    curl_args+=( "${auth_args[@]}" )
 
     curl "${curl_args[@]}" "$api_url"
+}
+
+github_http_status() {
+    local url="$1"
+    local destination="$2"
+    local -a curl_args=(
+        -sSL
+        -o "$destination"
+        -w "%{http_code}"
+    )
+
+    if [[ "$url" == https://api.github.com/* || "$url" == https://github.com/* ]]; then
+        mapfile -t auth_args < <(github_auth_curl_args)
+        curl_args+=( "${auth_args[@]}" )
+    fi
+
+    curl "${curl_args[@]}" "$url"
 }
 
 download_file() {
@@ -78,8 +116,9 @@ download_file() {
     local destination="$2"
     local -a curl_args=( -fsSL -o "$destination" )
 
-    if [ -n "${GITHUB_TOKEN:-}" ] && [[ "$url" == https://api.github.com/* || "$url" == https://github.com/* ]]; then
-        curl_args+=( -H "Authorization: Bearer ${GITHUB_TOKEN}" )
+    if [[ "$url" == https://api.github.com/* || "$url" == https://github.com/* ]]; then
+        mapfile -t auth_args < <(github_auth_curl_args)
+        curl_args+=( "${auth_args[@]}" )
     fi
 
     curl "${curl_args[@]}" "$url"

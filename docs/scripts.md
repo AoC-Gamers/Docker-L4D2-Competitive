@@ -31,12 +31,11 @@ Punto de entrada del contenedor. Exporta variables, prepara el runtime y ejecuta
 
 Orquesta la fase de usuario LinuxGSM. Su flujo principal es:
 
-1. Instalar o validar L4D2.
-2. Ejecutar `l4d2_fix_install.sh` cuando corresponde.
-3. Ejecutar `install_stack.sh` para resolver e instalar el stack.
-4. Ejecutar `install_stack.sh update` antes del arranque si `L4D2_STACK_AUTOUPDATE=true`.
-5. Sincronizar instancias adicionales con `sync_instances.sh`.
-6. Lanzar `menu_stack.sh`.
+1. Ejecutar `deploy_stack.sh`.
+2. Preparar o reparar L4D2 cuando corresponde.
+3. Resolver el stack efectivo y reaplicarlo si cambio.
+4. Sincronizar instancias con `sync_instances.sh`.
+5. Lanzar `menu_stack.sh` para arranque u operacion del runtime.
 
 ### `container/bootstrap/symlink.sh`
 
@@ -70,7 +69,9 @@ Capacidades:
 - soporta `source_type=git`
 - soporta `source_type=github_release`
 - resuelve assets por nombre exacto o `asset_name_glob`
-- mantiene cache local y evita descargas innecesarias
+- mantiene cache persistente por perfil en `/data/installer/state/cache/`
+- usa un workspace temporal aislado por corrida bajo `/app/tmp/install_stack/`
+- puede degradar a reuse de cache local si la fuente remota no responde, siempre que el cache corresponda a la misma fuente efectiva
 - ejecuta hooks desde `stack/hooks/`
 
 Uso:
@@ -93,9 +94,22 @@ SOURCE_TYPE
 
 Gestiona la sincronizacion de multiples instancias de L4D2 basadas en la instancia primaria.
 
+Comportamiento actual:
+
+- crea instancias faltantes
+- rehace el layout `sourcemodN` aunque ya exista
+- elimina instancias sobrantes cuando baja la topologia objetivo
+- persiste el resultado en `instances-state.json`
+
 ### `installer/bin/menu_stack.sh`
 
 Menu operativo del entorno LinuxGSM para iniciar, detener, reiniciar y consultar el estado de las instancias.
+
+Notas de flujo:
+
+- el update automatico hace stop/update/start
+- el update manual hace stop/update y deja las instancias detenidas para arranque explicito
+- si detecta drift entre runtime e `instances-state.json`, ejecuta `sync_instances.sh`
 
 ### `installer/bin/l4d2_fix_install.sh`
 
@@ -137,6 +151,7 @@ Libreria base para hooks de componentes. Centraliza helpers compartidos para:
 
 - persistencia puntual de variables en `/etc/environment`
 - sincronizacion de arboles `addons/`, `sourcemod/`, `cfg/` y `scripts/`
+- replace por arbol con staging y rollback basico para hooks que necesitan reemplazo completo
 - movimiento de plugins a subdirectorios como `custom/`
 - limpieza de paths excluidos luego del deploy
 - validacion de comandos requeridos
@@ -180,6 +195,8 @@ l4d2_commsuite.default.sh
 ```
 
 En general, los hooks `*.develop.sh` deben ser wrappers minimos que delegan al `*.default.sh`. Solo conviene mantener logica propia en `develop` cuando realmente hay comportamiento distinto para ese canal.
+
+Cuando un hook instala arboles completos que deben reflejar exactamente el artifact o repo fuente, conviene usar los helpers `stack_replace_*` en vez de `cp -r` directo sobre `serverfiles`.
 
 ## Flujo de Ejecucion
 
