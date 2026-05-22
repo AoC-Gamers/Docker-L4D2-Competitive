@@ -33,6 +33,7 @@ DIR_TMP_ROOT="${DIR_TMP}"
 INSTALL_TMP_DIR=""
 CACHE_FILE=""
 CACHE_LOCK_FILE=""
+SOURCES_CACHE_DIR=""
 
 initialize_install_logging() {
     mkdir -p "$STATE_CURRENT_DIR"
@@ -90,9 +91,11 @@ initialize_install_workspace() {
 
     INSTALL_TMP_DIR="${DIR_TMP_ROOT}/install_stack/${cache_namespace}/${run_id}"
     DIR_TMP="$INSTALL_TMP_DIR"
+    SOURCES_CACHE_DIR="${STATE_ROOT}/sources/${cache_namespace}"
 
     mkdir -p "$DIR_TMP"
-    cd "$DIR_TMP" || error_exit "Could not access the temporary directory $DIR_TMP."
+    mkdir -p "$SOURCES_CACHE_DIR"
+    cd "$SOURCES_CACHE_DIR" || error_exit "Could not access the sources cache directory $SOURCES_CACHE_DIR."
 
     mkdir -p "${STATE_ROOT}/cache"
     CACHE_FILE="${STATE_ROOT}/cache/${cache_namespace}.log"
@@ -104,6 +107,7 @@ initialize_install_workspace() {
 
     info "Temporary workspace: $DIR_TMP"
     info "Component cache: $CACHE_FILE"
+    info "Component sources: $SOURCES_CACHE_DIR"
 }
 
 cleanup_install_workspace() {

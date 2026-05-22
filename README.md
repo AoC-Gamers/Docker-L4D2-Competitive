@@ -91,7 +91,11 @@ El deploy ya no se limita a "instalar y arrancar". El comportamiento actual es:
 4. sincroniza instancias con `L4D2_ADDITIONAL_INSTANCES`.
 5. arranca solo si `L4D2_AUTOSTART=true`.
 
-`install_stack.sh` mantiene cache persistente por perfil en `/data/installer/state/cache/` y usa temporales aislados por corrida bajo `/app/tmp/install_stack/`.
+`install_stack.sh` mantiene:
+
+- cache persistente de estado por perfil en `/data/installer/state/cache/`
+- cache persistente de fuentes y artifacts materializados en `/data/installer/state/sources/`
+- temporales aislados por corrida bajo `/app/tmp/install_stack/`
 
 ## Variables Importantes
 

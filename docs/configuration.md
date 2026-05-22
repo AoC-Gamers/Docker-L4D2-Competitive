@@ -122,6 +122,8 @@ Flujo real:
 /app/stack/profiles/
 /app/stack/hooks/
 /data/installer/
+/data/installer/state/cache/
+/data/installer/state/sources/
 /data/stack/
 /data/serverfiles/
 ```
