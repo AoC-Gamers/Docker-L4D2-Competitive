@@ -57,6 +57,22 @@ build_resolved_components_json() {
     printf ']\n'
 }
 
+prepare_component_workspace() {
+    local component_name="$1"
+    local cache_dir="$2"
+    local workspace_dir="${DIR_TMP}/${component_name}"
+
+    rm -rf "$workspace_dir"
+
+    if [ ! -d "$cache_dir" ]; then
+        error_exit "Expected cached source directory for '${component_name}' at ${cache_dir}."
+    fi
+
+    mkdir -p "$workspace_dir"
+    cp -a "${cache_dir}/." "$workspace_dir/"
+    printf '%s\n' "$workspace_dir"
+}
+
 save_component_state() {
     local component_name="$1"
     local component_state="$2"
@@ -548,6 +564,8 @@ apply_stack_sources() {
     local source_download
     local source_download_raw
     local subscript_file
+    local component_cache_dir
+    local component_work_dir
 
     section "Applying stack sources"
     while IFS= read -r component_json; do
@@ -574,12 +592,15 @@ apply_stack_sources() {
         fi
 
         source_download=false
+        component_cache_dir=""
+        component_work_dir=""
 
         case "$source_type" in
             git)
                 repo_url="$(printf '%s\n' "$repo_url" | envsubst)"
                 source_download_raw=$(download_git_source "$repo_url" "$folder" "$branch")
                 source_download=$(printf '%s\n' "$source_download_raw" | tail -n 1 | tr -d '\r')
+                component_cache_dir="${PWD}/${folder}"
                 ;;
             github_release)
                 github_repo="$(printf '%s\n' "$github_repo" | envsubst)"
@@ -603,6 +624,7 @@ apply_stack_sources() {
 
                 source_download_raw=$(download_github_release_source "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob" "$folder" "$github_auth_token")
                 source_download=$(printf '%s\n' "$source_download_raw" | tail -n 1 | tr -d '\r')
+                component_cache_dir="${PWD}/${folder}"
                 ;;
             hook_only)
                 source_download=false
@@ -619,8 +641,13 @@ apply_stack_sources() {
 
         subscript_file="$DIR_STACK_HOOKS/${folder}.${branch}.sh"
         if [[ -f "$subscript_file" ]]; then
+            if [[ "$source_type" != "hook_only" ]]; then
+                component_work_dir="$(prepare_component_workspace "$folder" "$component_cache_dir")"
+            else
+                component_work_dir="$folder"
+            fi
             step "Executing hook $subscript_file"
-            bash "$subscript_file" "$folder" "$INSTALL_TYPE" "$source_download" "$source_type"
+            bash "$subscript_file" "$component_work_dir" "$INSTALL_TYPE" "$source_download" "$source_type"
             success "Hook completed for $folder"
         else
             warn "No hook found for $folder. Skipping post-processing."
