@@ -405,9 +405,9 @@ download_github_release_source() {
     source_prefix="github_release:${github_repo}@${release_tag}:"
 
     if [[ -n "$github_auth_token" ]]; then
-        asset_metadata_raw="$(GITHUB_AUTH_TOKEN="$github_auth_token" resolve_github_release_asset "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob" 2>/dev/null || true)"
+        asset_metadata_raw="$(GITHUB_AUTH_TOKEN="$github_auth_token" resolve_github_release_asset "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob" || true)"
     else
-        asset_metadata_raw="$(resolve_github_release_asset "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob" 2>/dev/null || true)"
+        asset_metadata_raw="$(resolve_github_release_asset "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob" || true)"
     fi
 
     if [[ -n "$asset_metadata_raw" ]]; then
@@ -415,6 +415,13 @@ download_github_release_source() {
     fi
 
     if [[ ${#asset_metadata[@]} -lt 4 ]]; then
+        warn "Could not resolve release asset metadata for ${github_repo}@${release_tag}. Running GitHub preflight for diagnostics." >&2
+        if [[ -n "$github_auth_token" ]]; then
+            GITHUB_AUTH_TOKEN="$github_auth_token" preflight_github_release_access "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob"
+        else
+            preflight_github_release_access "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob"
+        fi
+
         if [[ -d "$folder" ]] && component_cache_matches_source_prefix "$folder" "$source_prefix"; then
             warn "Could not resolve release asset metadata for ${github_repo}@${release_tag}. Reusing compatible local cache."
             printf '%s\n' "false"
