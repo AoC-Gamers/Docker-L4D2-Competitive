@@ -121,6 +121,10 @@ download_file() {
         curl_args+=( "${auth_args[@]}" )
     fi
 
+    if [[ "$url" == https://api.github.com/repos/*/releases/assets/* ]]; then
+        curl_args+=( -H "Accept: application/octet-stream" )
+    fi
+
     curl "${curl_args[@]}" "$url"
 }
 

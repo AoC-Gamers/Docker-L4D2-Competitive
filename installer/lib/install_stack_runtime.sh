@@ -148,6 +148,7 @@ resolve_github_release_asset() {
     local release_json
     local matched_asset_name=""
     local asset_download_url=""
+    local asset_api_url=""
     local asset_updated_at=""
     local candidate_name
     local candidate_url
@@ -163,19 +164,21 @@ resolve_github_release_asset() {
     if [[ -n "$asset_name" && "$asset_name" != "null" ]]; then
         matched_asset_name="$asset_name"
         asset_download_url=$(echo "$release_json" | jq -r --arg asset_name "$asset_name" '.assets[] | select(.name == $asset_name) | .browser_download_url' | head -n 1)
+        asset_api_url=$(echo "$release_json" | jq -r --arg asset_name "$asset_name" '.assets[] | select(.name == $asset_name) | .url' | head -n 1)
         asset_updated_at=$(echo "$release_json" | jq -r --arg asset_name "$asset_name" '.assets[] | select(.name == $asset_name) | .updated_at' | head -n 1)
     else
-        while IFS=$'\t' read -r candidate_name candidate_url candidate_updated_at; do
+        while IFS=$'\t' read -r candidate_name candidate_url candidate_api_url candidate_updated_at; do
             [[ -n "$candidate_name" ]] || continue
 
             if [[ "$candidate_name" == $asset_name_glob ]]; then
                 if [[ -z "$asset_updated_at" || "$candidate_updated_at" > "$asset_updated_at" ]]; then
                     matched_asset_name="$candidate_name"
                     asset_download_url="$candidate_url"
+                    asset_api_url="$candidate_api_url"
                     asset_updated_at="$candidate_updated_at"
                 fi
             fi
-        done < <(echo "$release_json" | jq -r '.assets[] | [.name, .browser_download_url, .updated_at] | @tsv')
+        done < <(echo "$release_json" | jq -r '.assets[] | [.name, .browser_download_url, .url, .updated_at] | @tsv')
     fi
 
     if [[ -z "$asset_download_url" || "$asset_download_url" == "null" ]]; then
@@ -193,7 +196,12 @@ resolve_github_release_asset() {
         return 1
     fi
 
-    printf '%s\n%s\n%s\n' "$matched_asset_name" "$asset_download_url" "$asset_updated_at"
+    if [[ -z "$asset_api_url" || "$asset_api_url" == "null" ]]; then
+        warn "Could not determine API URL for asset '${matched_asset_name}' in ${github_repo}@${release_tag}." >&2
+        return 1
+    fi
+
+    printf '%s\n%s\n%s\n%s\n' "$matched_asset_name" "$asset_download_url" "$asset_api_url" "$asset_updated_at"
 }
 
 preflight_github_release_access() {
@@ -209,6 +217,7 @@ preflight_github_release_access() {
     local matched_asset_name=""
     local asset_download_url=""
     local asset_updated_at=""
+    local asset_api_url=""
     local candidate_name
     local candidate_url
     local candidate_updated_at
@@ -248,18 +257,20 @@ preflight_github_release_access() {
     if [[ -n "$asset_name" && "$asset_name" != "null" ]]; then
         matched_asset_name="$asset_name"
         asset_download_url=$(echo "$release_json" | jq -r --arg value "$asset_name" '.assets[] | select(.name == $value) | .browser_download_url' | head -n 1)
+        asset_api_url=$(echo "$release_json" | jq -r --arg value "$asset_name" '.assets[] | select(.name == $value) | .url' | head -n 1)
         asset_updated_at=$(echo "$release_json" | jq -r --arg value "$asset_name" '.assets[] | select(.name == $value) | .updated_at' | head -n 1)
     else
-        while IFS=$'\t' read -r candidate_name candidate_url candidate_updated_at; do
+        while IFS=$'\t' read -r candidate_name candidate_url candidate_api_url candidate_updated_at; do
             [[ -n "$candidate_name" ]] || continue
             if [[ "$candidate_name" == $asset_name_glob ]]; then
                 if [[ -z "$asset_updated_at" || "$candidate_updated_at" > "$asset_updated_at" ]]; then
                     matched_asset_name="$candidate_name"
                     asset_download_url="$candidate_url"
+                    asset_api_url="$candidate_api_url"
                     asset_updated_at="$candidate_updated_at"
                 fi
             fi
-        done < <(echo "$release_json" | jq -r '.assets[] | [.name, .browser_download_url, .updated_at] | @tsv')
+        done < <(echo "$release_json" | jq -r '.assets[] | [.name, .browser_download_url, .url, .updated_at] | @tsv')
     fi
 
     if [[ -z "$asset_download_url" || "$asset_download_url" == "null" ]]; then
@@ -267,6 +278,10 @@ preflight_github_release_access() {
             error_exit "GitHub preflight could read ${github_repo}@${release_tag}, but no asset matching '${asset_name_glob}' was found."
         fi
         error_exit "GitHub preflight could read ${github_repo}@${release_tag}, but asset '${asset_name}' was not found."
+    fi
+
+    if [[ -z "$asset_api_url" || "$asset_api_url" == "null" ]]; then
+        error_exit "GitHub preflight could read ${github_repo}@${release_tag}, but the asset API URL for '${matched_asset_name}' is missing."
     fi
 
     success "GitHub release access verified for ${github_repo}@${release_tag} (${matched_asset_name})" >&2
@@ -383,7 +398,7 @@ download_github_release_source() {
         mapfile -t asset_metadata <<< "$asset_metadata_raw"
     fi
 
-    if [[ ${#asset_metadata[@]} -lt 3 ]]; then
+    if [[ ${#asset_metadata[@]} -lt 4 ]]; then
         if [[ -d "$folder" ]] && component_cache_matches_source_prefix "$folder" "$source_prefix"; then
             warn "Could not resolve release asset metadata for ${github_repo}@${release_tag}. Reusing compatible local cache."
             printf '%s\n' "false"
@@ -395,8 +410,9 @@ download_github_release_source() {
 
     resolved_asset_name="${asset_metadata[0]}"
     asset_download_url="${asset_metadata[1]}"
+    asset_api_url="${asset_metadata[2]}"
     sanitized_asset_download_url="$(sanitize_url_for_log "$asset_download_url")"
-    remote_state="github_release:${github_repo}@${release_tag}:${resolved_asset_name}@${asset_metadata[2]}"
+    remote_state="github_release:${github_repo}@${release_tag}:${resolved_asset_name}@${asset_metadata[3]}"
 
     if [[ "${GIT_FORCE_DOWNLOAD:-false}" == "true" ]]; then
         source_download=true
@@ -425,9 +441,9 @@ download_github_release_source() {
         fi
         step "Downloading release asset $resolved_asset_name from $github_repo@$release_tag" >&2
         if [[ -n "$github_auth_token" ]]; then
-            GITHUB_AUTH_TOKEN="$github_auth_token" download_file "$asset_download_url" "$archive_path" || error_exit "Failed to download $resolved_asset_name from $sanitized_asset_download_url"
+            GITHUB_AUTH_TOKEN="$github_auth_token" download_file "$asset_api_url" "$archive_path" || error_exit "Failed to download $resolved_asset_name from $sanitized_asset_download_url"
         else
-            download_file "$asset_download_url" "$archive_path" || error_exit "Failed to download $resolved_asset_name from $sanitized_asset_download_url"
+            download_file "$asset_api_url" "$archive_path" || error_exit "Failed to download $resolved_asset_name from $sanitized_asset_download_url"
         fi
         rm -rf "$folder"
         mkdir -p "$folder"
