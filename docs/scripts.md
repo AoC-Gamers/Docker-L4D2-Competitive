@@ -99,7 +99,21 @@ Comportamiento actual:
 - crea instancias faltantes
 - rehace el layout `sourcemodN` aunque ya exista
 - elimina instancias sobrantes cuando baja la topologia objetivo
+- mezcla enlaces simbolicos y copias reales segun `installer/config/instances_exclude.json`
 - persiste el resultado en `instances-state.json`
+
+`instances_exclude.json` se evalua por arbol de SourceMod (`bin`, `configs`, `data`, `extensions`, `gamedata`, `plugins`, `translations`). Cada lista acepta rutas relativas dentro de ese arbol. Ejemplo:
+
+```json
+{
+  "data": [
+    "dumps",
+    "sqlite/local-backups"
+  ]
+}
+```
+
+Con eso, `data/dumps` y `data/sqlite/local-backups` se copian fisicamente a cada instancia, mientras el resto de `data/` puede seguir enlazado.
 
 ### `installer/bin/menu_stack.sh`
 

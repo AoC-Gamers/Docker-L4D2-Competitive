@@ -155,6 +155,30 @@ Helpers relevantes:
 - validacion de rangos para operaciones batch
 - iteracion comun sobre instancias
 
+### `installer/config/instances_exclude.json`
+
+Define que rutas del layout `addons/sourcemod` deben copiarse por instancia en vez de compartirse por enlace simbolico.
+
+Reglas:
+
+- las claves validas son `bin`, `configs`, `data`, `extensions`, `gamedata`, `plugins`, `translations`
+- cada valor es una lista de rutas relativas dentro de ese arbol
+- si una lista queda vacia, el arbol completo se comparte por symlink
+- si una ruta aparece en la lista, ese path se copia fisicamente y el resto del arbol sigue enlazado cuando sea posible
+
+Ejemplo:
+
+```json
+{
+  "data": [
+    "dumps",
+    "sqlite/local-backups"
+  ]
+}
+```
+
+Esto es util para rutas que generan estado propio por instancia, como `addons/sourcemod/data/dumps`.
+
 ### `installer/lib/install_stack_runtime.sh`
 
 Helpers relevantes:

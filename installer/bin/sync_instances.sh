@@ -31,6 +31,16 @@ INSTANCE_EXCLUDE_JSON="$DIR_INSTALLER_CONFIG/instances_exclude.json"
 
 #####################################################
 # Helper functions
+normalize_relative_path() {
+    local value="$1"
+
+    value="${value#./}"
+    value="${value#/}"
+    value="${value%/}"
+
+    printf '%s\n' "$value"
+}
+
 remove_path_if_present() {
     local target_path="$1"
 
@@ -44,6 +54,84 @@ remove_path_if_present() {
         rm -rf "$target_path" || error_exit "Error deleting $target_path"
         info "Deleted directory: $target_path"
     fi
+}
+
+path_is_exact_match() {
+    local relative_path="$1"
+    shift
+    local candidate=""
+
+    for candidate in "$@"; do
+        if [ "$relative_path" = "$candidate" ]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+path_has_excluded_descendant() {
+    local relative_path="$1"
+    shift
+    local candidate=""
+
+    for candidate in "$@"; do
+        if [[ "$candidate" == "${relative_path}/"* ]]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+warn_missing_excluded_paths() {
+    local source_folder="$1"
+    shift
+    local excluded_paths=("$@")
+    local excluded_path=""
+
+    for excluded_path in "${excluded_paths[@]}"; do
+        if [ ! -e "${source_folder}/${excluded_path}" ]; then
+            warn "The item to copy '${excluded_path}' does not exist in ${source_folder}"
+        fi
+    done
+}
+
+sync_tree_with_exclusions() {
+    local source_dir="$1"
+    local dest_dir="$2"
+    local relative_prefix="$3"
+    shift 3
+    local excluded_paths=("$@")
+    local item=""
+    local base_item=""
+    local item_relative_path=""
+    local target=""
+
+    mkdir -p "$dest_dir"
+
+    for item in "$source_dir"/*; do
+        [ -e "$item" ] || continue
+        base_item="$(basename "$item")"
+
+        if [ -n "$relative_prefix" ]; then
+            item_relative_path="${relative_prefix}/${base_item}"
+        else
+            item_relative_path="$base_item"
+        fi
+
+        target="${dest_dir}/${base_item}"
+
+        if path_is_exact_match "$item_relative_path" "${excluded_paths[@]}"; then
+            cp -a "$item" "$target" || error_exit "Error copying ${item_relative_path} to ${target}"
+            echo "Copied: ${item_relative_path}"
+        elif [ -d "$item" ] && path_has_excluded_descendant "$item_relative_path" "${excluded_paths[@]}"; then
+            sync_tree_with_exclusions "$item" "$target" "$item_relative_path" "${excluded_paths[@]}"
+        else
+            ln -s "$item" "$target" || error_exit "Error creating symlink for ${item_relative_path} in ${target}"
+            echo "Symlink created: ${item_relative_path}"
+        fi
+    done
 }
 
 sync_sourcemod_layout() {
@@ -111,41 +199,29 @@ cleanup_extra_instances() {
 create_sourcemod_links() {
     local dest_dir="$1"
     local folders=("bin" "configs" "data" "extensions" "gamedata" "plugins" "translations")
+    local folder=""
+    local source_folder=""
+    local dest_folder=""
+    local excluded_paths=()
+    local excluded_path=""
 
     for folder in "${folders[@]}"; do
-        local source_folder="${DIR_SOURCEMOD}/${folder}"
-        local dest_folder="${dest_dir}/${folder}"
+        source_folder="${DIR_SOURCEMOD}/${folder}"
+        dest_folder="${dest_dir}/${folder}"
         [ -d "$source_folder" ] || continue
 
-        local copy_items=()
+        excluded_paths=()
         if [ -f "$INSTANCE_EXCLUDE_JSON" ]; then
-            mapfile -t copy_items < <(jq -r --arg key "$folder" '.[$key] // [] | .[]' "$INSTANCE_EXCLUDE_JSON")
+            mapfile -t excluded_paths < <(jq -r --arg key "$folder" '.[$key] // [] | .[]' "$INSTANCE_EXCLUDE_JSON" | while IFS= read -r line; do normalize_relative_path "$line"; done)
         fi
 
-        for exclude in "${copy_items[@]}"; do
-            if [ ! -e "${source_folder}/${exclude}" ]; then
-                echo "Warning: The item to copy '$folder/$exclude' does not exist in ${source_folder}"
-            fi
-        done
+        warn_missing_excluded_paths "$source_folder" "${excluded_paths[@]}"
 
-        if [ ${#copy_items[@]} -eq 0 ]; then
+        if [ ${#excluded_paths[@]} -eq 0 ]; then
             ln -s "$source_folder" "$dest_folder" || error_exit "Error creating symlink for folder $folder"
             echo "Symlink created for the entire folder: $folder"
         else
-            mkdir -p "$dest_folder"
-            for item in "$source_folder"/*; do
-                [ -e "$item" ] || continue
-                local base_item
-                base_item=$(basename "$item")
-                local target="${dest_folder}/${base_item}"
-                if printf "%s\n" "${copy_items[@]}" | grep -qx "$base_item"; then
-                    cp -r "$item" "$target" || error_exit "Error copying $folder/$base_item to $target"
-                    echo "Copied: $folder/$base_item"
-                else
-                    ln -s "$item" "$target" || error_exit "Error creating symlink for $folder/$base_item in $target"
-                    echo "Symlink created: $folder/$base_item"
-                fi
-            done
+            sync_tree_with_exclusions "$source_folder" "$dest_folder" "" "${excluded_paths[@]}"
         fi
     done
 }
