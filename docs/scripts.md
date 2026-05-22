@@ -151,7 +151,7 @@ Libreria base para hooks de componentes. Centraliza helpers compartidos para:
 
 - persistencia puntual de variables en `/etc/environment`
 - sincronizacion de arboles `addons/`, `sourcemod/`, `cfg/` y `scripts/`
-- replace por arbol con staging y rollback basico para hooks que necesitan reemplazo completo
+- instalacion acumulativa por arbol como politica recomendada del stack
 - movimiento de plugins a subdirectorios como `custom/`
 - limpieza de paths excluidos luego del deploy
 - validacion de comandos requeridos
@@ -196,7 +196,7 @@ l4d2_commsuite.default.sh
 
 En general, los hooks `*.develop.sh` deben ser wrappers minimos que delegan al `*.default.sh`. Solo conviene mantener logica propia en `develop` cuando realmente hay comportamiento distinto para ese canal.
 
-Cuando un hook instala arboles completos que deben reflejar exactamente el artifact o repo fuente, conviene usar los helpers `stack_replace_*` en vez de `cp -r` directo sobre `serverfiles`.
+En este stack, los hooks deben preferir `stack_install_*` para no borrar archivos criticos del motor, mapas custom u overlays ya materializados. `stack_replace_*` queda solo para casos excepcionales y auditados.
 
 ## Flujo de Ejecucion
 

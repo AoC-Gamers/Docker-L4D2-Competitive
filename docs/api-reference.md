@@ -198,8 +198,8 @@ Responsabilidades habituales:
 
 Convenciones recomendadas:
 
-- para arboles completos, preferir `stack_replace_*` en vez de `cp -r` directo
-- usar `stack_install_*` solo cuando el comportamiento deseado sea overlay incremental
+- para este stack, preferir `stack_install_*` como politica por defecto
+- reservar `stack_replace_*` para casos muy acotados y auditados donde se quiera reemplazo total de un subarbol sin riesgo para contenido del motor o overlays externos
 
 ## Workshop y Mapas
 

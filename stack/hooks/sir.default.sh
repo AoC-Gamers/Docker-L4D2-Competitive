@@ -34,9 +34,9 @@ DIR_SIR_METAMOD="$DIR_SIR_ADDONS/metamod"
 # Helper functions:
 ##############################
 CopyFiles() {
-    stack_replace_addons_tree "$DIR_SIR"
-    stack_replace_cfg_tree "$DIR_SIR"
-    stack_replace_scripts_tree "$DIR_SIR"
+    stack_install_addons_tree "$DIR_SIR"
+    stack_install_cfg_tree "$DIR_SIR"
+    stack_install_scripts_tree "$DIR_SIR"
 }
 
 ##############################
