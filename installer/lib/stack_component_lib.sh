@@ -177,23 +177,32 @@ stack_replace_scripts_tree() {
 # Post-deploy mutation helpers
 #######################################
 
-stack_move_plugins_to_custom() {
+stack_move_plugins_to_subdir() {
     local plugins_dir="$1"
+    local subdir_name="$2"
+    shift
     shift
 
     if [ ! -d "$plugins_dir" ]; then
         return 0
     fi
 
-    mkdir -p "$plugins_dir/custom"
+    mkdir -p "$plugins_dir/$subdir_name"
 
     local plugin_name=""
     for plugin_name in "$@"; do
         if [ -f "$plugins_dir/$plugin_name" ]; then
-            mv -f "$plugins_dir/$plugin_name" "$plugins_dir/custom/$plugin_name"
-            log "Plugin $plugin_name moved to: $plugins_dir/custom"
+            mv -f "$plugins_dir/$plugin_name" "$plugins_dir/$subdir_name/$plugin_name"
+            log "Plugin $plugin_name moved to: $plugins_dir/$subdir_name"
         fi
     done
+}
+
+stack_move_plugins_to_custom() {
+    local plugins_dir="$1"
+    shift
+
+    stack_move_plugins_to_subdir "$plugins_dir" "custom" "$@"
 }
 
 stack_remove_paths_if_present() {
