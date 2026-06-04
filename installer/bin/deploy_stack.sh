@@ -8,9 +8,12 @@ set -euo pipefail
 : "${GAMESERVER:?Error: The GAMESERVER variable is not defined.}"
 : "${LGSM_CONFIG:?Error: The LGSM_CONFIG variable is not defined.}"
 : "${LGSM_SERVERFILES:?Error: The LGSM_SERVERFILES variable is not defined.}"
+: "${COMPONENTS_JSON:=$DIR_STACK/manifests/components.json}"
+: "${PROFILE_JSON:=$DIR_STACK/profiles/${STACK_PROFILE:-latest}.json}"
 
 source "$DIR_INSTALLER_LIB/tools_stack.sh"
 source "$DIR_INSTALLER_LIB/state_stack.sh"
+source "$DIR_INSTALLER_LIB/install_stack_runtime.sh"
 
 state_init_paths
 
@@ -18,6 +21,9 @@ DEPLOYMENT_ID="$(date -u +%Y%m%dT%H%M%SZ)-${STACK_PROFILE:-default}"
 DEPLOY_STATE_INITIALIZED=false
 L4D2_FRESH_INSTALL="false"
 PREVIOUS_DEPLOYMENT_ID=""
+TARGET_RESOLVED_COMPONENTS_JSON=""
+TARGET_RESOLVED_COMPONENTS_SHA256=""
+STACK_UPDATED_DURING_DEPLOY="false"
 
 finalize_deploy_state() {
   local exit_code=$?
@@ -39,6 +45,24 @@ finalize_deploy_state() {
 }
 
 trap finalize_deploy_state EXIT
+
+get_target_additional_instances() {
+  local configured_value="${L4D2_ADDITIONAL_INSTANCES:-}"
+
+  if [ -z "$configured_value" ]; then
+    if [ -f "$INSTANCES_STATE_FILE" ]; then
+      configured_value="$(state_read_additional_instances)"
+    else
+      configured_value="0"
+    fi
+  fi
+
+  if ! [[ "$configured_value" =~ ^[0-9]+$ ]]; then
+    error_exit "Invalid L4D2_ADDITIONAL_INSTANCES value '$configured_value'. Expected a natural number greater than or equal to 0."
+  fi
+
+  printf '%s\n' "$configured_value"
+}
 
 clean_steam_password() {
   if [ -n "${STEAM_PASSWD:-}" ]; then
@@ -125,6 +149,84 @@ initialize_deploy_state() {
   PREVIOUS_DEPLOYMENT_ID="$(state_archive_current_deployment)"
   state_create_deploy_state "$DEPLOYMENT_ID" "$PREVIOUS_DEPLOYMENT_ID" "preparing" "${STACK_PROFILE:-default}" "$STATE_RESOLVED_COMPONENTS_FILE" "" "$GAMESERVER"
   DEPLOY_STATE_INITIALIZED=true
+}
+
+resolve_target_stack_metadata() {
+  if [[ -f "$DIR_STACK/.env" ]]; then
+    set -o allexport
+    source <(grep -E '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=' "$DIR_STACK/.env" | sed 's/\r$//')
+    set +o allexport
+  fi
+
+  if [ ! -f "$COMPONENTS_JSON" ]; then
+    error_exit "The components.json file was not found: $COMPONENTS_JSON"
+  fi
+
+  if [ ! -f "$PROFILE_JSON" ]; then
+    error_exit "The stack profile file was not found: $PROFILE_JSON"
+  fi
+
+  TARGET_RESOLVED_COMPONENTS_JSON="$(build_resolved_components_json "$COMPONENTS_JSON" "$PROFILE_JSON")"
+  TARGET_RESOLVED_COMPONENTS_SHA256="$(printf '%s\n' "$TARGET_RESOLVED_COMPONENTS_JSON" | sha256sum | awk '{print $1}')"
+}
+
+record_target_stack_metadata() {
+  local components_summary_json='[]'
+
+  mkdir -p "$STATE_CURRENT_DIR"
+  printf '%s\n' "$TARGET_RESOLVED_COMPONENTS_JSON" > "$STATE_RESOLVED_COMPONENTS_FILE"
+
+  components_summary_json="$(printf '%s\n' "$TARGET_RESOLVED_COMPONENTS_JSON" | jq -c '[.[] | {id, folder, source_type, repo_url: (.repo_url // null), github_repo: (.github_repo // null), branch: (.branch // "default"), release_tag: (.release_tag // null)}]')"
+
+  jq \
+    --arg stack_profile "${STACK_PROFILE:-default}" \
+    --arg resolved_components_file "$STATE_RESOLVED_COMPONENTS_FILE" \
+    --arg resolved_components_sha256 "$TARGET_RESOLVED_COMPONENTS_SHA256" \
+    --argjson components "$components_summary_json" \
+    '
+      .stack.profile = $stack_profile |
+      .stack.resolved_components_file = $resolved_components_file |
+      .stack.resolved_components_sha256 = $resolved_components_sha256 |
+      .components = $components
+    ' "$DEPLOY_STATE_FILE" > "${DEPLOY_STATE_FILE}.tmp" && mv "${DEPLOY_STATE_FILE}.tmp" "$DEPLOY_STATE_FILE"
+}
+
+stack_requires_reapply() {
+  local previous_state_file=""
+  local previous_status=""
+  local previous_profile=""
+  local previous_sha256=""
+
+  if [ -z "$PREVIOUS_DEPLOYMENT_ID" ]; then
+    return 0
+  fi
+
+  previous_state_file="$STATE_HISTORY_DIR/$PREVIOUS_DEPLOYMENT_ID/deploy-state.json"
+  if [ ! -f "$previous_state_file" ]; then
+    return 0
+  fi
+
+  previous_status="$(jq -r '.status // empty' "$previous_state_file" 2> /dev/null || true)"
+  previous_profile="$(jq -r '.stack.profile // empty' "$previous_state_file" 2> /dev/null || true)"
+  previous_sha256="$(jq -r '.stack.resolved_components_sha256 // empty' "$previous_state_file" 2> /dev/null || true)"
+
+  if [ "$previous_status" != "ready" ]; then
+    return 0
+  fi
+
+  if [ -z "$previous_profile" ] || [ -z "$previous_sha256" ]; then
+    return 0
+  fi
+
+  if [ "$previous_profile" != "${STACK_PROFILE:-default}" ]; then
+    return 0
+  fi
+
+  if [ "$previous_sha256" != "$TARGET_RESOLVED_COMPONENTS_SHA256" ]; then
+    return 0
+  fi
+
+  return 1
 }
 
 prepare_lgsm_tooling() {
@@ -248,18 +350,31 @@ install_primary_instance() {
 apply_stack_if_needed() {
   section "Apply stack"
 
-  if [ "$L4D2_FRESH_INSTALL" = "false" ]; then
-    info "Skipping stack installation because this is not a fresh install"
+  if [ "$L4D2_FRESH_INSTALL" = "true" ]; then
+    step "Installing stack files"
+    bash "$DIR_INSTALLER_BIN/install_stack.sh" install
+    STACK_UPDATED_DURING_DEPLOY="true"
     return 0
   fi
 
-  step "Installing stack files"
-  bash "$DIR_INSTALLER_BIN/install_stack.sh" install
+  if stack_requires_reapply; then
+    step "Applying stack update because the resolved stack definition changed"
+    bash "$DIR_INSTALLER_BIN/install_stack.sh" update
+    STACK_UPDATED_DURING_DEPLOY="true"
+    return 0
+  fi
+
+  info "Skipping stack update because the resolved stack definition is unchanged"
 }
 
 run_stack_autoupdate_before_start() {
   if ! is_stack_autoupdate_enabled; then
     info "Pre-start stack auto-update disabled"
+    return 0
+  fi
+
+  if [ "$STACK_UPDATED_DURING_DEPLOY" = "true" ]; then
+    info "Skipping pre-start update because the stack was already applied during this deployment"
     return 0
   fi
 
@@ -324,12 +439,11 @@ prepare_user_profile() {
 start_runtime() {
   section "Start runtime"
   info "Primary instance: ${GAMESERVER}"
+  local additional_instances_target="0"
 
-  if [ "$L4D2_FRESH_INSTALL" = "true" ]; then
-    info "Fresh install detected. Skipping automatic start."
-    "$DIR_INSTALLER_BIN/sync_instances.sh" 0 > /dev/null 2>&1
-    return 0
-  fi
+  additional_instances_target="$(get_target_additional_instances)"
+  step "Synchronizing runtime instances (additional: ${additional_instances_target})"
+  "$DIR_INSTALLER_BIN/sync_instances.sh" "$additional_instances_target"
 
   if ! is_l4d2_autostart_enabled; then
     warn "Skipping start because L4D2_AUTOSTART=false"
@@ -341,6 +455,8 @@ start_runtime() {
 }
 
 initialize_deploy_state
+resolve_target_stack_metadata
+record_target_stack_metadata
 prepare_lgsm_tooling
 prepare_user_profile
 install_primary_instance

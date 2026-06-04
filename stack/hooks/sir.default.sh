@@ -16,6 +16,7 @@ fi
 
 # Resources
 source "$DIR_INSTALLER_LIB/tools_stack.sh"
+source "$DIR_INSTALLER_LIB/stack_component_lib.sh"
 
 REPO_DIR="$1"
 INSTALL_TYPE="${2:-install}"
@@ -33,9 +34,9 @@ DIR_SIR_METAMOD="$DIR_SIR_ADDONS/metamod"
 # Helper functions:
 ##############################
 CopyFiles() {
-    cp -r "$DIR_SIR/addons" "$DIR_LEFT4DEAD2"
-    cp -r "$DIR_SIR/cfg" "$DIR_LEFT4DEAD2"
-    cp -r "$DIR_SIR/scripts" "$DIR_LEFT4DEAD2"
+    stack_install_addons_tree "$DIR_SIR"
+    stack_install_cfg_tree "$DIR_SIR"
+    stack_install_scripts_tree "$DIR_SIR"
 }
 
 ##############################

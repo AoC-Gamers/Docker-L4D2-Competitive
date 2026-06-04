@@ -24,12 +24,16 @@ state_init_paths
 #####################################################
 # Variables
 GIT_FORCE_DOWNLOAD="${GIT_FORCE_DOWNLOAD:-false}"
-CACHE_FILE="$DIR_TMP/cache_gameserver.log"
 LOG_FILE="$STATE_INSTALL_LOG_FILE"
 LEGACY_LOG_FILE="$DIR_INSTALLER_BIN/install_stack.log"
 INSTALLER_MANAGED_DEPLOY_STATE=false
 DEPLOYMENT_ID=""
 RESOLVED_COMPONENTS_JSON=""
+DIR_TMP_ROOT="${DIR_TMP}"
+INSTALL_TMP_DIR=""
+CACHE_FILE=""
+CACHE_LOCK_FILE=""
+SOURCES_CACHE_DIR=""
 
 initialize_install_logging() {
     mkdir -p "$STATE_CURRENT_DIR"
@@ -57,15 +61,68 @@ ensure_deploy_state_context() {
 }
 
 finalize_installer_deploy_state() {
+    local exit_code="${1:-$?}"
     local completed_at
+    local status="failed"
+    local last_error_json='null'
 
     if [[ "$INSTALLER_MANAGED_DEPLOY_STATE" != "true" || ! -f "$DEPLOY_STATE_FILE" ]]; then
         return 0
     fi
 
+    if [[ "$exit_code" -ne 0 ]]; then
+        last_error_json=$(jq -Rn --arg value "install_stack exited with code ${exit_code}" '$value')
+    else
+        status="ready"
+    fi
+
     completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    state_finalize_deploy_state "ready" "false" 'null' "$completed_at"
+    state_finalize_deploy_state "$status" "false" "$last_error_json" "$completed_at"
 }
+
+initialize_install_workspace() {
+    local stack_profile_slug=""
+    local cache_namespace=""
+    local run_id=""
+
+    stack_profile_slug="$(printf '%s\n' "${STACK_PROFILE:-default}" | tr -c '[:alnum:]_.-' '_')"
+    cache_namespace="${stack_profile_slug:-default}"
+    run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+
+    INSTALL_TMP_DIR="${DIR_TMP_ROOT}/install_stack/${cache_namespace}/${run_id}"
+    DIR_TMP="$INSTALL_TMP_DIR"
+    SOURCES_CACHE_DIR="${STATE_ROOT}/sources/${cache_namespace}"
+
+    mkdir -p "$DIR_TMP"
+    mkdir -p "$SOURCES_CACHE_DIR"
+    cd "$SOURCES_CACHE_DIR" || error_exit "Could not access the sources cache directory $SOURCES_CACHE_DIR."
+
+    mkdir -p "${STATE_ROOT}/cache"
+    CACHE_FILE="${STATE_ROOT}/cache/${cache_namespace}.log"
+    CACHE_LOCK_FILE="${CACHE_FILE}.lock"
+
+    if [[ ! -f "$CACHE_FILE" ]]; then
+        touch "$CACHE_FILE"
+    fi
+
+    info "Temporary workspace: $DIR_TMP"
+    info "Component cache: $CACHE_FILE"
+    info "Component sources: $SOURCES_CACHE_DIR"
+}
+
+cleanup_install_workspace() {
+    if [[ -n "$INSTALL_TMP_DIR" && -d "$INSTALL_TMP_DIR" ]]; then
+        rm -rf "$INSTALL_TMP_DIR"
+    fi
+}
+
+handle_install_stack_exit() {
+    local exit_code=$?
+    finalize_installer_deploy_state "$exit_code"
+    cleanup_install_workspace
+}
+
+trap handle_install_stack_exit EXIT
 
 update_deploy_state_installer_metadata() {
     local resolved_components_sha256=""
@@ -142,13 +199,8 @@ info "Components file: $COMPONENTS_JSON"
 info "Profile file: $PROFILE_JSON"
 
 #####################################################
-# Temporary directory
-mkdir -p "$DIR_TMP"
-cd "$DIR_TMP" || error_exit "Could not access the temporary directory $DIR_TMP."
-
-if [[ ! -f "$CACHE_FILE" ]]; then
-    touch "$CACHE_FILE"
-fi
+# Temporary directory and cache workspace
+initialize_install_workspace
 
 #####################################################
 # Process cleaning in case of update
@@ -170,5 +222,3 @@ section "Stack ${INSTALL_TYPE} completed"
 success "L4D2 competitive stack finished successfully"
 info "Mode: $INSTALL_TYPE"
 info "Current log: $LOG_FILE"
-
-finalize_installer_deploy_state

@@ -28,6 +28,7 @@ LGSM_PASSWORD=mi_password_seguro
 SSH_PORT=2222
 L4D2_INSTALL=normal
 L4D2_AUTOSTART=true
+L4D2_ADDITIONAL_INSTANCES=0
 L4D2_STACK_AUTOUPDATE=false
 STACK_PROFILE=default
 ```
@@ -60,10 +61,12 @@ El flujo actual es:
 
 1. `container/entrypoint.sh` prepara el runtime.
 2. `container/bootstrap/` valida dependencias y crea symlinks.
-3. `container/entrypoint-user.sh` instala L4D2 si hace falta.
-4. `installer/bin/install_stack.sh` resuelve e instala el stack.
-5. si `L4D2_STACK_AUTOUPDATE=true`, se ejecuta `install_stack.sh update` antes de iniciar los gameservers.
-6. `installer/bin/menu_stack.sh` opera las instancias.
+3. `container/entrypoint-user.sh` ejecuta `deploy_stack.sh`.
+4. `deploy_stack.sh` instala o repara L4D2 si hace falta.
+5. `deploy_stack.sh` aplica `install_stack.sh install|update` cuando el stack cambia o cuando es una instalacion fresca.
+6. se sincronizan instancias segun `L4D2_ADDITIONAL_INSTANCES`.
+7. si `L4D2_STACK_AUTOUPDATE=true`, se permite un update pre-start solo cuando el stack no fue reaplicado ya en ese deploy.
+8. `installer/bin/menu_stack.sh` opera las instancias.
 
 ## Operacion Basica
 
@@ -127,6 +130,8 @@ cd /data/installer/bin
 - verifica que exista el profile seleccionado por `STACK_PROFILE`
 - verifica que `jq` este disponible dentro del contenedor
 - revisa `stack/manifests/components.json` y `stack/profiles/*.json`
+- revisa `/data/installer/state/current/install_stack.log`
+- revisa si falta acceso a GitHub o si el installer entro en modo degradado reutilizando cache local
 
 ### La instancia primaria no arranca
 

@@ -1,6 +1,21 @@
 #!/bin/bash
 # instance_stack.sh - Helpers for multi-instance runtime operations.
 
+instance_is_additional_executable() {
+    local file_path="$1"
+    local file_name=""
+    local suffix=""
+
+    file_name="$(basename "$file_path")"
+    suffix="${file_name#${GAMESERVER}-}"
+
+    if [[ "$suffix" != "$file_name" && "$suffix" =~ ^[0-9]+$ && -x "$file_path" ]]; then
+        return 0
+    fi
+
+    return 1
+}
+
 instance_name_for_index() {
     local index="$1"
 
@@ -34,7 +49,7 @@ instance_calculate_total() {
 
     shopt -s nullglob
     for file in "$pattern"*; do
-        if [[ -x "$file" ]]; then
+        if instance_is_additional_executable "$file"; then
             additional_instance_count=$((additional_instance_count + 1))
             info "Additional instance detected: $file" >&2
         fi

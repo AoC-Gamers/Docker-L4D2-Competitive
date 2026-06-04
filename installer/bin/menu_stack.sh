@@ -137,13 +137,13 @@ update_servers() {
     local update_type=${1:-manual}
     section "Stack update"
     info "Update mode: ${update_type}"
-    if [[ $update_type == "automatic" ]]; then
-        stop_servers 1 "$TOTAL_SERVERS"
-    fi
+    stop_servers 1 "$TOTAL_SERVERS"
     step "Running install_stack.sh update"
     "$DIR_INSTALLER_BIN/install_stack.sh" 1
     if [[ $update_type == "automatic" ]]; then
         start_servers 1 "$TOTAL_SERVERS"
+    else
+        info "Manual update completed. Instances remain stopped until an explicit start."
     fi
     success "Update operation completed"
 }

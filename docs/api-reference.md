@@ -25,9 +25,12 @@ Variables principales exportadas por el bootstrap y consumidas por installer y h
 | `DIR_STACK` | `/data/stack` | Raiz operativa del stack |
 | `DIR_STACK_HOOKS` | `/data/stack/hooks` | Hooks del stack |
 | `DIR_LEFT4DEAD2` | `/data/serverfiles/left4dead2` | Directorio del juego |
+| `DIR_TMP` | `/app/tmp/install_stack/default/...` | Workspace temporal aislado por corrida del installer |
 | `STACK_PROFILE` | `default` | Perfil seleccionado para compilar el stack |
+| `L4D2_ADDITIONAL_INSTANCES` | `0` | Topologia objetivo de instancias adicionales |
 | `GIT_FORCE_DOWNLOAD` | `false` | Fuerza redescarga de fuentes |
 | `GITHUB_TOKEN` | `ghp_xxx` | Token opcional para API y releases |
+| `GITHUB_AUTH_TOKEN` | `ghp_xxx` | Token temporal interno usado por el installer para resolver un componente `github_release` concreto |
 
 ## API del Stack
 
@@ -51,11 +54,12 @@ Define que componentes se activan por entorno y que overrides aplicar.
 ```json
 {
   "source_type": "github_release",
-  "repo_url": "https://github.com/AoC-Gamers/BanSystem",
+  "github_repo": "AoC-Gamers/BanSystem",
   "folder": "bansystem",
   "branch": "default",
   "release_tag": "latest",
-  "asset_name_glob": "*modular*.zip"
+  "asset_name_glob": "*modular*.zip",
+  "github_token_env": "PRIVATE_RELEASE_TOKEN"
 }
 ```
 
@@ -71,6 +75,9 @@ Campos especificos de `github_release`:
 - `release_tag`
 - `asset_name`
 - `asset_name_glob`
+- `github_token_env`
+
+`github_token_env` permite declarar el nombre de una variable de entorno que contiene el token a usar para resolver y descargar ese release asset concreto. Si no se declara, el installer usa `GITHUB_TOKEN` cuando exista.
 
 ## API del Installer
 
@@ -94,6 +101,13 @@ Responsabilidades:
 7. ejecutar el hook correspondiente
 8. preservar rutas declaradas en `stack/preserve-paths.json` durante updates
 
+Detalles operativos:
+
+- el cache de componentes vive en `/data/installer/state/cache/{STACK_PROFILE}.log`
+- el workspace temporal de cada corrida vive en `/app/tmp/install_stack/{STACK_PROFILE}/{run_id}/`
+- si una fuente remota no responde pero existe cache compatible con la misma fuente efectiva, el installer puede degradar a reuse local
+- si no hay cache compatible, falla
+
 ### `installer/bin/deploy_stack.sh`
 
 Comandos soportados:
@@ -109,7 +123,8 @@ Responsabilidades:
 3. decidir install, no-install o workaround anonimo
 4. ejecutar `install_stack.sh` cuando aplica
 5. correr bootstrap de parches y preparar perfil de usuario
-6. sincronizar o arrancar instancias segun el estado del runtime
+6. sincronizar instancias segun `L4D2_ADDITIONAL_INSTANCES`
+7. arrancar solo si `L4D2_AUTOSTART=true`
 
 ### `installer/lib/tools_stack.sh`
 
@@ -140,12 +155,37 @@ Helpers relevantes:
 - validacion de rangos para operaciones batch
 - iteracion comun sobre instancias
 
+### `installer/config/instances_exclude.json`
+
+Define que rutas del layout `addons/sourcemod` deben copiarse por instancia en vez de compartirse por enlace simbolico.
+
+Reglas:
+
+- las claves validas son `bin`, `configs`, `data`, `extensions`, `gamedata`, `plugins`, `translations`
+- cada valor es una lista de rutas relativas dentro de ese arbol
+- si una lista queda vacia, el arbol completo se comparte por symlink
+- si una ruta aparece en la lista, ese path se copia fisicamente y el resto del arbol sigue enlazado cuando sea posible
+
+Ejemplo:
+
+```json
+{
+  "data": [
+    "dumps",
+    "sqlite/local-backups"
+  ]
+}
+```
+
+Esto es util para rutas que generan estado propio por instancia, como `addons/sourcemod/data/dumps`.
+
 ### `installer/lib/install_stack_runtime.sh`
 
 Helpers relevantes:
 
 - resolucion de fuentes Git y GitHub Release
-- cache local de fuentes
+- cache persistente por perfil
+- degradacion controlada a cache local cuando la fuente remota no responde
 - limpieza previa de update
 - backup y restore de preserve-paths
 - aplicacion de hooks del stack
@@ -180,6 +220,11 @@ Responsabilidades habituales:
 - adaptar layouts distintos entre Git y release artifacts
 - aplicar postprocesamiento por entorno
 
+Convenciones recomendadas:
+
+- para este stack, preferir `stack_install_*` como politica por defecto
+- reservar `stack_replace_*` para casos muy acotados y auditados donde se quiera reemplazo total de un subarbol sin riesgo para contenido del motor o overlays externos
+
 ## Workshop y Mapas
 
 ### `installer/bin/workshop_downloader.sh`
@@ -198,6 +243,7 @@ Descarga mapas desde L4D2Center.
 | `install_stack.log` | `/data/installer/bin/` | Espejo legacy del log activo para compatibilidad operativa |
 | `deploy-state.json` | `/data/installer/state/current/` | Estado actual del despliegue |
 | `instances-state.json` | `/data/installer/state/current/` | Estado actual de las instancias |
+| `cache/*.log` | `/data/installer/state/cache/` | Cache persistente de estado remoto por perfil |
 | `history/<deployment_id>/` | `/data/installer/state/history/` | Historial por despliegue |
 | `workshop_*.log` | `/data/installer/bin/` | Descargas de Workshop |
 | logs LinuxGSM | `/data/log/` | Runtime de las instancias |

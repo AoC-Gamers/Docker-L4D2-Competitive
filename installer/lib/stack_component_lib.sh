@@ -50,6 +50,46 @@ stack_sync_dir() {
     cp -r "$source_dir" "$target_root"
 }
 
+stack_replace_dir() {
+    local source_dir="$1"
+    local target_root="$2"
+    local target_name=""
+    local target_dir=""
+    local staging_dir=""
+    local backup_dir=""
+
+    if [ ! -d "$source_dir" ]; then
+        return 0
+    fi
+
+    target_name="$(basename "$source_dir")"
+    target_dir="${target_root}/${target_name}"
+    staging_dir="${target_dir}.staging.$$"
+    backup_dir="${target_dir}.backup.$$"
+
+    mkdir -p "$target_root"
+    rm -rf "$staging_dir" "$backup_dir"
+
+    cp -r "$source_dir" "$staging_dir"
+
+    if [ -e "$target_dir" ] || [ -L "$target_dir" ]; then
+        mv "$target_dir" "$backup_dir"
+    fi
+
+    if mv "$staging_dir" "$target_dir"; then
+        rm -rf "$backup_dir"
+        return 0
+    fi
+
+    rm -rf "$staging_dir"
+
+    if [ -e "$backup_dir" ] || [ -L "$backup_dir" ]; then
+        mv "$backup_dir" "$target_dir" || error_exit "Failed to restore ${target_dir} after replace failure."
+    fi
+
+    error_exit "Failed to replace directory ${target_dir}."
+}
+
 stack_sync_file() {
     local source_file="$1"
     local target_root="$2"
@@ -83,9 +123,22 @@ stack_install_tree_if_present() {
     stack_sync_dir "$source_root/$relative_path" "$target_root"
 }
 
+stack_replace_tree_if_present() {
+    local source_root="$1"
+    local relative_path="$2"
+    local target_root="$3"
+
+    stack_replace_dir "$source_root/$relative_path" "$target_root"
+}
+
 stack_install_addons_tree() {
     local source_root="$1"
     stack_install_tree_if_present "$source_root" "addons" "$DIR_LEFT4DEAD2"
+}
+
+stack_replace_addons_tree() {
+    local source_root="$1"
+    stack_replace_tree_if_present "$source_root" "addons" "$DIR_LEFT4DEAD2"
 }
 
 stack_install_sourcemod_tree() {
@@ -94,9 +147,20 @@ stack_install_sourcemod_tree() {
     stack_install_tree_if_present "$source_root" "sourcemod" "$DIR_LEFT4DEAD2/addons"
 }
 
+stack_replace_sourcemod_tree() {
+    local source_root="$1"
+    mkdir -p "$DIR_LEFT4DEAD2/addons"
+    stack_replace_tree_if_present "$source_root" "sourcemod" "$DIR_LEFT4DEAD2/addons"
+}
+
 stack_install_cfg_tree() {
     local source_root="$1"
     stack_install_tree_if_present "$source_root" "cfg" "$DIR_LEFT4DEAD2"
+}
+
+stack_replace_cfg_tree() {
+    local source_root="$1"
+    stack_replace_tree_if_present "$source_root" "cfg" "$DIR_LEFT4DEAD2"
 }
 
 stack_install_scripts_tree() {
@@ -104,27 +168,41 @@ stack_install_scripts_tree() {
     stack_install_tree_if_present "$source_root" "scripts" "$DIR_LEFT4DEAD2"
 }
 
+stack_replace_scripts_tree() {
+    local source_root="$1"
+    stack_replace_tree_if_present "$source_root" "scripts" "$DIR_LEFT4DEAD2"
+}
+
 #######################################
 # Post-deploy mutation helpers
 #######################################
 
-stack_move_plugins_to_custom() {
+stack_move_plugins_to_subdir() {
     local plugins_dir="$1"
+    local subdir_name="$2"
+    shift
     shift
 
     if [ ! -d "$plugins_dir" ]; then
         return 0
     fi
 
-    mkdir -p "$plugins_dir/custom"
+    mkdir -p "$plugins_dir/$subdir_name"
 
     local plugin_name=""
     for plugin_name in "$@"; do
         if [ -f "$plugins_dir/$plugin_name" ]; then
-            mv -f "$plugins_dir/$plugin_name" "$plugins_dir/custom/$plugin_name"
-            log "Plugin $plugin_name moved to: $plugins_dir/custom"
+            mv -f "$plugins_dir/$plugin_name" "$plugins_dir/$subdir_name/$plugin_name"
+            log "Plugin $plugin_name moved to: $plugins_dir/$subdir_name"
         fi
     done
+}
+
+stack_move_plugins_to_custom() {
+    local plugins_dir="$1"
+    shift
+
+    stack_move_plugins_to_subdir "$plugins_dir" "custom" "$@"
 }
 
 stack_remove_paths_if_present() {
