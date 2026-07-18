@@ -280,6 +280,8 @@ stack_download_release_tarball_if_changed() {
     local local_git=""
     local target_file=""
     local temp_file=""
+    local invalid_file=""
+    local file_size=""
     local timeout=60
 
     remote_filename=$(stack_get_filename_from_url "$download_url")
@@ -334,8 +336,12 @@ stack_download_release_tarball_if_changed() {
     fi
 
     if ! validate_archive "$temp_file"; then
-        verify_and_delete_file "$temp_file" >&2
+        invalid_file="${target_file}.invalid.$$"
+        file_size="$(wc -c < "$temp_file" 2> /dev/null | tr -d '[:space:]' || true)"
         log "Error: The downloaded archive for ${package_name} failed validation." >&2
+        log "Preserving invalid download for inspection at ${invalid_file} (size: ${file_size:-unknown} bytes)." >&2
+        df -h "$DIR_TMP" >&2 || true
+        mv -f "$temp_file" "$invalid_file"
         return 1
     fi
 
