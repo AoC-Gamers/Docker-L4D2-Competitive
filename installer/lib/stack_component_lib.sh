@@ -291,14 +291,14 @@ stack_download_release_tarball_if_changed() {
     fi
     log "The remote filename for ${package_name} is: ${remote_filename}" >&2
 
-    remote_git=$(echo "$remote_filename" | grep -oP 'git\d+' || true)
+    remote_git=$(echo "$remote_filename" | grep -oE 'git[0-9]+' || true)
     target_file="$DIR_TMP/$remote_filename"
 
     local_file=$(ls $file_pattern 2>/dev/null | head -n 1 || true)
     if [ -z "$local_file" ]; then
         log "No local file found matching the pattern: $file_pattern" >&2
     else
-        local_git=$(echo "$local_file" | grep -oP 'git\d+' || true)
+        local_git=$(echo "$local_file" | grep -oE 'git[0-9]+' || true)
         log "Local version of ${package_name}: ${local_git:-unknown}" >&2
     fi
 

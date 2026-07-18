@@ -150,11 +150,24 @@ extract_archive() {
     esac
 }
 
+dir_has_entries() {
+    local dir_path="$1"
+
+    [ -d "$dir_path" ] && [ -n "$(ls -A "$dir_path" 2> /dev/null)" ]
+}
+
 validate_archive() {
     local archive_path="$1"
+    local validate_dir=""
+    local validate_root="${DIR_TMP:-/tmp}"
 
     if [ ! -s "$archive_path" ]; then
         return 1
+    fi
+
+    if ! mkdir -p "$validate_root" 2> /dev/null; then
+        validate_root="/tmp"
+        mkdir -p "$validate_root" 2> /dev/null || return 1
     fi
 
     case "$archive_path" in
@@ -162,10 +175,23 @@ validate_archive() {
             unzip -tq "$archive_path" > /dev/null 2>&1
             ;;
         *.tar.gz|*.tgz)
-            tar -tzf "$archive_path" > /dev/null 2>&1
+            gzip -t "$archive_path" > /dev/null 2>&1 || return 1
+            validate_dir="$(mktemp -d "${validate_root%/}/validate-tgz-XXXXXX")" || return 1
+            if tar -xzf "$archive_path" -C "$validate_dir" > /dev/null 2>&1 && dir_has_entries "$validate_dir"; then
+                rm -rf "$validate_dir"
+                return 0
+            fi
+            rm -rf "$validate_dir"
+            return 1
             ;;
         *.tar)
-            tar -tf "$archive_path" > /dev/null 2>&1
+            validate_dir="$(mktemp -d "${validate_root%/}/validate-tar-XXXXXX")" || return 1
+            if tar -xf "$archive_path" -C "$validate_dir" > /dev/null 2>&1 && dir_has_entries "$validate_dir"; then
+                rm -rf "$validate_dir"
+                return 0
+            fi
+            rm -rf "$validate_dir"
+            return 1
             ;;
         *)
             return 1
@@ -189,10 +215,18 @@ debug_archive_validation_failure() {
     case "$archive_path" in
         *.tar.gz|*.tgz)
             gzip -t "$archive_path" >&2 || true
-            tar -tzf "$archive_path" > /dev/null 2>&1 || true
+            if ! tar -tzf "$archive_path" > /dev/null 2> "${archive_path}.tar.stderr"; then
+                log "tar -tzf stderr for $archive_path:" >&2
+                sed -n '1,40p' "${archive_path}.tar.stderr" >&2 || true
+            fi
+            rm -f "${archive_path}.tar.stderr"
             ;;
         *.tar)
-            tar -tf "$archive_path" > /dev/null 2>&1 || true
+            if ! tar -tf "$archive_path" > /dev/null 2> "${archive_path}.tar.stderr"; then
+                log "tar -tf stderr for $archive_path:" >&2
+                sed -n '1,40p' "${archive_path}.tar.stderr" >&2 || true
+            fi
+            rm -f "${archive_path}.tar.stderr"
             ;;
         *.zip)
             unzip -t "$archive_path" >&2 || true
