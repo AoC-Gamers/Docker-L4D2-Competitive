@@ -150,6 +150,29 @@ extract_archive() {
     esac
 }
 
+validate_archive() {
+    local archive_path="$1"
+
+    if [ ! -s "$archive_path" ]; then
+        return 1
+    fi
+
+    case "$archive_path" in
+        *.zip)
+            unzip -tq "$archive_path" > /dev/null 2>&1
+            ;;
+        *.tar.gz|*.tgz)
+            tar -tzf "$archive_path" > /dev/null 2>&1
+            ;;
+        *.tar)
+            tar -tf "$archive_path" > /dev/null 2>&1
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 error_exit() {
     log "$(color_text "1;31" "ERROR"): $1"
     exit 1

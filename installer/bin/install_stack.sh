@@ -34,6 +34,9 @@ INSTALL_TMP_DIR=""
 CACHE_FILE=""
 CACHE_LOCK_FILE=""
 SOURCES_CACHE_DIR=""
+INSTALL_LOCK_FILE=""
+INSTALL_LOCK_DIR=""
+INSTALL_LOCK_MODE=""
 
 initialize_install_logging() {
     mkdir -p "$STATE_CURRENT_DIR"
@@ -83,13 +86,13 @@ finalize_installer_deploy_state() {
 initialize_install_workspace() {
     local stack_profile_slug=""
     local cache_namespace=""
-    local run_id=""
 
     stack_profile_slug="$(printf '%s\n' "${STACK_PROFILE:-default}" | tr -c '[:alnum:]_.-' '_')"
     cache_namespace="${stack_profile_slug:-default}"
-    run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 
-    INSTALL_TMP_DIR="${DIR_TMP_ROOT}/install_stack/${cache_namespace}/${run_id}"
+    # Keep a stable temp root per profile so downloaded artifacts can be reused
+    # across install/update runs until the container itself is removed.
+    INSTALL_TMP_DIR="${DIR_TMP_ROOT}/install_stack/${cache_namespace}"
     DIR_TMP="$INSTALL_TMP_DIR"
     SOURCES_CACHE_DIR="${STATE_ROOT}/sources/${cache_namespace}"
 
@@ -105,20 +108,62 @@ initialize_install_workspace() {
         touch "$CACHE_FILE"
     fi
 
-    info "Temporary workspace: $DIR_TMP"
+    info "Temporary workspace root: $DIR_TMP"
     info "Component cache: $CACHE_FILE"
     info "Component sources: $SOURCES_CACHE_DIR"
 }
 
-cleanup_install_workspace() {
-    if [[ -n "$INSTALL_TMP_DIR" && -d "$INSTALL_TMP_DIR" ]]; then
-        rm -rf "$INSTALL_TMP_DIR"
+acquire_install_lock() {
+    local stack_profile_slug=""
+    local cache_namespace=""
+
+    stack_profile_slug="$(printf '%s\n' "${STACK_PROFILE:-default}" | tr -c '[:alnum:]_.-' '_')"
+    cache_namespace="${stack_profile_slug:-default}"
+
+    mkdir -p "${STATE_ROOT}/locks"
+    INSTALL_LOCK_FILE="${STATE_ROOT}/locks/${cache_namespace}.lock"
+    INSTALL_LOCK_DIR="${INSTALL_LOCK_FILE}.d"
+
+    if command -v flock > /dev/null 2>&1; then
+        exec 8>"$INSTALL_LOCK_FILE"
+        step "Waiting for install_stack lock: $INSTALL_LOCK_FILE"
+        flock 8
+        INSTALL_LOCK_MODE="flock"
+        info "Acquired install_stack lock for profile ${cache_namespace}"
+        return 0
     fi
+
+    step "Waiting for install_stack lock directory: $INSTALL_LOCK_DIR"
+    until mkdir "$INSTALL_LOCK_DIR" 2> /dev/null; do
+        sleep 1
+    done
+
+    INSTALL_LOCK_MODE="mkdir"
+    info "Acquired install_stack lock for profile ${cache_namespace}"
+}
+
+release_install_lock() {
+    case "$INSTALL_LOCK_MODE" in
+        flock)
+            flock -u 8 || true
+            exec 8>&-
+            ;;
+        mkdir)
+            if [[ -n "$INSTALL_LOCK_DIR" && -d "$INSTALL_LOCK_DIR" ]]; then
+                rmdir "$INSTALL_LOCK_DIR" || true
+            fi
+            ;;
+    esac
+}
+
+cleanup_install_workspace() {
+    :
 }
 
 handle_install_stack_exit() {
     local exit_code=$?
     finalize_installer_deploy_state "$exit_code"
+    release_install_lock
     cleanup_install_workspace
 }
 
@@ -189,6 +234,7 @@ else
 fi
 
 ensure_deploy_state_context
+acquire_install_lock
 initialize_install_logging
 update_deploy_state_installer_metadata
 

@@ -104,7 +104,7 @@ Responsabilidades:
 Detalles operativos:
 
 - el cache de componentes vive en `/data/installer/state/cache/{STACK_PROFILE}.log`
-- el workspace temporal de cada corrida vive en `/app/tmp/install_stack/{STACK_PROFILE}/{run_id}/`
+- el workspace temporal persistente por perfil vive en `/app/tmp/install_stack/{STACK_PROFILE}/`
 - si una fuente remota no responde pero existe cache compatible con la misma fuente efectiva, el installer puede degradar a reuse local
 - si no hay cache compatible, falla
 
