@@ -342,6 +342,7 @@ stack_download_release_tarball_if_changed() {
         log "Preserving invalid download for inspection at ${invalid_file} (size: ${file_size:-unknown} bytes)." >&2
         df -h "$DIR_TMP" >&2 || true
         mv -f "$temp_file" "$invalid_file"
+        debug_archive_validation_failure "$invalid_file"
         return 1
     fi
 

@@ -173,6 +173,33 @@ validate_archive() {
     esac
 }
 
+debug_archive_validation_failure() {
+    local archive_path="$1"
+
+    log "Archive debug for: $archive_path" >&2
+
+    if command -v file > /dev/null 2>&1; then
+        file "$archive_path" >&2 || true
+    fi
+
+    if command -v od > /dev/null 2>&1; then
+        od -An -tx1 -N16 "$archive_path" >&2 || true
+    fi
+
+    case "$archive_path" in
+        *.tar.gz|*.tgz)
+            gzip -t "$archive_path" >&2 || true
+            tar -tzf "$archive_path" > /dev/null 2>&1 || true
+            ;;
+        *.tar)
+            tar -tf "$archive_path" > /dev/null 2>&1 || true
+            ;;
+        *.zip)
+            unzip -t "$archive_path" >&2 || true
+            ;;
+    esac
+}
+
 error_exit() {
     log "$(color_text "1;31" "ERROR"): $1"
     exit 1
