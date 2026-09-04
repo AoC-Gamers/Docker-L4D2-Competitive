@@ -28,6 +28,7 @@ Variables principales exportadas por el bootstrap y consumidas por installer y h
 | `DIR_TMP` | `/app/tmp/install_stack/default/...` | Workspace temporal aislado por corrida del installer |
 | `STACK_PROFILE` | `default` | Perfil seleccionado para compilar el stack |
 | `L4D2_ADDITIONAL_INSTANCES` | `0` | Topologia objetivo de instancias adicionales |
+| `NPM_CONFIG_AUDIT` | `false` | Controla la auditoria automatica de npm invocada por LinuxGSM/GameDig |
 | `GIT_FORCE_DOWNLOAD` | `false` | Fuerza redescarga de fuentes |
 | `GITHUB_TOKEN` | `ghp_xxx` | Token opcional para API y releases |
 | `GITHUB_AUTH_TOKEN` | `ghp_xxx` | Token temporal interno usado por el installer para resolver un componente `github_release` concreto |

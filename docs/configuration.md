@@ -12,6 +12,7 @@ L4D2_AUTOSTART=true
 L4D2_ADDITIONAL_INSTANCES=0
 L4D2_STACK_AUTOUPDATE=false
 L4D2_UPDATER=true
+NPM_CONFIG_AUDIT=false
 STACK_PROFILE=default
 GIT_FORCE_DOWNLOAD=false
 GITHUB_TOKEN=ghp_xxx
@@ -35,6 +36,7 @@ REPO_RESOURCES_DIR=/data/resources
 - `L4D2_ADDITIONAL_INSTANCES=0..N`: define cuantas instancias adicionales debe materializar y mantener sincronizadas el deploy.
 - `L4D2_STACK_AUTOUPDATE=true|false`: ejecuta `install_stack.sh update` durante el arranque del contenedor, antes de iniciar los gameservers. En instalaciones frescas se omite porque el stack ya fue aplicado por la ruta de `install`.
 - `L4D2_UPDATER=true|false`: controla el bootstrap legacy `l4d2_updater.sh` de la base competitiva.
+- `NPM_CONFIG_AUDIT=false`: evita que los comandos de LinuxGSM queden esperando el endpoint de auditoria de npm cuando GameDig ejecuta `npm install` o `npm update`. La auditoria debe realizarse separadamente durante CI o la construccion de la imagen.
 
 ## GeoIP
 

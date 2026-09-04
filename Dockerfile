@@ -10,7 +10,8 @@ LABEL maintainer="L4D2 LGSM Competitive <lechuga>"
 LABEL version="2.1.0"
 
 ARG SHORTNAME=l4d2
-ENV GAMESERVER=l4d2server
+ENV GAMESERVER=l4d2server \
+    NPM_CONFIG_AUDIT=false
 
 WORKDIR /app
 
