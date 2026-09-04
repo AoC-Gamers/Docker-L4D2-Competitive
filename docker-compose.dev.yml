@@ -20,6 +20,7 @@ services:
       - L4D2_AUTOSTART=${L4D2_AUTOSTART:-true}
       - L4D2_UPDATER=${L4D2_UPDATER:-true}
       - STACK_PROFILE=${STACK_PROFILE:-default}
+      - NPM_CONFIG_AUDIT=${NPM_CONFIG_AUDIT:-false}
     ports:
       - "27015:27015"
       - "27115:27115"

@@ -28,6 +28,7 @@ Variables principales exportadas por el bootstrap y consumidas por installer y h
 | `DIR_TMP` | `/app/tmp/install_stack/default/...` | Workspace temporal aislado por corrida del installer |
 | `STACK_PROFILE` | `default` | Perfil seleccionado para compilar el stack |
 | `L4D2_ADDITIONAL_INSTANCES` | `0` | Topologia objetivo de instancias adicionales |
+| `NPM_CONFIG_AUDIT` | `false` | Controla la auditoria automatica de npm invocada por LinuxGSM/GameDig |
 | `GIT_FORCE_DOWNLOAD` | `false` | Fuerza redescarga de fuentes |
 | `GITHUB_TOKEN` | `ghp_xxx` | Token opcional para API y releases |
 | `GITHUB_AUTH_TOKEN` | `ghp_xxx` | Token temporal interno usado por el installer para resolver un componente `github_release` concreto |
@@ -104,7 +105,7 @@ Responsabilidades:
 Detalles operativos:
 
 - el cache de componentes vive en `/data/installer/state/cache/{STACK_PROFILE}.log`
-- el workspace temporal de cada corrida vive en `/app/tmp/install_stack/{STACK_PROFILE}/{run_id}/`
+- el workspace temporal persistente por perfil vive en `/app/tmp/install_stack/{STACK_PROFILE}/`
 - si una fuente remota no responde pero existe cache compatible con la misma fuente efectiva, el installer puede degradar a reuse local
 - si no hay cache compatible, falla
 

@@ -95,7 +95,7 @@ El deploy ya no se limita a "instalar y arrancar". El comportamiento actual es:
 
 - cache persistente de estado por perfil en `/data/installer/state/cache/`
 - cache persistente de fuentes y artifacts materializados en `/data/installer/state/sources/`
-- temporales aislados por corrida bajo `/app/tmp/install_stack/`
+- temporales persistentes por perfil bajo `/app/tmp/install_stack/`
 
 ## Variables Importantes
 
@@ -110,6 +110,7 @@ El deploy ya no se limita a "instalar y arrancar". El comportamiento actual es:
 | `L4D2_ADDITIONAL_INSTANCES` | Cantidad de instancias adicionales a sincronizar | `0` |
 | `L4D2_STACK_AUTOUPDATE` | Ejecuta `install_stack.sh update` antes del arranque de los gameservers | `false` |
 | `L4D2_UPDATER` | Habilita o deshabilita el updater legacy de la base | `true` |
+| `NPM_CONFIG_AUDIT` | Deshabilita por defecto la auditoria interactiva de npm durante comandos LinuxGSM/GameDig | `false` |
 | `STACK_PROFILE` | Perfil de stack a materializar | `default` |
 | `HOST_REPO_RESOURCES_DIR` | Carpeta local montada de forma read-only dentro del contenedor | `./resources` |
 | `REPO_RESOURCES_DIR` | Ruta interna para artefactos locales del repo | `/data/resources` |
