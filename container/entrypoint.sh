@@ -64,11 +64,11 @@ apply_data_tree_action() {
   local resources_dir="${REPO_RESOURCES_DIR:-/data/resources}"
 
   if [ -d "$resources_dir" ] && [[ "$resources_dir" == /data/* ]]; then
-    find /data -path "$resources_dir" -prune -o -exec "$action" "$@" {} +
+    find /data -path "$resources_dir" -prune -o ! -type l -exec "$action" "$@" {} +
     return 0
   fi
 
-  "$action" "$@" /data
+  find /data ! -type l -exec "$action" "$@" {} +
 }
 
 persist_runtime_environment() {

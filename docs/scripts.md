@@ -26,6 +26,9 @@ Competitive ya no organiza su logica operativa como `docker-scripts/` y `server-
 ### `container/entrypoint.sh`
 
 Punto de entrada del contenedor. Exporta variables, prepara el runtime y ejecuta los scripts de `container/bootstrap/`.
+Las normalizaciones recursivas de propietario y permisos omiten enlaces
+simbolicos: el contenedor puede enlazar almacenamiento administrado por otro
+servicio sin modificar por accidente el destino compartido.
 
 ### `container/entrypoint-user.sh`
 
