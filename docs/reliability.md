@@ -105,7 +105,7 @@ Referencias del contrato: [sockets LinuxGSM](https://github.com/GameServerManage
 
 ## Logs
 
-El update no elimina `errors_*.log`. El historial conserva los logs del instalador y los locks de fuentes por despliegue. Se proporciona `installer/config/sourcemod-logrotate.conf` como política **opcional**, instalable por el administrador en logrotate: compresión, `delaycompress`, archivos de al menos dos días y 90 rotaciones. Nunca la invoca install/update. Ajustar retención a la capacidad y exportación de evidencia del nodo antes de habilitarla. La carpeta de snapshots de fuentes crece con identidades nuevas; no se recolectan automáticamente snapshots que puedan ser necesarios para recuperación.
+El update no elimina `errors_*.log`. El historial conserva los logs del instalador y los locks de fuentes por despliegue. Se proporciona `installer/lib/retain_error_logs.py` como política **opcional** para nombres diarios SourceMod: compresión tras dos días sin escritura y retención de 90 días, exigiendo antigüedad tanto de la fecha del nombre como del último write. Solo acepta errors_YYYYMMDD.log y su versión .gz, sin seguir symlinks. Por defecto muestra el plan; `--apply` lo ejecuta. Nunca la invoca install/update. Ajustar retención a la capacidad y exportación de evidencia del nodo antes de programarla. Un logrotate convencional por nombre diario no garantiza expiración si ese nombre no vuelve a escribirse; por eso se usa antigüedad explícita. Ejemplo de revisión: `python3 "$DIR_INSTALLER_LIB/retain_error_logs.py" "$DIR_SOURCEMOD/logs" --days 90`; repetir por cada directorio privado de logs que se desee incluir. Si una compresión se interrumpe, el .pending se conserva y el original permanece: revisar ese archivo antes de reintentar. La carpeta de snapshots de fuentes crece con identidades nuevas; no se recolectan automáticamente snapshots que puedan ser necesarios para recuperación.
 
 ## CI e integración propuesta
 
@@ -144,7 +144,7 @@ Todos los cambios se prepararon en ramas nuevas `codex/stack-reliability`, desde
 
 Archivos principales por repositorio:
 
-- **Base:** `installer/bin/{install_stack,deploy_stack,sync_instances,recover_stack,runtime_intent,menu_stack}.sh`, bibliotecas de transacción/locks/fuentes/políticas/validación, configuración logrotate, entrypoints, Dockerfile, workflow, `installer/tests`, `scripts/test-stack.sh` y documentación. Los scripts del actualizador Valve y healthchecks no cambian.
+- **Base:** `installer/bin/{install_stack,deploy_stack,sync_instances,recover_stack,runtime_intent,menu_stack}.sh`, bibliotecas de transacción/locks/fuentes/políticas/validación, retención opcional de logs, entrypoints, Dockerfile, workflow, `installer/tests`, `scripts/test-stack.sh` y documentación. Los scripts del actualizador Valve y healthchecks no cambian.
 - **Docker AoC:** `stack/hooks/aoc.default.sh`, catálogo con obligatoriedad de hooks, `container/extensions/{after-sync,idle}.sh`, `stack/extension-policy.json`, Dockerfiles, workflow, fixtures y `docs/reliability.md`. No se modifica mediante parches textuales el código heredado.
 - **Vanilla:** hook AoC compartido, `stack/final-policy.json`, Dockerfiles, workflow, fixtures y `docs/reliability.md`. La lista exacta y motivos de exclusión están en ese documento.
 - **Artefacto AoC:** `plugin-package-map.json`, `left4dead2/cfg/sharedplugins.cfg`, `dependencies.lock.json`, fetchers, staging/validador de artefacto, workflow, pruebas y `docs/build-system.md`.
@@ -153,14 +153,14 @@ Validación ejecutada en el host, con exit code 0:
 
 | Directorio | Comando | Resultado |
 |---|---|---|
-| Docker-L4D2-Competitive | `bash scripts/test-stack.sh` | Sintaxis Bash y 30 pruebas offline |
+| Docker-L4D2-Competitive | `bash scripts/test-stack.sh` | Sintaxis Bash y 31 pruebas offline |
 | Docker-L4D2-AoC | `bash scripts/test-stack.sh ../Docker-L4D2-Competitive` | Sintaxis/JSON, 2 pruebas de composición y fixtures del reconciliador |
 | Docker-L4D2-AoC-Vanilla | `bash scripts/test-stack.sh ../Docker-L4D2-Competitive` | Sintaxis/JSON y 2 pruebas de composición |
 | AoC-L4D2-Competitive | `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -v` | 6 pruebas de dependencias, cargas y pipeline estructural |
 | Los cuatro workflows modificados | `actionlint -shellcheck='' <workflows>` (1.7.12) | Sin diagnósticos; shellcheck no instalado |
 | Los cuatro repositorios | `git diff --check` | Sin errores de whitespace |
 
-Las 40 pruebas Python más los fixtures Bash cubren composición, migración/retirada repetida, rutas/symlinks inválidos, capas que reintroducen exclusiones, configuraciones/datos privados, preparación fallida por descarga/extracción/hook, rollback e interrupción SIGKILL, locks y llamadas anidadas, fuentes confirmadas/caché corrupta, huella independiente de timestamps/logs y hooks obligatorios. La equivalencia limpio/update compara árboles administrados, no datos mutables. El pipeline de empaquetado usa SMX ficticios para validar estructura; no demuestra ejecución ni compilación SourcePawn.
+Las 41 pruebas Python más los fixtures Bash cubren composición, migración/retirada repetida, rutas/symlinks inválidos, capas que reintroducen exclusiones, configuraciones/datos privados, preparación fallida por descarga/extracción/hook, rollback e interrupción SIGKILL, locks y llamadas anidadas, fuentes confirmadas/caché corrupta, huella independiente de timestamps/logs y hooks obligatorios. La equivalencia limpio/update compara árboles administrados, no datos mutables. El pipeline de empaquetado usa SMX ficticios para validar estructura; no demuestra ejecución ni compilación SourcePawn.
 
 Además se descargaron los archivos oficiales SourceMod Linux y Windows para comprobar hashes reales frente a los digests de GitHub, y se resolvió el commit upstream real. Los tests normales usan mocks sin credenciales. El reconciliador de develop y sus propios fixtures también se ejecutaron aislados en un directorio temporal: PASS.
 
