@@ -207,17 +207,38 @@ stack_move_plugins_to_custom() {
 
 stack_remove_paths_if_present() {
     local target_path=""
+    local status=0
     for target_path in "$@"; do
-        if [ -d "$target_path" ]; then
-            rm -rf "$target_path"
-            log "Excluded path from deployment: ${target_path#$DIR_LEFT4DEAD2/}"
+        if [[ -L "$target_path" || -f "$target_path" ]]; then
+            status=0
+            rm -f -- "$target_path" || status=$?
+        elif [[ -d "$target_path" ]]; then
+            status=0
+            rm -rf -- "$target_path" || status=$?
+        elif [[ -e "$target_path" ]]; then
+            stack_log_exclusion "$target_path" failed >&2
+            error_exit "Excluded artifact is not a file, directory or symlink: $target_path"
+        else
+            stack_log_exclusion "$target_path" absent
             continue
         fi
-
-        if [ -f "$target_path" ]; then
-            rm -f "$target_path"
-            log "Excluded path from deployment: ${target_path#$DIR_LEFT4DEAD2/}"
+        if (( status != 0 )); then
+            stack_log_exclusion "$target_path" failed >&2
+            return "$status"
         fi
+        stack_log_exclusion "$target_path" removed
+    done
+}
+
+stack_remove_files_if_present() {
+    local target_path=""
+    for target_path in "$@"; do
+        # A declared file exclusion must never recursively remove a directory.
+        if [[ -e "$target_path" && ! -f "$target_path" && ! -L "$target_path" ]]; then
+            stack_log_exclusion "$target_path" failed >&2
+            error_exit "Excluded artifact is not a regular file or symlink: $target_path"
+        fi
+        stack_remove_paths_if_present "$target_path" || return
     done
 }
 

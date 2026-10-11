@@ -105,6 +105,22 @@ Referencias del contrato: [sockets LinuxGSM](https://github.com/GameServerManage
 
 ## Logs
 
+### Exclusiones de artefactos
+
+Los hooks deben usar `stack_remove_files_if_present <rutas...>` para exclusiones de archivos y `stack_remove_paths_if_present <rutas...>` cuando se permite retirar también directorios. Ambas funciones usan `stack_log_exclusion` y registran **cada ruta en cada invocación**, incluso si no existe o se reutiliza la caché:
+
+```text
+Excluded path from deployment: addons/sourcemod/plugins/example.smx (removed)
+Excluded path from deployment: addons/sourcemod/plugins/example.smx (absent)
+Excluded path from deployment: serverfiles/bin/libgcc_s.so.1 (deferred)
+```
+
+`removed` confirma el borrado en el árbol que recibe el hook; durante preparación es el candidato o workspace, no una confirmación de publicación en el servidor activo. `absent` significa que la política se aplicó y la ruta ya estaba ausente. `deferred` declara una retirada que el publicador transaccional ejecutará después; no prueba que haya ocurrido. `failed` se escribe por stderr con salida no cero si el helper no puede retirar el artefacto. El helper de archivos rechaza directorios reales y archivos especiales; ambos helpers retiran enlaces simbólicos sin recorrer su destino. Las rutas dentro de `DIR_LEFT4DEAD2` se muestran relativas a esa raíz; las del workspace conservan su ruta para distinguir el origen.
+
+`final_policy.py` usa el mismo formato para todas sus rutas y añade `Excluded command from deployment: <comando> (<estado>; occurrences=<cantidad>)` para cada `exec` o `sm plugins load` excluido. Las políticas se ejecutan después de las capas y de conservar los CFG locales: una segunda línea `absent` es esperable. Los scripts autónomos, como el reconciliador BanSystem, respetan el mismo formato e identifican cada instancia mediante su ruta completa.
+
+Los helpers `verify_and_delete_file/dir` se reservan para limpieza temporal o sustitución de archivos durante una copia; esas operaciones no son exclusiones de política. Las listas de exclusión y las políticas de conservación no cambian por este contrato de logs. Integrar primero la biblioteca base actualizada, después los hooks AoC y finalmente Vanilla.
+
 El update no elimina `errors_*.log`. El historial conserva los logs del instalador y los locks de fuentes por despliegue. Se proporciona `installer/lib/retain_error_logs.py` como política **opcional** para nombres diarios SourceMod: compresión tras dos días sin escritura y retención de 90 días, exigiendo antigüedad tanto de la fecha del nombre como del último write. Solo acepta errors_YYYYMMDD.log y su versión .gz, sin seguir symlinks. Por defecto muestra el plan; `--apply` lo ejecuta. Nunca la invoca install/update. Ajustar retención a la capacidad y exportación de evidencia del nodo antes de programarla. Un logrotate convencional por nombre diario no garantiza expiración si ese nombre no vuelve a escribirse; por eso se usa antigüedad explícita. Ejemplo de revisión: `python3 "$DIR_INSTALLER_LIB/retain_error_logs.py" "$DIR_SOURCEMOD/logs" --days 90`; repetir por cada directorio privado de logs que se desee incluir. Si una compresión se interrumpe, el .pending se conserva y el original permanece: revisar ese archivo antes de reintentar. La carpeta de snapshots de fuentes crece con identidades nuevas; no se recolectan automáticamente snapshots que puedan ser necesarios para recuperación.
 
 ## CI e integración propuesta

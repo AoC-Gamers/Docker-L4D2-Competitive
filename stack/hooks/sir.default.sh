@@ -42,17 +42,20 @@ CopyFiles() {
 ##############################
 # Main Script:
 ##############################
+# Delete server.cfg file
+stack_remove_files_if_present "$DIR_SIR/cfg/server.cfg"
+
+# Delete .dll files in the addons folder
+find "$DIR_SIR_ADDONS" -type f -name "*.dll" -print0 |
+        while IFS= read -r -d '' path; do
+            stack_remove_files_if_present "$path"
+        done
+
 if [ "$GIT_DOWNLOAD" = "false" ]; then
     CopyFiles
     echo "Cache copy completed."
     exit 0
 fi
-
-# Delete server.cfg file
-verify_and_delete_file "$DIR_SIR/cfg/server.cfg"
-
-# Delete .dll files in the addons folder
-find "$DIR_SIR_ADDONS" -type f -name "*.dll" -delete
 
 CopyFiles
 log "Repository modifications completed."

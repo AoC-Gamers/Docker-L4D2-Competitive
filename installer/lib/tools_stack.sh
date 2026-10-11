@@ -188,6 +188,16 @@ error_exit() {
     exit 1
 }
 
+stack_log_exclusion() {
+    local target_path="$1"
+    local status="$2"
+    local display_path="$target_path"
+    if [[ -n "${DIR_LEFT4DEAD2:-}" && "$target_path" == "$DIR_LEFT4DEAD2/"* ]]; then
+        display_path="${target_path#"$DIR_LEFT4DEAD2/"}"
+    fi
+    log "Excluded path from deployment: $display_path ($status)"
+}
+
 verify_and_delete_dir() {
     if [ -d "$1" ]; then
         rm -rf "$1"
