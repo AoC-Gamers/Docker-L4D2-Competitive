@@ -1,3 +1,5 @@
+> Ciclo vigente de preparación, publicación y recuperación: [Fiabilidad](reliability.md). Esta referencia conserva los comandos históricos; las garantías nuevas están descritas en ese documento.
+
 # API y Referencia de Funciones
 
 ## Tabla de Contenidos
@@ -187,8 +189,8 @@ Helpers relevantes:
 - resolucion de fuentes Git y GitHub Release
 - cache persistente por perfil
 - degradacion controlada a cache local cuando la fuente remota no responde
-- limpieza previa de update
-- backup y restore de preserve-paths
+- composición en candidato y publicación con diario recuperable
+- conservación sin snapshots de datos mutables
 - aplicacion de hooks del stack
 
 ## Hooks

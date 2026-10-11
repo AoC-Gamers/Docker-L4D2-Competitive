@@ -127,6 +127,7 @@ Los dos archivos Compose del repo consumen la misma base de variables de entorno
 - `docs/configuration.md`: variables, perfiles y configuracion avanzada.
 - `docs/scripts.md`: mapa del bootstrap, installer y stack.
 - `docs/api-reference.md`: contratos tecnicos y variables internas.
+- [Fiabilidad, migración y recuperación](docs/reliability.md).
 - `docs/l4d2-updater.md`: actualizaciones automaticas del binario del juego.
 
 ## Licencia

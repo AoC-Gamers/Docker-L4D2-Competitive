@@ -1,3 +1,5 @@
+> Ciclo vigente de preparación, publicación y recuperación: [Fiabilidad](reliability.md). Esta referencia conserva los comandos históricos; las garantías nuevas están descritas en ese documento.
+
 # Documentacion de Scripts
 
 ## Tabla de Contenidos
@@ -100,7 +102,7 @@ Gestiona la sincronizacion de multiples instancias de L4D2 basadas en la instanc
 Comportamiento actual:
 
 - crea instancias faltantes
-- rehace el layout `sourcemodN` aunque ya exista
+- refresca el layout `sourcemodN` conservando datos particulares en `.instance-data`
 - elimina instancias sobrantes cuando baja la topologia objetivo
 - mezcla enlaces simbolicos y copias reales segun `installer/config/instances_exclude.json`
 - persiste el resultado en `instances-state.json`
@@ -124,7 +126,7 @@ Menu operativo del entorno LinuxGSM para iniciar, detener, reiniciar y consultar
 
 Notas de flujo:
 
-- el update automatico hace stop/update/start
+- el update automatico conserva la selección de instancias activas y respeta L4D2_AUTOSTART
 - el update manual hace stop/update y deja las instancias detenidas para arranque explicito
 - si detecta drift entre runtime e `instances-state.json`, ejecuta `sync_instances.sh`
 
