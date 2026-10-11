@@ -260,7 +260,13 @@ preflight_github_release_access() {
             error_exit "GitHub authentication failed for ${github_repo}@${release_tag}. Check the configured token."
             ;;
         403)
+            if [[ "$body_message" == *"rate limit"* ]]; then
+                error_exit "GitHub API rate limit exceeded for ${github_repo}@${release_tag}. Configure GITHUB_TOKEN in .env.secrets (or the component's github_token_env) and retry after the limit resets."
+            fi
             error_exit "GitHub access forbidden for ${github_repo}@${release_tag}. The configured token lacks permission or hit a policy/rate limit${body_message:+: ${body_message}}."
+            ;;
+        429)
+            error_exit "GitHub API rate limit exceeded for ${github_repo}@${release_tag}. Configure GITHUB_TOKEN in .env.secrets (or the component's github_token_env) and retry after the limit resets."
             ;;
         404)
             error_exit "GitHub release ${github_repo}@${release_tag} is not accessible. Verify the tag exists and that the configured token can read the repository."
@@ -308,7 +314,7 @@ resolve_component_github_token() {
     local github_auth_token=""
 
     if [[ -z "$github_token_env" || "$github_token_env" == "null" ]]; then
-        return 1
+        return 0
     fi
 
     if [[ ! "$github_token_env" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
@@ -457,11 +463,9 @@ download_github_release_source() {
         archive_path="$DIR_TMP/$resolved_asset_name"
         rm -f "$archive_path"
         mkdir -p "$folder"
-        if [[ -n "$github_auth_token" ]]; then
-            GITHUB_AUTH_TOKEN="$github_auth_token" preflight_github_release_access "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob"
-        else
-            preflight_github_release_access "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob"
-        fi
+        # The successful metadata resolution already verified the release and
+        # selected asset. Avoid a duplicate API request for every download.
+        success "GitHub release access verified for ${github_repo}@${release_tag} (${resolved_asset_name})" >&2
         step "Downloading release asset $resolved_asset_name from $github_repo@$release_tag" >&2
         if [[ -n "$github_auth_token" ]]; then
             GITHUB_AUTH_TOKEN="$github_auth_token" download_file "$asset_api_url" "$archive_path" || error_exit "Failed to download $resolved_asset_name from $sanitized_asset_download_url"
@@ -615,7 +619,7 @@ apply_stack_sources() {
                 asset_name="$(printf '%s\n' "$asset_name" | envsubst)"
                 asset_name_glob="$(printf '%s\n' "$asset_name_glob" | envsubst)"
                 github_token_env="$(printf '%s\n' "$github_token_env" | envsubst)"
-                github_auth_token="$(resolve_component_github_token "$github_token_env" || true)"
+                github_auth_token="$(resolve_component_github_token "$github_token_env")"
 
                 if [[ -z "$github_repo" || "$github_repo" == "null" ]]; then
                     error_exit "The field 'github_repo' is required for github_release sources."

@@ -1,0 +1,126 @@
+"""Offline regression coverage for release failures captured by the installer."""
+
+import json
+import hashlib
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+import zipfile
+
+
+LIB = Path(__file__).resolve().parents[1] / "lib"
+
+
+class GitHubReleaseTests(unittest.TestCase):
+    def setUp(self):
+        self.workspace = tempfile.TemporaryDirectory(prefix="release-test-")
+        self.addCleanup(self.workspace.cleanup)
+        self.root = Path(self.workspace.name)
+
+    def shell(self, script):
+        env = {key: os.environ[key] for key in ("PATH", "HOME") if key in os.environ}
+        env.update(TEST_LIB=str(LIB), DIR_TMP=str(self.root), NO_COLOR="1")
+        return subprocess.run(
+            ["bash", "-c", 'set -euo pipefail\nsource "$TEST_LIB/tools_stack.sh"\n'
+             'source "$TEST_LIB/install_stack_runtime.sh"\n' + script],
+            cwd=self.root, env=env, capture_output=True, text=True,
+        )
+
+    def test_captured_fatal_error_remains_visible(self):
+        result = self.shell('result=$(error_exit "specific failure")\n')
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("specific failure", result.stderr)
+
+    def test_release_http_failures_remain_visible(self):
+        for status, message, expected in (
+            (403, "API rate limit exceeded", "Configure GITHUB_TOKEN"),
+            (429, "Too many requests", "Configure GITHUB_TOKEN"),
+            (403, "Resource not accessible", "access forbidden"),
+            (404, "Not Found", "not accessible"),
+        ):
+            with self.subTest(status=status, message=message):
+                (self.root / "response.json").write_text(json.dumps({"message": message}))
+                result = self.shell('''
+resolve_github_release_asset() { return 1; }
+github_http_status() {
+    cp "$DIR_TMP/response.json" "$2"
+    printf '%s' ''' + str(status) + '''
+}
+result=$(download_github_release_source AoC-Gamers/L4D2-Family-Share channel/develop "" 'l4d2-family-share-*.zip' familyshare)
+''')
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stdout, "")
+                self.assertIn(expected, result.stderr)
+
+    def test_download_does_not_repeat_successful_metadata_request(self):
+        result = self.shell('''
+resolve_github_release_asset() {
+    printf 'request\n' >> "$DIR_TMP/metadata-calls"
+    printf '%s\n' demo.zip https://github.com/example/demo.zip https://api.github.com/repos/example/demo/releases/assets/1 2026-10-10T00:00:00Z
+}
+preflight_github_release_access() { error_exit "unexpected duplicate request"; }
+download_file() { touch "$2"; }
+extract_archive() { touch "$2/extracted"; }
+save_component_state() { :; }
+result=$(download_github_release_source example/demo channel/develop "" '*.zip' demo)
+test "$result" = true
+''')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.root / "metadata-calls").read_text(), "request\n")
+        self.assertTrue((self.root / "demo/extracted").is_file())
+
+    def test_missing_component_token_stops_before_download(self):
+        result = self.shell('''
+export GITHUB_TOKEN=fake-global-token
+RESOLVED_COMPONENTS_JSON='[{"source_type":"github_release","folder":"familyshare","github_repo":"example/demo","release_tag":"channel/develop","asset_name_glob":"*.zip","github_token_env":"MISSING_TOKEN"}]'
+download_github_release_source() { touch "$DIR_TMP/unexpected-download"; }
+apply_stack_sources
+''')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("MISSING_TOKEN", result.stderr)
+        self.assertFalse((self.root / "unexpected-download").exists())
+        self.assertNotIn("fake-global-token", result.stdout + result.stderr)
+
+    def test_optional_component_token_keeps_global_fallback(self):
+        result = self.shell('''
+export GITHUB_TOKEN=fake-global-token
+token=$(resolve_component_github_token "")
+test -z "$token"
+test "$(github_auth_token)" = fake-global-token
+''')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "")
+
+    def test_explicit_component_token_keeps_precedence(self):
+        result = self.shell('''
+export GITHUB_TOKEN=fake-global-token PRIVATE_TOKEN=fake-component-token
+token=$(resolve_component_github_token PRIVATE_TOKEN)
+test "$(GITHUB_AUTH_TOKEN="$token" github_auth_token)" = fake-component-token
+''')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "")
+
+    def test_sdk_archive_digest_is_clean_on_first_extract_cache_hit_and_change(self):
+        archive = self.root / "sdk.zip"
+        for content in ("first SDK", "changed SDK"):
+            with zipfile.ZipFile(archive, "w") as bundle:
+                bundle.writestr("sdk/version.txt", content)
+            expected = hashlib.sha256(archive.read_bytes()).hexdigest()
+            result = self.shell('''
+source "$TEST_LIB/stack_component_lib.sh"
+first=$(stack_extract_cached_archive_by_sha "$DIR_TMP/sdk.zip" "$DIR_TMP/sdk-cache")
+cached=$(stack_extract_cached_archive_by_sha "$DIR_TMP/sdk.zip" "$DIR_TMP/sdk-cache")
+test "$first" = "$cached"
+printf '%s\n' "$first"
+''')
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, expected + "\n")
+            self.assertEqual((self.root / "sdk-cache/sdk/version.txt").read_text(), content)
+            self.assertEqual((self.root / "sdk-cache/archive.sha256").read_text(), expected + "\n")
+
+
+if __name__ == "__main__":
+    unittest.main()

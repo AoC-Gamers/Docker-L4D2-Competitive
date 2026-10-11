@@ -235,7 +235,8 @@ debug_archive_validation_failure() {
 }
 
 error_exit() {
-    log "$(color_text "1;31" "ERROR"): $1"
+    # Failures must remain visible when the caller captures a function's stdout.
+    log "$(color_text "1;31" "ERROR"): $1" >&2
     exit 1
 }
 

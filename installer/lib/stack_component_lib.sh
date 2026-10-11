@@ -384,7 +384,8 @@ stack_extract_cached_archive_by_sha() {
     fi
 
     if [ "$cached_sha256" != "$current_sha256" ]; then
-        verify_and_delete_dir "$extract_root"
+        # stdout is the digest consumed by build-cache keys, not diagnostics.
+        verify_and_delete_dir "$extract_root" >&2
         mkdir -p "$extract_root"
         extract_archive "$archive_path" "$extract_root"
         printf '%s\n' "$current_sha256" > "$stamp_file"

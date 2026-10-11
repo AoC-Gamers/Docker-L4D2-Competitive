@@ -114,6 +114,17 @@ Flujo real:
 
 `github_token_env` es opcional. Si se define, el installer toma el token desde esa variable de entorno solo para ese componente `github_release`. Si no se define, usa `GITHUB_TOKEN` como fallback global.
 
+Configura `GITHUB_TOKEN` en `.env.secrets` para evitar agotar el cupo compartido
+de peticiones anónimas al instalar varios releases. Un token de componente no
+se reutiliza automáticamente para los demás componentes. Si el token declarado
+por `github_token_env` falta, la instalación se detiene sin recurrir al token
+global. La resolución correcta de metadata evita repetir su consulta antes de
+descargar; los errores de autenticación, permisos y rate limit se escriben en
+stderr, también cuando el installer captura stdout.
+
+La regresión del resolver se verifica sin red ni credenciales reales con
+`PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s installer/tests -v`.
+
 ## Rutas relevantes
 
 ```text
