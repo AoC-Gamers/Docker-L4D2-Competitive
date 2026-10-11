@@ -27,12 +27,14 @@ build_resolved_components_json() {
               ($component + $override + {id: $id}) as $resolved |
               [$id, $resolved.folder, ($resolved | @json)] | @tsv
             ' "$components_file"
-    )"
+    )" || return 1
 
+    [[ "$(cut -f2 <<< "$resolved_rows" | sort | uniq -d)" == "" ]] || error_exit "Duplicate component folder in profile."
     printf '['
     while IFS=$'\t' read -r component_id folder component_json; do
         [[ -n "$component_id" ]] || continue
 
+        [[ "$folder" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ && "$folder" != *..* ]] || error_exit "Invalid component folder."
         branch_var_name="BRANCH_$(echo "$folder" | tr '[:lower:]' '[:upper:]')"
         branch_value=${!branch_var_name:-default}
         release_tag_var_name="RELEASE_TAG_$(echo "$folder" | tr '[:lower:]' '[:upper:]')"
@@ -46,6 +48,13 @@ build_resolved_components_json() {
             component_json="$(printf '%s\n' "$component_json" | jq -c --arg val "$release_tag_value" '.release_tag = $val')"
         fi
 
+        component_json="$(printf '%s\n' "$component_json" | envsubst | jq -c '.')"
+        local variant_var variant_override
+        variant_var="HOOK_VARIANT_$(echo "$folder" | tr '[:lower:]' '[:upper:]')"
+        variant_override="${!variant_var:-}"
+        if [[ -n "$variant_override" ]]; then
+            component_json="$(jq -c --arg value "$variant_override" '.hook_variant=$value' <<< "$component_json")"
+        fi
         if [ "$first" = true ]; then
             first=false
         else
@@ -218,6 +227,7 @@ resolve_github_release_asset() {
     fi
 
     printf '%s\n%s\n%s\n%s\n' "$matched_asset_name" "$asset_download_url" "$asset_api_url" "$asset_updated_at"
+    printf '%s\n' "$(printf '%s' "$release_json" | jq -r --arg name "$matched_asset_name" '.assets[] | select(.name==$name) | .id, (.digest // "")')"
 }
 
 preflight_github_release_access() {
@@ -339,6 +349,9 @@ download_git_source() {
     local sanitized_repo_url
     local source_prefix=""
 
+    if [[ "${STACK_REUSE_SOURCES:-false}" == true && -d "$folder/.git" ]] && component_cache_matches_source_prefix "$folder" "git:${repo_url}@${branch}:"; then
+        printf 'false\n'; return 0
+    fi
     sanitized_repo_url="$(sanitize_url_for_log "$repo_url")"
     source_prefix="git:${repo_url}@${branch}:"
 
@@ -409,6 +422,12 @@ download_github_release_source() {
     local source_prefix=""
 
     source_prefix="github_release:${github_repo}@${release_tag}:"
+    if [[ "${STACK_REUSE_SOURCES:-false}" == true && -d "$folder" && -f "$folder/.stack-source.json" ]] && component_cache_matches_source_prefix "$folder" "$source_prefix"; then
+        if [[ -n "${STACK_EXPECTED_SHA256:-}" && "$(jq -r .sha256 "$folder/.stack-source.json")" != "$STACK_EXPECTED_SHA256" ]]; then
+            error_exit "Cached asset checksum does not match the expected checksum."
+        fi
+        printf 'false\n'; return 0
+    fi
 
     if [[ -n "$github_auth_token" ]]; then
         asset_metadata_raw="$(GITHUB_AUTH_TOKEN="$github_auth_token" resolve_github_release_asset "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob" || true)"
@@ -441,14 +460,14 @@ download_github_release_source() {
     asset_download_url="${asset_metadata[1]}"
     asset_api_url="${asset_metadata[2]}"
     sanitized_asset_download_url="$(sanitize_url_for_log "$asset_download_url")"
-    remote_state="github_release:${github_repo}@${release_tag}:${resolved_asset_name}@${asset_metadata[3]}"
+    remote_state="github_release:${github_repo}@${release_tag}:${resolved_asset_name}@${asset_metadata[3]}:${asset_metadata[4]:-}:${asset_metadata[5]:-}"
 
     if [[ "${GIT_FORCE_DOWNLOAD:-false}" == "true" ]]; then
         source_download=true
         rm -rf "$folder"
     elif [[ -d "$folder" ]]; then
         step "Checking artifact source state for $folder" >&2
-        if has_component_changed "$folder" "$remote_state"; then
+        if [[ ! -f "$folder/.stack-source.json" ]] || has_component_changed "$folder" "$remote_state"; then
             source_download=true
             info "Artifact source $folder changed. Refreshing local cache." >&2
             rm -rf "$folder"
@@ -472,92 +491,24 @@ download_github_release_source() {
         else
             download_file "$asset_api_url" "$archive_path" || error_exit "Failed to download $resolved_asset_name from $sanitized_asset_download_url"
         fi
+        local content_sha expected_sha
+        content_sha="$(sha256sum "$archive_path" | cut -d' ' -f1)"
+        expected_sha="${STACK_EXPECTED_SHA256:-${asset_metadata[5]:-}}"
+        expected_sha="${expected_sha#sha256:}"
+        if [[ -n "$expected_sha" && "$content_sha" != "$expected_sha" ]]; then
+            error_exit "Checksum mismatch for ${resolved_asset_name}."
+        fi
         rm -rf "$folder"
         mkdir -p "$folder"
         extract_archive "$archive_path" "$folder"
+        jq -n --arg repo "$github_repo" --arg tag "$release_tag" --arg name "$resolved_asset_name" \
+            --arg id "${asset_metadata[4]:-}" --arg sha256 "$content_sha" --arg expected "$expected_sha" \
+            '{source_type:"github_release",repo:$repo,reference:$tag,asset:$name,asset_id:$id,sha256:$sha256,expected_sha256:$expected}' > "$folder/.stack-source.json"
         save_component_state "$folder" "$remote_state"
         success "Release artifact ready for $folder" >&2
     fi
 
     printf '%s\n' "$source_download"
-}
-
-clean_instance_logs() {
-    local index=1
-    local sourcemod_dir
-
-    while true; do
-        sourcemod_dir="${DIR_SOURCEMOD}${index}"
-        if [ -d "$sourcemod_dir" ]; then
-            info "Cleaning logs in $sourcemod_dir"
-            if ls "$sourcemod_dir/logs/errors_"*.log &> /dev/null; then
-                rm "$sourcemod_dir/logs/errors_"*.log
-            fi
-        else
-            info "Directory $sourcemod_dir not found. Ending log cleanup."
-            break
-        fi
-        ((index++))
-    done
-}
-
-backup_files() {
-    local backup_json="$1"
-    local base_dir="$2"
-
-    jq -r 'to_entries[] | "\(.key) \(.value[])"' "$backup_json" | while read -r folder file; do
-        local src="$base_dir/$folder/$file"
-        local dest="$base_dir/$file"
-        if [[ -f "$src" ]]; then
-            mkdir -p "$(dirname "$dest")"
-            mv "$src" "$dest"
-            info "Backed up file $src to $dest"
-        elif [[ -d "$src" ]]; then
-            mkdir -p "$(dirname "$dest")"
-            mv "$src" "$dest"
-            info "Backed up directory $src to $dest"
-        else
-            warn "Skipping $src because it does not exist or is not a valid file/directory"
-        fi
-    done
-}
-
-restore_files() {
-    local backup_json="$1"
-    local base_dir="$2"
-
-    jq -r 'to_entries[] | "\(.key) \(.value[])"' "$backup_json" | while read -r folder file; do
-        local src="$base_dir/$file"
-        local dest="$base_dir/$folder/$file"
-        if [[ -f "$src" ]]; then
-            mkdir -p "$(dirname "$dest")"
-            mv "$src" "$dest"
-            info "Restored file $src to $dest"
-        elif [[ -d "$src" ]]; then
-            mkdir -p "$(dirname "$dest")"
-            mv "$src" "$dest"
-            info "Restored directory $src to $dest"
-        else
-            warn "Skipping $src because it does not exist or is not a valid file/directory"
-        fi
-    done
-}
-
-prepare_update_cleanup() {
-    section "Preparing update"
-    backup_files "$BACKUP_JSON" "$DIR_SOURCEMOD"
-
-    verify_and_delete_dir "$DIR_SOURCEMOD/data"
-    verify_and_delete_dir "$DIR_SOURCEMOD/extensions"
-    verify_and_delete_dir "$DIR_SOURCEMOD/gamedata"
-    verify_and_delete_dir "$DIR_SOURCEMOD/configs"
-    verify_and_delete_dir "$DIR_SOURCEMOD/plugins"
-    verify_and_delete_dir "$DIR_SOURCEMOD/scripting"
-    verify_and_delete_dir "$DIR_SOURCEMOD/translations"
-    clean_instance_logs
-    mkdir -p "$DIR_SOURCEMOD/configs"
-
-    restore_files "$BACKUP_JSON" "$DIR_SOURCEMOD"
 }
 
 apply_stack_sources() {
@@ -602,10 +553,27 @@ apply_stack_sources() {
             info "Branch/channel: ${branch}"
         fi
 
+        local source_key pinned_row pinned_key pinned_dir pinned_sha
+        source_key="$(jq -cS '{source_type,folder,repo_url,github_repo,branch,release_tag,asset_name,asset_name_glob,sha256}' <<< "$component_json" | sha256sum | cut -d' ' -f1)"
+        pinned_row=""
+        if [[ "${STACK_FETCH_ONLY:-false}" == true && "${STACK_REUSE_SOURCES:-false}" == true && -f "$STATE_ROOT/source-lock.json" ]]; then
+            pinned_row="$(jq -c --arg folder "$folder" --arg key "$source_key" '.[] | select(.folder==$folder and .source_key==$key)' "$STATE_ROOT/source-lock.json")"
+        fi
         source_download=false
         component_cache_dir=""
         component_work_dir=""
 
+        if [[ -n "$pinned_row" && "$source_type" != hook_only ]]; then
+            pinned_key="$(jq -r .snapshot_key <<< "$pinned_row")"
+            pinned_dir="$STATE_ROOT/pinned-sources/$pinned_key"
+            pinned_sha="$(jq -r .snapshot_sha256 <<< "$pinned_row")"
+            [[ -d "$pinned_dir" && "$(python3 "$DIR_INSTALLER_LIB/source_identity.py" "$pinned_dir")" == "$pinned_sha" ]] || error_exit "Pinned source unavailable/corrupt: $folder. Restore cache or request an explicit update."
+            component_cache_dir="$pinned_dir"
+        elif [[ -n "${STACK_PREPARED_SOURCES_FILE:-}" ]]; then
+            source_download=false
+            component_cache_dir="$(jq -r --arg folder "$folder" '.[] | select(.folder==$folder) | .cache_dir' "$STACK_PREPARED_SOURCES_FILE")"
+            [[ "$source_type" == hook_only || -d "$component_cache_dir" ]] || error_exit "Prepared source unavailable: $folder"
+        else
         case "$source_type" in
             git)
                 repo_url="$(printf '%s\n' "$repo_url" | envsubst)"
@@ -633,7 +601,7 @@ apply_stack_sources() {
                     error_exit "The field 'asset_name' or 'asset_name_glob' is required for github_release sources."
                 fi
 
-                source_download_raw=$(download_github_release_source "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob" "$folder" "$github_auth_token")
+                source_download_raw=$(STACK_EXPECTED_SHA256="$(jq -r '.sha256 // empty' <<< "$component_json")" download_github_release_source "$github_repo" "$release_tag" "$asset_name" "$asset_name_glob" "$folder" "$github_auth_token")
                 source_download=$(printf '%s\n' "$source_download_raw" | tail -n 1 | tr -d '\r')
                 component_cache_dir="${PWD}/${folder}"
                 ;;
@@ -646,11 +614,39 @@ apply_stack_sources() {
                 ;;
         esac
 
+        fi
+        if [[ "${STACK_FETCH_ONLY:-false}" == true ]]; then
+            local identity='{}'
+            local snapshot_key='' snapshot_sha256=''
+            if [[ "$source_type" == git ]]; then
+                identity="$(jq -n --arg commit "$(git -C "$component_cache_dir" rev-parse HEAD)" '{source_type:"git",commit:$commit}')"
+            elif [[ "$source_type" == github_release ]]; then
+                identity="$(cat "$component_cache_dir/.stack-source.json")"
+            fi
+            if [[ -n "$component_cache_dir" ]]; then
+                snapshot_sha256="$(python3 "$DIR_INSTALLER_LIB/source_identity.py" "$component_cache_dir")"
+                snapshot_key="$(printf '%s:%s' "$source_key" "$snapshot_sha256" | sha256sum | cut -d' ' -f1)"
+                if [[ ! -d "$STATE_ROOT/pinned-sources/$snapshot_key" ]]; then
+                    mkdir -p "$STATE_ROOT/pinned-sources/$snapshot_key.new"
+                    cp -a "$component_cache_dir/." "$STATE_ROOT/pinned-sources/$snapshot_key.new/"
+                    mv "$STATE_ROOT/pinned-sources/$snapshot_key.new" "$STATE_ROOT/pinned-sources/$snapshot_key"
+                fi
+                component_cache_dir="$STATE_ROOT/pinned-sources/$snapshot_key"
+            fi
+            jq -n --arg source_key "$source_key" --arg snapshot_key "$snapshot_key" --arg snapshot_sha256 "$snapshot_sha256" \
+                --arg folder "$folder" --arg cache_dir "$component_cache_dir" --argjson identity "$identity" \
+                '{folder:$folder,source_key:$source_key,cache_dir:$cache_dir,snapshot_key:$snapshot_key,snapshot_sha256:$snapshot_sha256,identity:$identity}' >> "$STACK_SOURCES_ROWS"
+            continue
+        fi
+
         if [[ "$source_download" != "true" && "$source_download" != "false" ]]; then
             error_exit "Invalid source download state for '$folder': '$source_download'."
         fi
 
-        subscript_file="$DIR_STACK_HOOKS/${folder}.${branch}.sh"
+        local hook_variant hook_required
+        hook_variant="$(printf '%s\n' "$component_json" | jq -r '.hook_variant // .branch // "default"')"
+        hook_required="$(printf '%s\n' "$component_json" | jq -r 'if has("hook_required") then .hook_required else true end')"
+        subscript_file="$DIR_STACK_HOOKS/${folder}.${hook_variant}.sh"
         if [[ -f "$subscript_file" ]]; then
             if [[ "$source_type" != "hook_only" ]]; then
                 component_work_dir="$(prepare_component_workspace "$folder" "$component_cache_dir")"
@@ -661,9 +657,48 @@ apply_stack_sources() {
             bash "$subscript_file" "$component_work_dir" "$INSTALL_TYPE" "$source_download" "$source_type"
             success "Hook completed for $folder"
         else
-            warn "No hook found for $folder. Skipping post-processing."
+            [[ "$hook_required" == false ]] || error_exit "Required hook missing: $folder.$hook_variant"
+            info "Optional hook absent for $folder."
         fi
     done < <(
         printf '%s\n' "$RESOLVED_COMPONENTS_JSON" | jq -c '.[]'
     )
 }
+
+validate_stack_hooks() {
+    python3 "$DIR_INSTALLER_LIB/validate_stack.py" "$DIR_STACK_HOOKS" <<< "$RESOLVED_COMPONENTS_JSON"
+    local component folder variant required
+    while IFS= read -r component; do
+        folder="$(jq -r .folder <<< "$component")"
+        variant="$(jq -r '.hook_variant // .branch // "default"' <<< "$component")"
+        required="$(jq -r 'if has("hook_required") then .hook_required else true end' <<< "$component")"
+        [[ "$folder" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ && "$variant" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ && "$folder" != *..* && "$variant" != *..* ]] || error_exit "Invalid component/hook name."
+        if [[ -f "$DIR_STACK_HOOKS/$folder.$variant.sh" ]]; then
+            bash -n "$DIR_STACK_HOOKS/$folder.$variant.sh"
+        elif [[ "$required" != false ]]; then
+            error_exit "Required hook missing: $folder.$variant"
+        fi
+    done < <(jq -c '.[]' <<< "$RESOLVED_COMPONENTS_JSON")
+}
+
+prepare_stack_sources() (
+    exec 7>"${CACHE_FILE}.sources.lock"
+    flock 7
+    STACK_SOURCES_ROWS="$STACK_TRANSACTION/source-rows.jsonl"
+    : > "$STACK_SOURCES_ROWS"
+    STACK_FETCH_ONLY=true apply_stack_sources
+    jq -s . "$STACK_SOURCES_ROWS" > "$STACK_TRANSACTION/prepared-sources.json"
+    local folder cache snapshot
+    while IFS=$'\t' read -r folder cache; do
+        [[ -n "$cache" ]] || continue
+        snapshot="$STACK_TRANSACTION/sources/$folder"
+        mkdir -p "$snapshot"
+        cp -a "$cache/." "$snapshot/"
+        jq --arg folder "$folder" --arg path "$snapshot" 'map(if .folder==$folder then .cache_dir=$path else . end)' \
+            "$STACK_TRANSACTION/prepared-sources.json" > "$STACK_TRANSACTION/prepared-sources.tmp"
+        mv "$STACK_TRANSACTION/prepared-sources.tmp" "$STACK_TRANSACTION/prepared-sources.json"
+    done < <(jq -r '.[] | select(.cache_dir!="") | [.folder,.cache_dir] | @tsv' "$STACK_TRANSACTION/prepared-sources.json")
+    export STACK_PREPARED_SOURCES_FILE="$STACK_TRANSACTION/prepared-sources.json"
+    # Paths belong to the cache, not to the candidate; provenance omits URLs/tokens.
+    jq '[.[] | {folder,source_key,snapshot_key,snapshot_sha256,identity}]' "$STACK_PREPARED_SOURCES_FILE" > "$STACK_TRANSACTION/candidate/state/source-lock.json"
+)

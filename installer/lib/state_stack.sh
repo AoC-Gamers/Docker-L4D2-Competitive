@@ -64,7 +64,12 @@ state_archive_snapshot() {
     snapshot_dir="${STATE_HISTORY_DIR}/${deployment_id}"
     mkdir -p "$snapshot_dir"
 
-    for state_file in deploy-state.json resolved-components.json install_stack.log instances-state.json; do
+    for state_file in source-lock.json hook-assets.json managed-files.json; do
+        if [[ -f "$STATE_ROOT/$state_file" ]]; then
+            cp "$STATE_ROOT/$state_file" "$STATE_CURRENT_DIR/$state_file"
+        fi
+    done
+    for state_file in source-lock.json hook-assets.json managed-files.json deploy-state.json resolved-components.json install_stack.log instances-state.json; do
         if [ -f "${STATE_CURRENT_DIR}/${state_file}" ]; then
             cp "${STATE_CURRENT_DIR}/${state_file}" "${snapshot_dir}/${state_file}"
         fi

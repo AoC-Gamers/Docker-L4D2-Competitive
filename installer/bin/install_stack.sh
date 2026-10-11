@@ -18,6 +18,8 @@ set -euo pipefail
 source "$DIR_INSTALLER_LIB/tools_stack.sh"
 source "$DIR_INSTALLER_LIB/state_stack.sh"
 source "$DIR_INSTALLER_LIB/install_stack_runtime.sh"
+source "$DIR_INSTALLER_LIB/deployment_transaction.sh"
+source "$DIR_INSTALLER_LIB/extensions_stack.sh"
 
 state_init_paths
 
@@ -52,13 +54,13 @@ ensure_deploy_state_context() {
     state_ensure_directories
     current_status="$(state_get_current_deployment_status)"
 
-    if [[ "$current_status" == "preparing" || "$current_status" == "installing" ]]; then
+    if [[ "${STACK_DEPLOY_OWNER_PID:-}" == "$PPID" && ( "$current_status" == preparing || "$current_status" == installing ) ]]; then
         return 0
     fi
 
     previous_deployment_id="$(state_archive_current_deployment)"
 
-    DEPLOYMENT_ID="$(date -u +%Y%m%dT%H%M%SZ)-${STACK_PROFILE:-default}"
+    DEPLOYMENT_ID="$(date -u +%Y%m%dT%H%M%S%NZ)-${STACK_PROFILE:-default}"
     state_create_deploy_state "$DEPLOYMENT_ID" "$previous_deployment_id" "installing" "${STACK_PROFILE:-default}" "$STATE_RESOLVED_COMPONENTS_FILE" "" "${GAMESERVER:-}"
     INSTALLER_MANAGED_DEPLOY_STATE=true
 }
@@ -113,48 +115,8 @@ initialize_install_workspace() {
     info "Component sources: $SOURCES_CACHE_DIR"
 }
 
-acquire_install_lock() {
-    local stack_profile_slug=""
-    local cache_namespace=""
-
-    stack_profile_slug="$(printf '%s\n' "${STACK_PROFILE:-default}" | tr -c '[:alnum:]_.-' '_')"
-    cache_namespace="${stack_profile_slug:-default}"
-
-    mkdir -p "${STATE_ROOT}/locks"
-    INSTALL_LOCK_FILE="${STATE_ROOT}/locks/${cache_namespace}.lock"
-    INSTALL_LOCK_DIR="${INSTALL_LOCK_FILE}.d"
-
-    if command -v flock > /dev/null 2>&1; then
-        exec 8>"$INSTALL_LOCK_FILE"
-        step "Waiting for install_stack lock: $INSTALL_LOCK_FILE"
-        flock 8
-        INSTALL_LOCK_MODE="flock"
-        info "Acquired install_stack lock for profile ${cache_namespace}"
-        return 0
-    fi
-
-    step "Waiting for install_stack lock directory: $INSTALL_LOCK_DIR"
-    until mkdir "$INSTALL_LOCK_DIR" 2> /dev/null; do
-        sleep 1
-    done
-
-    INSTALL_LOCK_MODE="mkdir"
-    info "Acquired install_stack lock for profile ${cache_namespace}"
-}
-
-release_install_lock() {
-    case "$INSTALL_LOCK_MODE" in
-        flock)
-            flock -u 8 || true
-            exec 8>&-
-            ;;
-        mkdir)
-            if [[ -n "$INSTALL_LOCK_DIR" && -d "$INSTALL_LOCK_DIR" ]]; then
-                rmdir "$INSTALL_LOCK_DIR" || true
-            fi
-            ;;
-    esac
-}
+acquire_install_lock() { stack_acquire_target_lock; }
+release_install_lock() { :; } # Closing this process releases its inherited descriptor.
 
 cleanup_install_workspace() {
     :
@@ -162,6 +124,9 @@ cleanup_install_workspace() {
 
 handle_install_stack_exit() {
     local exit_code=$?
+    if [[ "$exit_code" -ne 0 && -n "${STACK_TRANSACTION:-}" && -f "$STACK_TRANSACTION/journal.json" ]]; then
+        stack_handle_transaction_failure || true
+    fi
     finalize_installer_deploy_state "$exit_code"
     release_install_lock
     cleanup_install_workspace
@@ -233,8 +198,9 @@ else
     esac
 fi
 
-ensure_deploy_state_context
 acquire_install_lock
+stack_recover_interrupted
+ensure_deploy_state_context
 initialize_install_logging
 update_deploy_state_installer_metadata
 
@@ -249,21 +215,14 @@ info "Profile file: $PROFILE_JSON"
 initialize_install_workspace
 
 #####################################################
-# Process cleaning in case of update
-if [ "$INSTALL_TYPE" == "update" ]; then
-    prepare_update_cleanup
-fi
-
-#####################################################
-# Source installation
-apply_stack_sources
-python3 "$DIR_INSTALLER_LIB/final_policy.py" "$DIR_LEFT4DEAD2" "$DIR_STACK/final-policy.json"
-
-#####################################################
-# Shared post-install maintenance
-section "Post-install maintenance"
-step "Running shared GeoIP updater"
-bash "$DIR_INSTALLER_BIN/geoip_update.sh"
+# Preparation never cleans the active server. Publication is journaled and recoverable.
+validate_stack_hooks
+stack_validate_extensions
+stack_prepare_transaction
+prepare_stack_sources
+export STACK_PREPARED_SOURCES_FILE="$STACK_TRANSACTION/prepared-sources.json"
+stack_run_candidate
+stack_publish_transaction
 
 section "Stack ${INSTALL_TYPE} completed"
 success "L4D2 competitive stack finished successfully"

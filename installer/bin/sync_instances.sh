@@ -16,6 +16,8 @@ set -euo pipefail
 source "$DIR_INSTALLER_LIB/tools_stack.sh"
 source "$DIR_INSTALLER_LIB/state_stack.sh"
 source "$DIR_INSTALLER_LIB/instance_stack.sh"
+source "$DIR_INSTALLER_LIB/target_lock.sh"
+stack_acquire_target_lock
 
 state_init_paths
 
@@ -135,17 +137,51 @@ sync_tree_with_exclusions() {
 }
 
 sync_sourcemod_layout() {
-    local dest_dir="$1"
-
-    if [ -e "$dest_dir" ] || [ -L "$dest_dir" ]; then
-        step "Refreshing SourceMod layout in $dest_dir"
-        remove_path_if_present "$dest_dir"
-    else
-        step "Creating SourceMod directory $dest_dir"
-    fi
-
-    mkdir "$dest_dir" || error_exit "Error creating the directory $dest_dir"
-    create_sourcemod_links "$dest_dir"
+    local dest_dir="$1" stable="${DIR_SOURCEMOD%/*}/.instance-data/$(basename "$1")"
+    local new="${1}.next" old="${1}.previous" folder relative source_path stable_path parent linked
+    # Recover the layout rename. Private data uses a stable location and is never copied.
+    if [[ ! -e "$dest_dir" && -d "$old" ]]; then mv "$old" "$dest_dir"; fi
+    mkdir -p "$stable"
+    for folder in data logs configs; do
+        if [[ -d "$dest_dir/$folder" && ! -L "$dest_dir/$folder" && ! -e "$stable/$folder" ]]; then
+            mv "$dest_dir/$folder" "$stable/$folder"
+        fi
+    done
+    while IFS=$'\t' read -r folder relative; do
+        [[ "$folder" != data && "$folder" != logs && "$folder" != configs ]] || continue
+        [[ "$relative" != /* && "/$relative/" != *"/../"* ]] || error_exit "Unsafe instance exclusion."
+        source_path="$dest_dir/$folder/$relative"
+        stable_path="$stable/overrides/$folder/$relative"
+        parent="$(dirname "$source_path")"; linked=false
+        while [[ "$parent" != "$dest_dir" && "$parent" != / ]]; do
+            [[ ! -L "$parent" ]] || linked=true
+            parent="$(dirname "$parent")"
+        done
+        if [[ "$linked" == false && ( -e "$source_path" || -L "$source_path" ) && ! -e "$stable_path" && ! -L "$stable_path" ]]; then
+            mkdir -p "$(dirname "$stable_path")"
+            mv "$source_path" "$stable_path"
+        fi
+    done < <(jq -r 'to_entries[] | .key as $key | .value[] | [$key,.] | @tsv' "$INSTANCE_EXCLUDE_JSON")
+    rm -rf "$new"
+    mkdir -p "$new"
+    create_sourcemod_links "$new"
+    for folder in data logs configs; do
+        if [[ -d "$stable/$folder" ]]; then
+            rm -rf "$new/$folder"
+            ln -s "$stable/$folder" "$new/$folder"
+        fi
+    done
+    while IFS=$'\t' read -r folder relative; do
+        stable_path="$stable/overrides/$folder/$relative"
+        if [[ -e "$stable_path" || -L "$stable_path" ]]; then
+            rm -rf "$new/$folder/$relative"
+            mkdir -p "$(dirname "$new/$folder/$relative")"
+            ln -s "$stable_path" "$new/$folder/$relative"
+        fi
+    done < <(jq -r 'to_entries[] | .key as $key | .value[] | [$key,.] | @tsv' "$INSTANCE_EXCLUDE_JSON")
+    rm -rf "$old" # Contains only prior shared links; private paths moved above.
+    if [[ -e "$dest_dir" || -L "$dest_dir" ]]; then mv "$dest_dir" "$old"; fi
+    mv "$new" "$dest_dir"
 }
 
 cleanup_extra_instances() {
@@ -215,6 +251,24 @@ create_sourcemod_links() {
             mapfile -t excluded_paths < <(jq -r --arg key "$folder" '.[$key] // [] | .[]' "$INSTANCE_EXCLUDE_JSON" | while IFS= read -r line; do normalize_relative_path "$line"; done)
         fi
 
+        if [[ "$folder" == data ]]; then
+            local stable_data="${DIR_SOURCEMOD%/*}/.instance-data/$(basename "${dest_dir%.next}")/data"
+            mkdir -p "$stable_data"
+            # Static shared entries link to the primary; private subtrees start empty.
+            local entry base
+            for entry in "$source_folder"/*; do
+                [[ -e "$entry" ]] || continue
+                base="$(basename "$entry")"
+                if path_is_exact_match "$base" "${excluded_paths[@]}" || path_has_excluded_descendant "$base" "${excluded_paths[@]}"; then
+                    [[ -e "$stable_data/$base" ]] || mkdir -p "$stable_data/$base"
+                elif [[ ! -e "$stable_data/$base" && ! -L "$stable_data/$base" ]]; then
+                    ln -s "$entry" "$stable_data/$base"
+                fi
+            done
+            ln -s "$stable_data" "$dest_folder"
+            continue
+        fi
+
         warn_missing_excluded_paths "$source_folder" "${excluded_paths[@]}"
 
         if [ ${#excluded_paths[@]} -eq 0 ]; then
@@ -269,6 +323,12 @@ elif [ ! -f "$DIR_CFG/$GAMESERVER.cfg" ]; then
     cp "$DIR_CFG/$L4D2_DEFAULT_SERVERCFG" "$DIR_CFG/$GAMESERVER.cfg"
 fi
 
+for executable in "$DIR_APP/$GAMESERVER" "$DIR_APP/$GAMESERVER"-*; do
+    [[ -x "$executable" ]] || continue
+    if tmux has-session -t "=$(basename "$executable")" 2>/dev/null; then
+        error_exit "Stop affected instances before direct sync_instances.sh."
+    fi
+done
 cleanup_extra_instances "$((ADDITIONAL_INSTANCES + 1))"
 
 #####################################################
