@@ -113,6 +113,8 @@ Los tres workflows Docker ejecutan sintaxis/fixtures antes de publicar. Los deri
 
 Orden de integración, sin ejecutar merges/publicaciones como parte de esta tarea:
 
+Antes de la primera adopción, configurar la variable de repositorio GitHub `AOC_PAUSE_CHILD_DISPATCH=true` en la base y Docker AoC. Solo pausa la cascada; no cambia la construcción/publicación del padre. Los workflows anteriores de los hijos aún no aceptan parent_image ni la API nueva. Después de integrar los tres workflows y validar builds manuales ordenados con sus digests, retirar la variable para restablecer la cascada habitual. Esta tarea no modifica variables remotas.
+
 1. Integrar y validar la rama completa de la base, y construir una imagen develop con la API nueva. Preparar también el artefacto AoC corregido (paths y cargas excluidas); el nuevo validador final rechazará un artefacto antiguo incoherente.
 2. Integrar AoC-L4D2-Competitive y disponer de su artefacto develop corregido antes de probar la nueva imagen AoC sobre un volumen anterior.
 3. Integrar Docker-L4D2-AoC y construir contra el digest exacto de la base nueva.

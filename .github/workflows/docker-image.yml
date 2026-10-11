@@ -95,6 +95,7 @@ jobs:
           name: build-identity
           path: build-identity.json
       - name: Dispatch child with the published parent digest
+        if: vars.AOC_PAUSE_CHILD_DISPATCH != 'true'
         env:
           DISPATCH_TOKEN: ${{ secrets.TOKEN_WEBHOOK }}
           PUBLISHED_DIGEST: ${{ steps.build.outputs.digest }}
@@ -107,4 +108,3 @@ jobs:
             'https://api.github.com/repos/AoC-Gamers/Docker-L4D2-AoC/actions/workflows/docker-image.yml/dispatches' \
             -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $DISPATCH_TOKEN" \
             -H "X-GitHub-Api-Version: 2022-11-28" -d "$body"
-
