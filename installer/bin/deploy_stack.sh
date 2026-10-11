@@ -494,15 +494,15 @@ main() {
   install_primary_instance
   prepare_steam_runtime_libraries
   apply_stack_if_needed
-  
+
   section "Update runtime patches"
   step "Running L4D2 updater bootstrap"
   bash /app/container/bootstrap/l4d2_updater.sh
-  
+
   run_stack_autoupdate_before_start
-  
+
   start_runtime
-  
+
   success "Deployment orchestration completed"
 }
 

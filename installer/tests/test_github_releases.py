@@ -73,7 +73,7 @@ test "$result" = true
         self.assertTrue((self.root / "demo/extracted").is_file())
 
     def test_expected_checksum_and_bad_archive_fail_before_extract(self):
-        result = self.shell(''' 
+        result = self.shell('''
 resolve_github_release_asset() {
     printf '%s\\n' demo.zip https://github.com/example/demo.zip https://api.github.com/repos/example/demo/releases/assets/1 timestamp 1
 }
@@ -85,7 +85,7 @@ result=$(download_github_release_source example/demo channel/develop demo.zip ""
         self.assertEqual(result.returncode, 1)
         self.assertIn("Checksum mismatch", result.stderr)
         self.assertFalse((self.root / "unexpected-extraction").exists())
-        result = self.shell(''' 
+        result = self.shell('''
 printf corrupt > "$DIR_TMP/corrupt.zip"
 extract_archive "$DIR_TMP/corrupt.zip" "$DIR_TMP/extracted"
 ''')
