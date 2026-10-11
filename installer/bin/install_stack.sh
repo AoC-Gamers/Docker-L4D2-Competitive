@@ -257,6 +257,7 @@ fi
 #####################################################
 # Source installation
 apply_stack_sources
+python3 "$DIR_INSTALLER_LIB/final_policy.py" "$DIR_LEFT4DEAD2" "$DIR_STACK/final-policy.json"
 
 #####################################################
 # Shared post-install maintenance

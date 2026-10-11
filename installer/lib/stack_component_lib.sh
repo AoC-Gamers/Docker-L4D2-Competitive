@@ -393,3 +393,9 @@ stack_extract_cached_archive_by_sha() {
 
     printf '%s\n' "$current_sha256"
 }
+
+# Optional overlays share one versioned contract across inherited images.
+deploy_optional_archive_tree_if_present() {
+    python3 "$DIR_INSTALLER_LIB/overlay_stack.py" "$1" "$2" "$3" "$4" "$5" \
+        "${OPTIONAL_OVERLAY_STATE_DIR:-${DIR_INSTALLER_STATE:-/data/installer/state}/optional-overlays}"
+}
