@@ -33,155 +33,16 @@ INSTANCE_EXCLUDE_JSON="$DIR_INSTALLER_CONFIG/instances_exclude.json"
 
 #####################################################
 # Helper functions
-normalize_relative_path() {
-    local value="$1"
-
-    value="${value#./}"
-    value="${value#/}"
-    value="${value%/}"
-
-    printf '%s\n' "$value"
-}
-
 remove_path_if_present() {
     local target_path="$1"
-
-    if [ -L "$target_path" ] || [ -f "$target_path" ]; then
-        rm -f "$target_path" || error_exit "Error deleting $target_path"
+    if [[ -L "$target_path" || -f "$target_path" ]]; then
+        rm -f -- "$target_path"
         info "Deleted file/symlink: $target_path"
-        return 0
     fi
-
-    if [ -d "$target_path" ]; then
-        rm -rf "$target_path" || error_exit "Error deleting $target_path"
-        info "Deleted directory: $target_path"
-    fi
-}
-
-path_is_exact_match() {
-    local relative_path="$1"
-    shift
-    local candidate=""
-
-    for candidate in "$@"; do
-        if [ "$relative_path" = "$candidate" ]; then
-            return 0
-        fi
-    done
-
-    return 1
-}
-
-path_has_excluded_descendant() {
-    local relative_path="$1"
-    shift
-    local candidate=""
-
-    for candidate in "$@"; do
-        if [[ "$candidate" == "${relative_path}/"* ]]; then
-            return 0
-        fi
-    done
-
-    return 1
-}
-
-warn_missing_excluded_paths() {
-    local source_folder="$1"
-    shift
-    local excluded_paths=("$@")
-    local excluded_path=""
-
-    for excluded_path in "${excluded_paths[@]}"; do
-        if [ ! -e "${source_folder}/${excluded_path}" ]; then
-            warn "The item to copy '${excluded_path}' does not exist in ${source_folder}"
-        fi
-    done
-}
-
-sync_tree_with_exclusions() {
-    local source_dir="$1"
-    local dest_dir="$2"
-    local relative_prefix="$3"
-    shift 3
-    local excluded_paths=("$@")
-    local item=""
-    local base_item=""
-    local item_relative_path=""
-    local target=""
-
-    mkdir -p "$dest_dir"
-
-    for item in "$source_dir"/*; do
-        [ -e "$item" ] || continue
-        base_item="$(basename "$item")"
-
-        if [ -n "$relative_prefix" ]; then
-            item_relative_path="${relative_prefix}/${base_item}"
-        else
-            item_relative_path="$base_item"
-        fi
-
-        target="${dest_dir}/${base_item}"
-
-        if path_is_exact_match "$item_relative_path" "${excluded_paths[@]}"; then
-            cp -a "$item" "$target" || error_exit "Error copying ${item_relative_path} to ${target}"
-            echo "Copied: ${item_relative_path}"
-        elif [ -d "$item" ] && path_has_excluded_descendant "$item_relative_path" "${excluded_paths[@]}"; then
-            sync_tree_with_exclusions "$item" "$target" "$item_relative_path" "${excluded_paths[@]}"
-        else
-            ln -s "$item" "$target" || error_exit "Error creating symlink for ${item_relative_path} in ${target}"
-            echo "Symlink created: ${item_relative_path}"
-        fi
-    done
 }
 
 sync_sourcemod_layout() {
-    local dest_dir="$1" stable="${DIR_SOURCEMOD%/*}/.instance-data/$(basename "$1")"
-    local new="${1}.next" old="${1}.previous" folder relative source_path stable_path parent linked
-    # Recover the layout rename. Private data uses a stable location and is never copied.
-    if [[ ! -e "$dest_dir" && -d "$old" ]]; then mv "$old" "$dest_dir"; fi
-    mkdir -p "$stable"
-    for folder in data logs configs; do
-        if [[ -d "$dest_dir/$folder" && ! -L "$dest_dir/$folder" && ! -e "$stable/$folder" ]]; then
-            mv "$dest_dir/$folder" "$stable/$folder"
-        fi
-    done
-    while IFS=$'\t' read -r folder relative; do
-        [[ "$folder" != data && "$folder" != logs && "$folder" != configs ]] || continue
-        [[ "$relative" != /* && "/$relative/" != *"/../"* ]] || error_exit "Unsafe instance exclusion."
-        source_path="$dest_dir/$folder/$relative"
-        stable_path="$stable/overrides/$folder/$relative"
-        parent="$(dirname "$source_path")"; linked=false
-        while [[ "$parent" != "$dest_dir" && "$parent" != / ]]; do
-            [[ ! -L "$parent" ]] || linked=true
-            parent="$(dirname "$parent")"
-        done
-        if [[ "$linked" == false && ( -e "$source_path" || -L "$source_path" ) && ! -e "$stable_path" && ! -L "$stable_path" ]]; then
-            mkdir -p "$(dirname "$stable_path")"
-            mv "$source_path" "$stable_path"
-        fi
-    done < <(jq -r 'to_entries[] | .key as $key | .value[] | [$key,.] | @tsv' "$INSTANCE_EXCLUDE_JSON")
-    rm -rf "$new"
-    mkdir -p "$new"
-    create_sourcemod_links "$new"
-    for folder in data logs configs; do
-        if [[ -d "$stable/$folder" ]]; then
-            rm -rf "$new/$folder"
-            ln -s "$stable/$folder" "$new/$folder"
-        fi
-    done
-    while IFS=$'\t' read -r folder relative; do
-        stable_path="$stable/overrides/$folder/$relative"
-        if [[ -e "$stable_path" || -L "$stable_path" ]]; then
-            rm -rf "$new/$folder/$relative"
-            mkdir -p "$(dirname "$new/$folder/$relative")"
-            ln -s "$stable_path" "$new/$folder/$relative"
-        fi
-    done < <(jq -r 'to_entries[] | .key as $key | .value[] | [$key,.] | @tsv' "$INSTANCE_EXCLUDE_JSON")
-    rm -rf "$old" # Contains only prior shared links; private paths moved above.
-    if [[ -e "$dest_dir" || -L "$dest_dir" ]]; then mv "$dest_dir" "$old"; fi
-    mv "$new" "$dest_dir"
+    python3 "$DIR_INSTALLER_LIB/instance_layout.py" "$DIR_SOURCEMOD" "$1" "$INSTANCE_EXCLUDE_JSON"
 }
 
 cleanup_extra_instances() {
@@ -226,57 +87,8 @@ cleanup_extra_instances() {
         instance_name="$(instance_name_for_index "$i")"
         step "Removing runtime artifacts for extra instance ${instance_name}"
         remove_path_if_present "$DIR_APP/$instance_name"
-        remove_path_if_present "$DIR_CFG/${instance_name}.cfg"
-        remove_path_if_present "${DIR_SOURCEMOD}${i}"
-    done
-}
-
-# Function to create symbolic links or copy according to the JSON
-create_sourcemod_links() {
-    local dest_dir="$1"
-    local folders=("bin" "configs" "data" "extensions" "gamedata" "plugins" "translations")
-    local folder=""
-    local source_folder=""
-    local dest_folder=""
-    local excluded_paths=()
-    local excluded_path=""
-
-    for folder in "${folders[@]}"; do
-        source_folder="${DIR_SOURCEMOD}/${folder}"
-        dest_folder="${dest_dir}/${folder}"
-        [ -d "$source_folder" ] || continue
-
-        excluded_paths=()
-        if [ -f "$INSTANCE_EXCLUDE_JSON" ]; then
-            mapfile -t excluded_paths < <(jq -r --arg key "$folder" '.[$key] // [] | .[]' "$INSTANCE_EXCLUDE_JSON" | while IFS= read -r line; do normalize_relative_path "$line"; done)
-        fi
-
-        if [[ "$folder" == data ]]; then
-            local stable_data="${DIR_SOURCEMOD%/*}/.instance-data/$(basename "${dest_dir%.next}")/data"
-            mkdir -p "$stable_data"
-            # Static shared entries link to the primary; private subtrees start empty.
-            local entry base
-            for entry in "$source_folder"/*; do
-                [[ -e "$entry" ]] || continue
-                base="$(basename "$entry")"
-                if path_is_exact_match "$base" "${excluded_paths[@]}" || path_has_excluded_descendant "$base" "${excluded_paths[@]}"; then
-                    [[ -e "$stable_data/$base" ]] || mkdir -p "$stable_data/$base"
-                elif [[ ! -e "$stable_data/$base" && ! -L "$stable_data/$base" ]]; then
-                    ln -s "$entry" "$stable_data/$base"
-                fi
-            done
-            ln -s "$stable_data" "$dest_folder"
-            continue
-        fi
-
-        warn_missing_excluded_paths "$source_folder" "${excluded_paths[@]}"
-
-        if [ ${#excluded_paths[@]} -eq 0 ]; then
-            ln -s "$source_folder" "$dest_folder" || error_exit "Error creating symlink for folder $folder"
-            echo "Symlink created for the entire folder: $folder"
-        else
-            sync_tree_with_exclusions "$source_folder" "$dest_folder" "" "${excluded_paths[@]}"
-        fi
+        # Retain configuration, logs and private files if this instance returns.
+        info "Retaining configuration and private SourceMod data for $instance_name"
     done
 }
 
@@ -329,6 +141,7 @@ for executable in "$DIR_APP/$GAMESERVER" "$DIR_APP/$GAMESERVER"-*; do
         error_exit "Stop affected instances before direct sync_instances.sh."
     fi
 done
+python3 "$DIR_INSTALLER_LIB/instance_layout.py" --migrate-all "$DIR_SOURCEMOD" "$INSTANCE_EXCLUDE_JSON"
 cleanup_extra_instances "$((ADDITIONAL_INSTANCES + 1))"
 
 #####################################################
