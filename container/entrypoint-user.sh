@@ -6,6 +6,7 @@ exit_handler_user() {
   # Execute the shutdown commands
   section "Stopping primary instance"
   info "Instance: ${GAMESERVER}"
+  bash "$DIR_INSTALLER_BIN/runtime_intent.sh" capture
   ./"${GAMESERVER}" stop
   exitcode=$?
   exit ${exitcode}
@@ -61,7 +62,7 @@ fi
 
 section "Run deployment orchestrator"
 step "Delegating runtime flow to deploy_stack.sh"
-if bash "$DIR_INSTALLER_BIN/deploy_stack.sh"; then
+if STACK_CONTAINER_BOOT=true bash "$DIR_INSTALLER_BIN/deploy_stack.sh"; then
   success "Deployment orchestrator completed"
 else
   error_exit "Deployment orchestrator failed"

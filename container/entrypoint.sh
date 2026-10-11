@@ -21,6 +21,7 @@ exit_handler() {
   # Execute the shutdown commands
   section "Stopping primary instance"
   info "Instance: ${GAMESERVER}"
+  gosu "${USER}" bash "$DIR_INSTALLER_BIN/runtime_intent.sh" capture
   exec gosu "${USER}" ./"${GAMESERVER}" stop
   exitcode=$?
   exit ${exitcode}
@@ -184,5 +185,7 @@ exec gosu "${USER}" /app/container/entrypoint-user.sh &
 wait
 
 section "Container idle"
+source "$DIR_INSTALLER_LIB/extensions_stack.sh"
+stack_run_extension idle
 info "Keeping the container running"
 tail -f /dev/null

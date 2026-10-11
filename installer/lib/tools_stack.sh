@@ -132,22 +132,7 @@ extract_archive() {
     local archive_path="$1"
     local destination_dir="$2"
 
-    mkdir -p "$destination_dir"
-
-    case "$archive_path" in
-        *.zip)
-            unzip -oq "$archive_path" -d "$destination_dir"
-            ;;
-        *.tar.gz|*.tgz)
-            tar -xzf "$archive_path" -C "$destination_dir"
-            ;;
-        *.tar)
-            tar -xf "$archive_path" -C "$destination_dir"
-            ;;
-        *)
-            error_exit "Unsupported archive format: $archive_path"
-            ;;
-    esac
+    python3 "${DIR_INSTALLER_LIB:-$(dirname "${BASH_SOURCE[0]}")}/safe_extract.py" "$archive_path" "$destination_dir"
 }
 
 dir_has_entries() {
@@ -158,45 +143,8 @@ dir_has_entries() {
 
 validate_archive() {
     local archive_path="$1"
-    local validate_dir=""
-    local validate_root="${DIR_TMP:-/tmp}"
-
-    if [ ! -s "$archive_path" ]; then
-        return 1
-    fi
-
-    if ! mkdir -p "$validate_root" 2> /dev/null; then
-        validate_root="/tmp"
-        mkdir -p "$validate_root" 2> /dev/null || return 1
-    fi
-
-    case "$archive_path" in
-        *.zip)
-            unzip -tq "$archive_path" > /dev/null 2>&1
-            ;;
-        *.tar.gz|*.tgz)
-            gzip -t "$archive_path" > /dev/null 2>&1 || return 1
-            validate_dir="$(mktemp -d "${validate_root%/}/validate-tgz-XXXXXX")" || return 1
-            if tar -xzf "$archive_path" -C "$validate_dir" > /dev/null 2>&1 && dir_has_entries "$validate_dir"; then
-                rm -rf "$validate_dir"
-                return 0
-            fi
-            rm -rf "$validate_dir"
-            return 1
-            ;;
-        *.tar)
-            validate_dir="$(mktemp -d "${validate_root%/}/validate-tar-XXXXXX")" || return 1
-            if tar -xf "$archive_path" -C "$validate_dir" > /dev/null 2>&1 && dir_has_entries "$validate_dir"; then
-                rm -rf "$validate_dir"
-                return 0
-            fi
-            rm -rf "$validate_dir"
-            return 1
-            ;;
-        *)
-            return 1
-            ;;
-    esac
+    [[ -s "$archive_path" ]] || return 1
+    python3 "${DIR_INSTALLER_LIB:-$(dirname "${BASH_SOURCE[0]}")}/safe_extract.py" "$archive_path" /unused --validate > /dev/null 2>&1
 }
 
 debug_archive_validation_failure() {

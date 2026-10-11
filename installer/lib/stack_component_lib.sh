@@ -274,87 +274,31 @@ stack_download_release_tarball_if_changed() {
     local download_url="$2"
     local file_pattern="$3"
 
-    local remote_filename=""
-    local remote_git=""
-    local local_file=""
-    local local_git=""
-    local target_file=""
-    local temp_file=""
-    local invalid_file=""
-    local file_size=""
-    local timeout=60
-
-    remote_filename=$(stack_get_filename_from_url "$download_url")
-    if [ -z "$remote_filename" ]; then
-        log "Error: Could not get the filename for ${package_name} from the URL." >&2
-        return 1
+    local record="${STACK_HOOK_ASSETS_FILE:-${DIR_INSTALLER_STATE:-/data/installer/state}/hook-assets.json}"
+    local cache_root="${DIR_INSTALLER:-/data/installer}/cache/hook-assets"
+    local filename archive sha previous='{}'
+    mkdir -p "$(dirname "$record")" "$cache_root"
+    [[ ! -f "$record" ]] || previous="$(cat "$record")"
+    if [[ "${STACK_REUSE_SOURCES:-false}" == true ]] && jq -e --arg name "$package_name" '.[$name]' <<< "$previous" >/dev/null; then
+        archive="$(jq -r --arg name "$package_name" '.[$name].cache_path' <<< "$previous")"
+        sha="$(jq -r --arg name "$package_name" '.[$name].sha256' <<< "$previous")"
+        [[ -f "$archive" && "$(sha256sum "$archive" | cut -d' ' -f1)" == "$sha" ]] || error_exit "Pinned hook asset unavailable: $package_name. Restore its cache or request an explicit update."
+        printf '%s\n' "$archive"
+        return 0
     fi
-    log "The remote filename for ${package_name} is: ${remote_filename}" >&2
-
-    remote_git=$(echo "$remote_filename" | grep -oE 'git[0-9]+' || true)
-    target_file="$DIR_TMP/$remote_filename"
-
-    local_file=$(ls $file_pattern 2>/dev/null | head -n 1 || true)
-    if [ -z "$local_file" ]; then
-        log "No local file found matching the pattern: $file_pattern" >&2
-    else
-        local_git=$(echo "$local_file" | grep -oE 'git[0-9]+' || true)
-        log "Local version of ${package_name}: ${local_git:-unknown}" >&2
-    fi
-
-    if [ -n "$local_file" ] && [ -n "$remote_git" ] && [ "$local_git" = "$remote_git" ]; then
-        if validate_archive "$local_file"; then
-            log "${package_name} is already up to date (version ${local_git})." >&2
-            printf '%s\n' "$local_file"
-            return 0
-        fi
-
-        log "Local archive for ${package_name} is corrupt or incomplete. Re-downloading ${local_file}." >&2
-        verify_and_delete_file "$local_file" >&2
-    fi
-
-    log "${package_name} is outdated or has no local copy. Downloading version ${remote_git:-unknown}." >&2
-    temp_file="${target_file}.part.$$"
-    verify_and_delete_file "$temp_file" >&2
-    mkdir -p "$DIR_TMP"
-
-    if ! wget -O "$temp_file" -q "$download_url"; then
-        verify_and_delete_file "$temp_file" >&2
-        log "Error: The download of ${package_name} failed." >&2
-        return 1
-    fi
-
-    while [ ! -s "$temp_file" ] && [ $timeout -gt 0 ]; do
-        sleep 1
-        timeout=$((timeout-1))
-    done
-
-    if [ ! -s "$temp_file" ]; then
-        verify_and_delete_file "$temp_file" >&2
-        log "Error: The download of ${package_name} did not complete in the expected time." >&2
-        return 1
-    fi
-
-    if ! validate_archive "$temp_file"; then
-        invalid_file="${target_file}.invalid.$$"
-        file_size="$(wc -c < "$temp_file" 2> /dev/null | tr -d '[:space:]' || true)"
-        log "Error: The downloaded archive for ${package_name} failed validation." >&2
-        log "Preserving invalid download for inspection at ${invalid_file} (size: ${file_size:-unknown} bytes)." >&2
-        df -h "$DIR_TMP" >&2 || true
-        mv -f "$temp_file" "$invalid_file"
-        debug_archive_validation_failure "$invalid_file"
-        return 1
-    fi
-
-    mv -f "$temp_file" "$target_file"
-
-    if [ -n "$local_file" ] && [ -n "$remote_git" ] && [ "$local_git" != "$remote_git" ]; then
-        verify_and_delete_file "$local_file" >&2
-        log "The old version of ${package_name} ($local_file) was deleted." >&2
-    fi
-
-    log "${package_name} updated to version ${remote_git:-unknown}." >&2
-    printf '%s\n' "$target_file"
+    filename="$(stack_get_filename_from_url "$download_url")"
+    [[ -n "$filename" && "$filename" == "$(basename "$filename")" && "$filename" != *..* ]] || error_exit "Invalid asset filename for $package_name."
+    archive="$DIR_TMP/$filename"
+    download_file "$download_url" "$archive.part" || return 1
+    validate_archive "$archive.part" || return 1
+    sha="$(sha256sum "$archive.part" | cut -d' ' -f1)"
+    mkdir -p "$cache_root/$sha"
+    archive="$cache_root/$sha/$filename"
+    mv "$DIR_TMP/$filename.part" "$archive"
+    jq --arg name "$package_name" --arg sha "$sha" --arg path "$archive" --arg asset "$filename" \
+        '.[$name]={asset:$asset,sha256:$sha,cache_path:$path,verification:"content identity only"}' <<< "$previous" > "$record.tmp"
+    mv "$record.tmp" "$record"
+    printf '%s\n' "$archive"
 }
 
 stack_require_local_archive() {

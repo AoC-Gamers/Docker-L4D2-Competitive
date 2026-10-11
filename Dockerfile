@@ -5,7 +5,10 @@
 # https://github.com/GameServerManagers/docker-gameserver
 #
 
-FROM gameservermanagers/linuxgsm:ubuntu-24.04
+ARG BASE_IMAGE=gameservermanagers/linuxgsm:ubuntu-24.04
+FROM ${BASE_IMAGE}
+ARG BASE_IMAGE
+LABEL org.opencontainers.image.base.name="${BASE_IMAGE}"
 LABEL maintainer="L4D2 LGSM Competitive <lechuga>"
 LABEL version="2.1.0"
 
@@ -33,6 +36,7 @@ RUN dpkg --add-architecture i386 && \
     binutils \
     bc \
     jq \
+    python3 \
     tmux \
     netcat-openbsd \
     lib32gcc-s1 \
