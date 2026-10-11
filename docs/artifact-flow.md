@@ -25,6 +25,12 @@ snapshots previamente existentes siguen en `state/sources/<perfil>` y
 algunos hooks necesitan el commit o submódulos. La transacción referencia los
 snapshots; ya no hace otra copia de ellos en `serverfiles`.
 
+La identidad de un snapshot se calcula y verifica sobre su copia terminada,
+antes de registrarlo. Los metadatos Git pueden cambiar durante mantenimiento
+del original; un hash anterior a la copia no describe necesariamente los bytes
+conservados. Un snapshot existente que no coincida sigue rechazándose: esta
+verificación no acepta ni repara silenciosamente contenido corrupto.
+
 Con `STACK_REUSE_SOURCES=true` se verifican y utilizan las últimas fuentes
 **confirmadas**, sin consultar canales remotos. Así se mantiene
 `L4D2_STACK_AUTOUPDATE=false`: una corrección local del instalador no actualiza

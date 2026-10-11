@@ -194,6 +194,21 @@ printf default > "$DIR_CFG/local.cfg"
         self.assertSuccess(self.run_install(extra={'STACK_REUSE_SOURCES':'true'}))
         self.assertEqual(calls.read_text(),'callcall')
 
+    def test_snapshot_hash_describes_copied_bytes_when_git_metadata_changes(self):
+        identity=self.installer/'lib/source_identity.py'
+        original=self.base/'state/sources/test/demo'
+        marker=self.base/'metadata-changed'
+        # Simulate Git maintenance completing between hashing and snapshot copy.
+        identity.write_text(identity.read_text()+f'''
+if __name__ == '__main__' and Path(sys.argv[1]) == Path({str(original)!r}) and not Path({str(marker)!r}).exists():
+    Path({str(marker)!r}).write_text('changed')
+    (Path(sys.argv[1])/'.git/FETCH_HEAD').write_text('metadata changed after hashing\\n')
+''')
+        self.assertSuccess(self.run_install())
+        self.assertTrue(marker.exists())
+        self.assertSuccess(self.run_install(extra={'STACK_REUSE_SOURCES':'true'}))
+        self.assertEqual((self.game/'addons/sourcemod/plugins/demo.smx').read_text(),'version1')
+
     def test_corrupt_prepared_cache_is_rebuilt_without_publishing_bad_bytes(self):
         self.assertSuccess(self.run_install())
         payloads=list((self.installer/'cache/prepared').rglob('demo.smx'))

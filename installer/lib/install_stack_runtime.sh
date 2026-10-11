@@ -661,16 +661,33 @@ apply_stack_sources() {
                 [[ -f "$original_archive" && "$(sha256sum "$original_archive" | cut -d' ' -f1)" == "$original_sha" ]] || error_exit "Original archive missing/corrupt: $folder"
             fi
             if [[ -n "$component_cache_dir" ]]; then
+                # Git maintenance may change metadata after the original is
+                # hashed. Publish a snapshot named for the bytes actually copied.
+                # Serialize cache publication even when the final key changes.
+                mkdir -p "$STATE_ROOT/pinned-sources"
+                exec 4>"$STATE_ROOT/pinned-sources/.snapshot.lock"; flock 4
                 snapshot_sha256="$(python3 "$DIR_INSTALLER_LIB/source_identity.py" "$component_cache_dir")"
                 snapshot_key="$(printf '%s:%s' "$source_key" "$snapshot_sha256" | sha256sum | cut -d' ' -f1)"
-                mkdir -p "$STATE_ROOT/pinned-sources"
-                exec 4>"$STATE_ROOT/pinned-sources/$snapshot_key.lock"; flock 4
                 if [[ ! -d "$STATE_ROOT/pinned-sources/$snapshot_key" ]]; then
-                    rm -rf "$STATE_ROOT/pinned-sources/$snapshot_key.new"
-                    mkdir -p "$STATE_ROOT/pinned-sources/$snapshot_key.new"
-                    cp -a "$component_cache_dir/." "$STATE_ROOT/pinned-sources/$snapshot_key.new/"
-                    mv "$STATE_ROOT/pinned-sources/$snapshot_key.new" "$STATE_ROOT/pinned-sources/$snapshot_key"
+                    local snapshot_stage
+                    snapshot_stage="$(mktemp -d "$STATE_ROOT/pinned-sources/.snapshot.XXXXXXXX")"
+                    if ! cp -a "$component_cache_dir/." "$snapshot_stage/"; then
+                        rm -rf "$snapshot_stage"
+                        error_exit "Could not snapshot source: $folder"
+                    fi
+                    snapshot_sha256="$(python3 "$DIR_INSTALLER_LIB/source_identity.py" "$snapshot_stage")" || {
+                        rm -rf "$snapshot_stage"
+                        error_exit "Could not hash source snapshot: $folder"
+                    }
+                    snapshot_key="$(printf '%s:%s' "$source_key" "$snapshot_sha256" | sha256sum | cut -d' ' -f1)"
+                    if [[ -d "$STATE_ROOT/pinned-sources/$snapshot_key" ]]; then
+                        rm -rf "$snapshot_stage"
+                    else
+                        mv "$snapshot_stage" "$STATE_ROOT/pinned-sources/$snapshot_key"
+                    fi
                 fi
+                [[ "$(python3 "$DIR_INSTALLER_LIB/source_identity.py" "$STATE_ROOT/pinned-sources/$snapshot_key")" == "$snapshot_sha256" ]] \
+                    || error_exit "Pinned snapshot failed verification: $folder"
                 flock -u 4; exec 4>&-
                 component_cache_dir="$STATE_ROOT/pinned-sources/$snapshot_key"
             fi
