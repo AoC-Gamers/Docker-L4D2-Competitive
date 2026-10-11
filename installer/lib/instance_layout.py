@@ -114,7 +114,7 @@ def private_default(source, destination, empty=False):
         shutil.copy2(source, destination)
 
 
-def refresh(source, destination, exclusions, relative='', mutable=False, empty_private=False):
+def refresh(source, destination, exclusions, relative='', mutable=False, empty_private=False, keep_local=False):
     if relative in exclusions:
         private_default(source, destination, empty=empty_private)
         return
@@ -127,23 +127,39 @@ def refresh(source, destination, exclusions, relative='', mutable=False, empty_p
         destination.mkdir(parents=True, exist_ok=True)
         names={p.name for p in source.iterdir()}
         for p in list(destination.iterdir()):
-            if p.is_symlink() and p.name not in names: p.unlink()
+            rel=relative+'/'+p.name if relative else p.name
+            protected=rel in exclusions or any(e.startswith(rel+'/') for e in exclusions)
+            if p.name in names or protected: continue
+            if keep_local:
+                # Only retire links owned by this shared layout. Foreign/local
+                # data links and physical configuration remain untouched.
+                if p.is_symlink() and os.readlink(p)==str(source/p.name): p.unlink()
+            elif p.is_symlink() or p.is_file():
+                p.unlink()
+            else:
+                shutil.rmtree(p)
         for child in sorted(source.iterdir()):
             rel=relative+'/'+child.name if relative else child.name
             target=destination/child.name
             if mutable and exists(target) and not target.is_symlink() and not any(p.startswith(rel+'/') for p in exclusions): continue
-            refresh(child,target,exclusions,rel,mutable=False,empty_private=empty_private)
+            refresh(child,target,exclusions,rel,mutable=False,empty_private=empty_private,keep_local=keep_local)
         # Private data paths exist even when the primary has no such directory.
         for rel in exclusions:
             if relative: continue
             target=destination/rel
             if not exists(target): private_default(source/rel,target,empty=mutable)
+        if not keep_local and not nested:
+            # Collapse old physical shared copies back to the canonical link.
+            remove_links_only(destination)
+            link(source,destination)
     elif physical:
-        # An old source disappeared: retain physical instance content.
-        return
+        if keep_local: return
+        raise ValueError(f'Expected shared file, found physical directory: {destination}')
     elif exists(destination) and not destination.is_symlink():
-        # Keep local bytes. Explicit exclusions determine initial private copies.
-        return
+        if keep_local: return
+        # Non-private static files follow the primary, as the JSON contract says.
+        destination.unlink()
+        link(source,destination)
     else:
         link(source,destination)
 
@@ -165,7 +181,7 @@ def synchronize(source, destination, policy_file):
             # physical container with links and empty explicitly private routes.
             if dest.resolve()!=src.resolve(): raise ValueError('Unknown instance data link')
             dest.unlink()
-        if src.is_dir(): refresh(src,dest,policy.get(folder,[]),mutable=folder=='data',empty_private=folder=='data')
+        if src.is_dir(): refresh(src,dest,policy.get(folder,[]),mutable=folder=='data',empty_private=folder=='data',keep_local=folder in ('data','configs'))
 
 
 if __name__ == '__main__':

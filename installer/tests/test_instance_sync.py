@@ -124,3 +124,20 @@ class InstanceSync(unittest.TestCase):
             synchronize(sm,retired,config/'instances_exclude.json')
             self.assertEqual(private.read_text(),'private bytes')
             self.assertTrue((retired/'plugins').is_symlink())
+
+    def test_non_private_static_copies_refresh_to_shared_links_without_stale_plugins(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); sm=root/'sourcemod'; dest=root/'sourcemod1'
+            (sm/'plugins').mkdir(parents=True); (dest/'plugins').mkdir(parents=True)
+            (sm/'plugins/shared.smx').write_text('new canonical version')
+            (dest/'plugins/shared.smx').write_text('old copied version')
+            (dest/'plugins/stale.smx').write_text('retired plugin')
+            (sm/'configs').mkdir(); (sm/'configs/default.cfg').write_text('default')
+            (dest/'configs').mkdir(); local=dest/'configs/local.cfg'; local.write_text('local')
+            policy=root/'policy.json'; policy.write_text('{}')
+            for _ in range(2):
+                synchronize(sm,dest,policy)
+                self.assertTrue((dest/'plugins').is_symlink())
+                self.assertEqual((dest/'plugins/shared.smx').read_text(),'new canonical version')
+                self.assertFalse((dest/'plugins/stale.smx').exists())
+                self.assertEqual(local.read_text(),'local')
