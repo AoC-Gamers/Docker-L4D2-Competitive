@@ -224,7 +224,7 @@ info "Profile file: $PROFILE_JSON"
 initialize_install_workspace
 
 #####################################################
-# Preparation never cleans the active server. Publication is journaled and recoverable.
+# Preparation never cleans the active server. Failed publication requires manual retry.
 validate_stack_hooks
 stack_validate_extensions
 stack_prepare_transaction
@@ -233,7 +233,7 @@ prepare_stack_sources
 export STACK_PREPARED_SOURCES_FILE="$STACK_TRANSACTION/prepared-sources.json"
 section "Phase 2/3: prepare and validate candidate"
 stack_run_candidate
-section "Phase 3/3: publish with recovery"
+section "Phase 3/3: publish prepared files (manual retry on failure)"
 stack_publish_transaction
 
 section "Stack ${INSTALL_TYPE} completed"

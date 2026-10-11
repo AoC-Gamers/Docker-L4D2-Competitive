@@ -27,22 +27,32 @@ Las pruebas offline usan directorios temporales y fixtures; no equivalen a una p
 
 ## Preparación, publicación y recuperación
 
+El [procedimiento operativo vigente](manual-publication.md) describe migración, reintento manual y las pruebas del flujo sin respaldos automáticos.
+
 El [flujo de artefactos persistentes](artifact-flow.md) documenta las tres fases actuales, el contrato de caché preparada y la limpieza del payload tras confirmar.
 
 El instalador mantiene la arquitectura de componentes por capas. No duplica Valve: prepara solo archivos aportados por los componentes, configuraciones locales conservadas y recursos opcionales de propiedad comprobada. Los hooks reciben los cuatro argumentos históricos (`source_dir`, `install|update`, `source_download`, `source_type`), en workspaces independientes del cache bruto. Durante la composición todas las variables de destino (`LGSM_SERVERFILES`, `DIR_LEFT4DEAD2`, `DIR_ADDONS`, `DIR_SOURCEMOD`, `DIR_CFG`, `DIR_INSTALLER_STATE`) apuntan al candidato. Las eliminaciones AoC de cuatro bibliotecas `bin/` se declaran como operaciones diferidas, nunca se ejecutan contra el runtime desde el hook.
 
-Fases del diario `/data/serverfiles/.stack-transaction/journal.json`:
+Fases del diario `state/publication/<hash-destino>/journal.json`:
 
 | Fase | Significado | Tras interrupción |
 |---|---|---|
-| Sin diario / preparación | Descargas, snapshots de fuentes, extracción, hooks, políticas, GeoIP, validación | El stack operativo no se ha publicado |
-| `prepared` | Plan validado, sin renames de archivos operativos | Conservar árbol anterior y reanudar únicamente la selección registrada si se interrumpió la parada |
-| `publishing` | Entradas registradas antes de cada rename | Restaurar entradas pendientes en orden inverso |
-| `published` | Archivos aplicados, falta sincronizar/reconciliar y confirmar | Restaurar versión anterior y rehacer enlaces |
-| `committed` | Publicación y reconciliación concluidas | No hay rollback automático pendiente |
-| `rolled_back` | Archivos anteriores recuperados | Reintentar un despliegue completo validado |
+| Sin diario / preparación | Descargas, snapshots, hooks, políticas, GeoIP y validación | El árbol operativo no se ha publicado |
+| `prepared` | Plan validado, sin cambios operativos | Preparar nuevamente; conservar la selección de consumidores detenidos |
+| `publishing` | Copia y sustitución de archivos | Estado fallido, instancias detenidas, reparación y reintento manual |
+| `published` | Archivos aplicados; falta sync/reconciliación y commit | Mismo reintento manual desde el candidato retenido |
+| `committed` | Publicación y reconciliación concluidas | Limpiar candidato; retomar solo la selección pendiente |
+| `abandoned` | Operador solicitó reconstruir el candidato | Ejecutar install_stack; no arrancar consumidores antes de completar |
 
-La sustitución de varios archivos/directorios **no es atómica**. Cada entrada registra si existía antes de moverla a `backup/`; el diario y los renames se sincronizan a disco. El arranque siguiente toma el bloqueo y recupera una publicación interrumpida antes de resolver nuevas fuentes. No depende de un trap para SIGKILL. Si no se puede escribir el diario o restaurar un archivo (por ejemplo, por falta de espacio), se conserva la transacción y el despliegue no llega a `ready`. Liberar espacio y repetir la recuperación; no borrar el diario ni su backup. State y serverfiles deben estar en el mismo filesystem; se comprueba antes de parar instancias/publicar. Montajes independientes requieren mantener estas rutas en un volumen común.
+La publicación de varios archivos **no es atómica y no se restaura automáticamente**.
+No se crean backups. Se conserva el candidato y se copia cada archivo a un
+temporal del destino antes del reemplazo individual. El plan se escribe una vez;
+el avance se persiste en un registro pequeño separado, evitando reescribir todo
+el plan por archivo. Un fallo mantiene evidencia y bloquea el arranque normal.
+`recover_stack.sh` es una operación manual que vuelve a publicar el material
+verificado, sin ejecutar hooks ni descargar fuentes. La ruta ya no está dentro
+de la instalación del juego. Para archivos temporales y destino se usa el mismo
+filesystem; el estado puede estar en otro filesystem.
 
 `deploy_stack.sh` conserva el orden del bootstrap del actualizador de Valve y difiere la reanudación de consumidores hasta después de esa fase. No se cambió el actualizador ni sus scripts. Un fallo de arranque posterior al commit deja el despliegue fallido y la publicación confirmada; no deshace archivos que ya pueden haber sido usados por consumidores.
 
@@ -55,13 +65,27 @@ bash "$DIR_INSTALLER_BIN/install_stack.sh" update
 # Reaplicar lógica local usando las últimas fuentes confirmadas compatibles.
 STACK_REUSE_SOURCES=true bash "$DIR_INSTALLER_BIN/install_stack.sh" update
 
-# Recuperación sin red ni actualización de Valve, bajo el mismo bloqueo.
+# Reintento manual del candidato retenido, sin red, hooks ni Valve.
 bash "$DIR_INSTALLER_BIN/recover_stack.sh"
 
 jq '{status,stack,last_error,recovery}' "$DIR_INSTALLER_STATE/current/deploy-state.json"
 ```
 
-`recover_stack.sh` restaura archivos y repara enlaces/reconciliación antes de reanudar. Mantiene `status=failed` hasta que un despliegue completo valide la definición pretendida: no declara `ready` con metadatos de un candidato fallido. En una fase `committed` no intenta revertir automáticamente una publicación ya consumida. Para volver a una versión confirmada anterior, seleccionar su imagen por digest, su perfil y sus fuentes verificadas, y ejecutar un despliegue completo. La base retiene una transacción `.last` para inspección; no es un sistema de backups del juego.
+`recover_stack.sh` verifica el candidato y la identidad de la lógica, repite la
+publicación y sincronización/reconciliación, confirma y reanuda solo la selección
+anterior permitida. Un fallo no llega a `ready`. Si falta material o cambió la
+lógica, usar `recover_stack.sh rebuild` y después `install_stack.sh update`
+(con `STACK_REUSE_SOURCES=true` para las fuentes fijadas disponibles). El rebuild
+es una decisión explícita: conserva la selección anterior confirmada de fuentes
+aunque se haya interrumpido la copia de sus recibos; no revierte archivos ya
+instalados y mantiene las
+instancias detenidas. Si se requiere una versión histórica concreta, seleccionar
+su imagen y sus fuentes verificadas. No hay respaldo automático para restaurarla.
+
+Los recibos legacy salen de `serverfiles` durante la migración. Una publicación
+v1 pendiente conserva su backup hasta que el operador ejecute su restauración
+compatible una sola vez; después debe instalar y validar el stack nuevamente.
+No borrar esa evidencia ni interpretar un journal v1 como uno nuevo sin rollback.
 
 Los switches `STACK_TEST_FAIL_PUBLISH_AFTER` y `STACK_TEST_KILL_PUBLISH_AFTER` son exclusivamente para fixtures temporales. No configurarlos en un servidor.
 
@@ -71,7 +95,9 @@ Los switches `STACK_TEST_FAIL_PUBLISH_AFTER` y `STACK_TEST_KILL_PUBLISH_AFTER` s
 
 Las configuraciones locales no registradas o distintas del último template se conservan. managed-files.json almacena hashes de templates, sin adoptar credenciales locales como defaults administrados. En la primera migración se conservan configuraciones existentes por prudencia. Las dos excepciones explícitas son cfg/sharedplugins.cfg y sharedplugins1.cfg: son cargadores administrados del stack y deben seguir el artefacto competitivo o retirarse en Vanilla. La política final elimina solo referencias exactas identificadas, incluso de un CFG local conservado. Los cambios de templates que entren en conflicto con ediciones locales requieren revisión administrativa; no se sobrescriben silenciosamente. Un enlace simbólico en un árbol estático cuya procedencia no pueda comprobarse provoca un fallo previo a publicar, conservando el servidor operativo.
 
-La sincronización migra por rename datos/logs/configs físicos particulares y exclusiones particulares a `addons/.instance-data/sourcemodN/`, y enlaza el layout activo a ellos. No copia datos vivos de la primaria a una instancia nueva. Los subárboles privados nuevos empiezan vacíos; los recursos estáticos compartidos siguen enlazados. Al reducir topología, esa ubicación conserva los datos privados de instancias retiradas. Su eliminación requiere una decisión administrativa separada.
+La sincronización mantiene `sourcemod` como origen compartido y actualiza los enlaces de `sourcemodN` en su lugar. `logs` y el contenedor `data` son físicos dentro de cada instancia; las exclusiones de `instances_exclude.json` definen las rutas particulares. Los datos privados nuevos empiezan vacíos; los recursos compartidos siguen enlazados y las copias iniciales de configuraciones/plugins excluidos conservan el contrato previo. No se duplican ni restauran datos vivos.
+
+La migración devuelve por rename los datos de `.instance-data/sourcemodN` al layout activo, sin copiar sus bytes ni cambiar sus inodos. Solo retira `.previous`/`.next` cuando contienen enlaces y directorios vacíos; ante archivos físicos no identificados o conflictos conserva el contenido y falla para revisión. Las instancias retiradas conservan CFG, logs y datos; únicamente se retira su ejecutable. No se crean nuevos `.instance-data` ni `.previous`.
 
 La coordinación utiliza los sockets UID de LinuxGSM (`<selfname>-<selfname.uid>`) y compatibilidad con sockets anteriores; consulta sesiones tmux únicamente en las operaciones de despliegue. Detiene y verifica solo las instancias que estaban ejecutándose, y reanuda solo esa selección. `L4D2_AUTOSTART=false` impide reanudar. La sincronización directa rechaza instancias activas. El menú automático delega esa coordinación al instalador; el update manual conserva su comportamiento de dejar las instancias detenidas.
 
@@ -143,9 +169,11 @@ Antes de la primera adopción, configurar la variable de repositorio GitHub `AOC
 4. Integrar Vanilla y construir contra el digest exacto de AoC del paso anterior. No reconstruir hijos contra una API base antigua.
 5. Validar las imágenes en volúmenes desechables. Solo después planificar la adopción en servidores; esta tarea no publica producción ni modifica sus volúmenes.
 
-Para actualizar un volumen existente: conservar sus backups operativos habituales, seleccionar la nueva imagen por digest, conservar perfil/overrides y montajes de recursos/BanSystem, y recrear el contenedor. El deploy detecta la lógica nueva y recompone con fuentes confirmadas cuando autoupdate está desactivado. Revisar `current/deploy-state.json`, `source-lock.json`, `.stack-transaction/journal.json` y registros `.paths.unresolved`. Establecer la selección de arranque durante la primera migración si no hay `runtime-intent.json`. No usar `rsync --delete` sobre `/data` ni sobre Valve.
+Para actualizar un volumen existente: conservar sus backups operativos habituales, seleccionar la nueva imagen por digest, conservar perfil/overrides y montajes de recursos/BanSystem, y recrear el contenedor. El deploy detecta la lógica nueva y recompone con fuentes confirmadas cuando autoupdate está desactivado. Revisar `current/deploy-state.json`, `source-lock.json`, `state/publication/<hash-destino>/journal.json` y registros `.paths.unresolved`. Establecer la selección de arranque durante la primera migración si no hay `runtime-intent.json`. No usar `rsync --delete` sobre `/data` ni sobre Valve.
 
-## Informe de entrega y evidencia
+## Registro histórico de la entrega inicial
+
+Este apartado conserva la evidencia de la revisión inicial. El ciclo vigente de publicación sin rollback y la migración posterior están descritos arriba y en `artifact-flow.md`; los conteos y limitaciones siguientes corresponden a aquella entrega.
 
 Todos los cambios se prepararon en ramas nuevas `codex/stack-reliability`, desde los commits develop indicados arriba. No se hicieron pushes, merges, publicaciones ni operaciones sobre volúmenes de servidores.
 
@@ -182,7 +210,7 @@ Validación ejecutada en el host, con exit code 0:
 | Los cuatro workflows modificados | `actionlint -shellcheck='' <workflows>` (1.7.12) | Sin diagnósticos; shellcheck no instalado |
 | Los cuatro repositorios | `git diff --check` | Sin errores de whitespace |
 
-Las 41 pruebas Python más los fixtures Bash cubren composición, migración/retirada repetida, rutas/symlinks inválidos, capas que reintroducen exclusiones, configuraciones/datos privados, preparación fallida por descarga/extracción/hook, rollback e interrupción SIGKILL, locks y llamadas anidadas, fuentes confirmadas/caché corrupta, huella independiente de timestamps/logs y hooks obligatorios. La equivalencia limpio/update compara árboles administrados, no datos mutables. El pipeline de empaquetado usa SMX ficticios para validar estructura; no demuestra ejecución ni compilación SourcePawn.
+Las 41 pruebas Python más los fixtures Bash cubren composición, migración/retirada repetida, rutas/symlinks inválidos, capas que reintroducen exclusiones, configuraciones/datos privados, preparación fallida por descarga/extracción/hook, fallos de publicación con reintento manual e interrupción SIGKILL, locks y llamadas anidadas, fuentes confirmadas/caché corrupta, huella independiente de timestamps/logs y hooks obligatorios. La equivalencia limpio/update compara árboles administrados, no datos mutables. El pipeline de empaquetado usa SMX ficticios para validar estructura; no demuestra ejecución ni compilación SourcePawn.
 
 Además se descargaron los archivos oficiales SourceMod Linux y Windows para comprobar hashes reales frente a los digests de GitHub, y se resolvió el commit upstream real. Los tests normales usan mocks sin credenciales. El reconciliador de develop y sus propios fixtures también se ejecutaron aislados en un directorio temporal: PASS.
 

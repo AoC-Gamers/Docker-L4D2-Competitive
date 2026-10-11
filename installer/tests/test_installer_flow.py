@@ -116,12 +116,31 @@ printf default > "$DIR_SOURCEMOD/data/sqlite/local.sq3"
         result=self.run_install(); self.assertNotEqual(result.returncode,0); self.assertIn('Required hook',result.stdout+result.stderr)
         self.assertEqual(plugin.read_text(),'version1')
 
-    def test_publication_failure_restores_and_not_ready(self):
+    def publication(self):
+        paths=list((self.base/'state/publication').glob('*/journal.json'))
+        self.assertEqual(len(paths),1)
+        return paths[0].parent
+
+    def retry(self,mode='retry'):
+        return subprocess.run(['bash',str(self.installer/'bin/recover_stack.sh'),mode],env=self.env,capture_output=True,text=True,timeout=20)
+
+    def test_publication_failure_manual_retry_without_redownload_or_hook(self):
         self.assertSuccess(self.run_install('install'))
-        self.hook.write_text(self.hook.read_text()+'printf version2 > "$DIR_SOURCEMOD/plugins/demo.smx"\n')
+        calls=self.base/'calls'
+        self.hook.write_text(self.hook.read_text()+f'printf version2 > "$DIR_SOURCEMOD/plugins/demo.smx"\nprintf call >> "{calls}"\n')
         result=self.run_install(extra={'STACK_TEST_FAIL_PUBLISH_AFTER':'0'}); self.assertNotEqual(result.returncode,0)
-        self.assertEqual((self.game/'addons/sourcemod/plugins/demo.smx').read_text(),'version1')
+        self.assertEqual((self.game/'addons/sourcemod/plugins/demo.smx').read_text(),'version2')
         self.assertEqual(json.loads((self.base/'state/current/deploy-state.json').read_text())['status'],'failed')
+        tx=self.publication(); candidate=tx/'candidate/serverfiles/left4dead2/addons/sourcemod/plugins/demo.smx'
+        self.assertEqual(candidate.read_text(),'version2'); self.assertFalse((tx/'backup').exists())
+        self.assertFalse((self.base/'serverfiles/.stack-transaction').exists())
+        blocked=self.run_install(); self.assertNotEqual(blocked.returncode,0)
+        self.assertIn('Publication incomplete',blocked.stdout+blocked.stderr)
+        shutil.rmtree(self.source)
+        self.assertSuccess(self.retry())
+        self.assertEqual(calls.read_text(),'call')
+        self.assertFalse((tx/'candidate').exists())
+        self.assertEqual(json.loads((self.base/'state/current/deploy-state.json').read_text())['status'],'ready')
 
     def test_extraction_failure_leaves_operational_tree(self):
         self.assertSuccess(self.run_install('install'))
@@ -136,15 +155,67 @@ download_file() { printf corrupt > "$2"; }
         self.assertEqual((self.game/'addons/sourcemod/plugins/demo.smx').read_text(),'version1')
         self.assertEqual(json.loads((self.base/'state/current/deploy-state.json').read_text())['status'],'failed')
 
-    def test_killed_installer_recovers_on_next_invocation(self):
+    def test_killed_installer_blocks_automatic_deploy_until_manual_retry(self):
         self.assertSuccess(self.run_install('install'))
         self.hook.write_text(self.hook.read_text()+'printf version2 > "$DIR_SOURCEMOD/plugins/demo.smx"\n')
         result=self.run_install(extra={'STACK_TEST_KILL_PUBLISH_AFTER':'0'})
         self.assertNotEqual(result.returncode,0)
         self.assertNotEqual(json.loads((self.base/'state/current/deploy-state.json').read_text())['status'],'ready')
+        result=self.run_install(extra={'STACK_REUSE_SOURCES':'true'})
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('Publication incomplete',result.stdout+result.stderr)
+        self.assertSuccess(self.retry())
+        self.assertEqual((self.game/'addons/sourcemod/plugins/demo.smx').read_text(),'version2')
+
+    def test_manual_rebuild_after_logic_change_does_not_silently_publish_old_candidate(self):
+        self.assertSuccess(self.run_install())
+        self.hook.write_text(self.hook.read_text()+'printf version2 > "$DIR_SOURCEMOD/plugins/demo.smx"\n')
+        self.assertNotEqual(self.run_install(extra={'STACK_TEST_FAIL_PUBLISH_AFTER':'0'}).returncode,0)
         self.hook.write_text(self.hook.read_text().replace('printf version2','printf version3'))
+        refused=self.retry(); self.assertNotEqual(refused.returncode,0)
+        self.assertIn('logic changed',refused.stdout+refused.stderr)
+        self.assertSuccess(self.retry('rebuild'))
         self.assertSuccess(self.run_install(extra={'STACK_REUSE_SOURCES':'true'}))
         self.assertEqual((self.game/'addons/sourcemod/plugins/demo.smx').read_text(),'version3')
+
+    def test_failed_publish_keeps_instances_stopped_and_manual_retry_restores_only_selection(self):
+        self.assertSuccess(self.run_install())
+        running=self.base/'running'; running.write_text('yes')
+        events=self.base/'events'
+        self.env.update(RUNNING=str(running),EVENTS=str(events),L4D2_AUTOSTART='true')
+        for name in ('l4d2server','l4d2server-2'):
+            p=self.app/name
+            p.write_text('''#!/bin/bash
+printf '%s %s\\n' "$(basename "$0")" "$1" >> "$EVENTS"
+if [[ "$1" == stop ]]; then rm -f "$RUNNING"; else touch "$RUNNING"; fi
+'''); p.chmod(0o755)
+        (self.mock/'tmux').write_text('''#!/bin/bash
+[[ "$*" == *'=l4d2server' && -f "$RUNNING" ]]
+''')
+        self.hook.write_text(self.hook.read_text()+'printf version2 > "$DIR_SOURCEMOD/plugins/demo.smx"\n')
+        self.assertNotEqual(self.run_install(extra={'STACK_TEST_FAIL_PUBLISH_AFTER':'0'}).returncode,0)
+        self.assertFalse(running.exists())
+        self.assertEqual(events.read_text().splitlines(),['l4d2server stop'])
+        self.assertSuccess(self.retry())
+        self.assertEqual(events.read_text().splitlines(),['l4d2server stop','l4d2server start'])
+        # An acknowledged resume must not restart a deliberately stopped server.
+        running.unlink(); self.assertSuccess(self.retry())
+        self.assertFalse(running.exists())
+
+    def test_abandon_partial_metadata_keeps_last_committed_sources_for_rebuild(self):
+        self.assertSuccess(self.run_install())
+        confirmed=json.loads((self.base/'state/source-lock.json').read_text())
+        (self.source/'plugin').write_text('unconfirmed version2')
+        subprocess.run(['git','-C',str(self.source),'add','.'],check=True)
+        subprocess.run(['git','-C',str(self.source),'-c','user.name=Test','-c','user.email=test@example.invalid','commit','-qm','next source'],check=True)
+        result=self.run_install(extra={'STACK_TEST_FAIL_PUBLISH_AFTER':'2'})
+        self.assertNotEqual(result.returncode,0)
+        self.assertNotEqual(json.loads((self.base/'state/source-lock.json').read_text()),confirmed)
+        self.assertSuccess(self.retry('rebuild'))
+        self.assertEqual(json.loads((self.base/'state/source-lock.json').read_text()),confirmed)
+        shutil.rmtree(self.source)
+        self.assertSuccess(self.run_install(extra={'STACK_REUSE_SOURCES':'true'}))
+        self.assertEqual((self.game/'addons/sourcemod/plugins/demo.smx').read_text(),'version1')
 
     def test_logic_reapply_uses_last_committed_sources_after_failed_remote_update(self):
         self.assertSuccess(self.run_install('install'))
@@ -179,7 +250,7 @@ printf default > "$DIR_CFG/local.cfg"
         shutil.rmtree(self.base/'tmp',ignore_errors=True)
         self.assertSuccess(self.run_install(extra={'STACK_REUSE_SOURCES':'true'}))
         self.assertEqual(calls.read_text(),'call')
-        tx=self.base/'serverfiles/.stack-transaction'
+        tx=self.publication()
         self.assertEqual(json.loads((tx/'journal.json').read_text())['phase'],'committed')
         for name in ('candidate','sources','backup'):
             self.assertFalse((tx/name).exists())

@@ -1,6 +1,8 @@
 # Artefactos persistentes y despliegue en tres fases
 
-El instalador separa originales, preparación editable y publicación recuperable.
+Operación y migración: [publicación con reintento manual](manual-publication.md).
+
+El instalador separa originales, preparación editable y publicación con reintento manual.
 `docker compose down` seguido de `up` conserva la caché si se conserva el volumen
 montado en `/data`. `down -v` elimina ese volumen y también sus datos y cachés.
 
@@ -24,6 +26,12 @@ snapshots previamente existentes siguen en `state/sources/<perfil>` y
 `state/pinned-sources/<identidad>`. Los snapshots Git conservan `.git` porque
 algunos hooks necesitan el commit o submódulos. La transacción referencia los
 snapshots; ya no hace otra copia de ellos en `serverfiles`.
+
+El arranque solo habilita ejecución en los entrypoints necesarios; no aplica
+`chmod +x` recursivo a `/data`. En originales Git cuyo commit no cambió se
+reparan permisos históricos únicamente si Git confirma que el contenido y el
+índice están intactos y no hay archivos no registrados. Una modificación real
+sigue invalidando el original. No se cambia `core.fileMode` permanentemente.
 
 La identidad de un snapshot se calcula y verifica sobre su copia terminada,
 antes de registrarlo. Los metadatos Git pueden cambiar durante mantenimiento
@@ -86,6 +94,12 @@ declara variables adicionales no secretas que influyen en su salida; se rechazan
 nombres de credenciales. Un hook que usa estado externo, herramientas no
 identificadas o rutas operativas debe dejar esta caché desactivada.
 
+Para Git, el snapshot completo (incluido `.git`) se verifica como integridad,
+pero la clave preparada utiliza el commit y el hash de los archivos fuera de
+`.git`. Dos transportes del mismo contenido no fuerzan ejecutar otra vez el
+hook. Los permisos del workspace se normalizan a los modos registrados por Git.
+Un hook que dependa de metadatos de transporte debe desactivar `prepare_cache`.
+
 La clave incluye fuente exacta, componente resuelto, perfil, modo install/update,
 huella de lógica efectiva (incluidos hooks heredados, bibliotecas, políticas y
 recursos opcionales), variables declaradas y contenido/permisos del candidato
@@ -118,33 +132,59 @@ Las políticas finales, conservación/mezcla de configuraciones, validación del
 candidato y GeoIP se ejecutan después de componerlo, incluso si hubo aciertos de
 caché. Las bases de datos y logs activos no se archivan como salida preparada.
 
-## 3. Publicar, confirmar o recuperar
+## 3. Publicar y confirmar
 
-El candidato y el backup de publicación permanecen en
-`/data/serverfiles/.stack-transaction`, en el mismo filesystem que el destino.
-Esta carpeta no es la caché de descargas. Se conserva el mecanismo de diario,
-parada de consumidores afectados, renames registrados, sincronización de
-instancias y reconciliación BanSystem. La sustitución de varios archivos **no es
-atómica**.
+El candidato y su plan viven en
+`/data/installer/state/publication/<hash-destino>/`, fuera de `serverfiles`.
+El hash identifica el destino normalizado. `journal.json` registra las fases y
+`progress.json` el avance y el temporal en curso. No se crean respaldos del
+árbol instalado ni una carpeta `.last`.
 
-Un fallo de publicación restaura los archivos anteriores; un SIGKILL deja un
-diario recuperable para la siguiente invocación. La comprobación de recuperación
-al entrar es una condición de seguridad de la publicación, no un cuarto proceso
-que deba ejecutar el operador. También sigue disponible `recover_stack.sh`.
+La publicación coordina y detiene las instancias afectadas. Para cada archivo
+copia el candidato a un temporal en el directorio de destino, sincroniza los
+bytes y reemplaza ese archivo mediante rename. Así no trunca el archivo anterior
+si falla su copia. El candidato no se consume: permanece disponible hasta el
+commit. State y serverfiles pueden estar en filesystems diferentes; el temporal
+y el archivo final siempre comparten filesystem. **La publicación completa no
+es atómica y no tiene rollback automático.**
 
-Después de `committed` se eliminan `candidate/`, `sources/` y `backup/`; sobreviven
-el diario/recibo y la selección de instancias. Si se interrumpe esa limpieza, la
-siguiente entrada la completa. Nunca se elimina payload de una publicación
-pendiente. La reanudación tiene su propia confirmación en el recibo
-(`resume_pending`), de modo que una interrupción después del commit conserva la
-selección pendiente. Una vez reanudada, esa selección no se vuelve a usar para
-arrancar instancias detenidas posteriormente. Se respeta `L4D2_AUTOSTART=false`.
+Un fallo o SIGKILL durante `publishing`/`published` puede dejar una mezcla de
+versiones. El arranque siguiente detecta el diario y se detiene antes de obtener
+fuentes o arrancar instancias. Conserva el candidato, el progreso y los logs;
+el despliegue no puede indicar `ready`. El operador corrige la causa y ejecuta
+`recover_stack.sh` explícitamente para repetir el mismo plan. El reintento
+verifica todos los hashes del candidato antes de escribir, repite las copias de
+forma idempotente y ejecuta sincronización/reconciliación antes del commit.
+No descarga fuentes ni vuelve a ejecutar hooks de componentes.
+
+Si cambió la lógica de preparación o falta/se modificó el candidato, el
+reintento se rechaza. `recover_stack.sh rebuild` abandona explícitamente ese
+candidato y mantiene las instancias detenidas; después ejecutar una instalación
+completa para reconstruirlo. Si se habían escrito parcialmente los recibos de
+fuentes, rebuild restablece únicamente esos metadatos a la selección confirmada
+anterior. No restaura archivos del juego ni datos de usuarios. No editar el
+candidato para sortear su verificación.
+
+Después de `committed` se elimina el candidato y queda un recibo pequeño junto
+con las fuentes resueltas. La reanudación registra su confirmación
+(`resume_pending`): solo se retoma la selección que estaba ejecutándose y se
+respeta `L4D2_AUTOSTART=false`. Nunca se usan recibos ya reconocidos para arrancar
+instancias detenidas deliberadamente después. El siguiente despliegue reutiliza
+la misma carpeta, sin conservar una copia anterior del stack.
 
 ## Migración y operación
 
 Integrar primero la base, después AoC con sus declaraciones de caché/descargas,
 y construir Vanilla contra el digest de AoC actualizado. Vanilla hereda este
 flujo; sus exclusiones finales siguen ejecutándose tras la composición.
+
+Los antiguos `.stack-transaction` y `.stack-transaction.last` se migran fuera
+del juego al entrar bajo el bloqueo del destino. Los recibos anteriores terminados
+se archivan en `state/history/legacy-publications`. Si un diario v1 quedó
+interrumpido, se conserva su backup existente y se bloquea el arranque:
+`recover_stack.sh` honra su restauración antigua una sola vez, mantiene las
+instancias detenidas y exige después un despliegue completo. Las publicaciones
+nuevas nunca generan esos backups.
 
 Las fuentes fijadas y cachés antiguas se leen sin moverlas ni reinterpretarlas.
 La primera preparación con la lógica nueva construye su caché. Los antiguos
@@ -156,8 +196,8 @@ no se migran automáticamente ni se consideran confiables por su nombre.
 Rutas configurables: `STACK_WORK_ROOT`, `STACK_ARTIFACT_CACHE` y
 `STACK_PREPARED_CACHE`. Sus valores por defecto están bajo `/data/installer/cache`;
 si se cambian, deben seguir en un montaje persistente para conservar el beneficio.
-La carpeta transaccional sigue junto a `serverfiles`, independientemente de esos
-overrides. No hay recolección automática de originales/snapshots/preparados:
+El área de publicación sigue bajo el directorio de estado del instalador,
+independientemente de esos overrides. No hay recolección automática de originales/snapshots/preparados:
 conservar los referenciados por locks actuales/históricos; no borrar cachés ni
 transacciones durante una ejecución. La retención automática queda fuera de este
 cambio para evitar eliminar fuentes necesarias sin una política operativa acordada.
@@ -169,8 +209,12 @@ STACK_REUSE_SOURCES=true bash "$DIR_INSTALLER_BIN/install_stack.sh" update
 # Actualizar deliberadamente las fuentes remotas.
 bash "$DIR_INSTALLER_BIN/install_stack.sh" update
 
-# Recuperar publicación interrumpida, sin actualización de Valve.
+# Reintentar explícitamente el candidato retenido, sin hooks, red ni Valve.
 bash "$DIR_INSTALLER_BIN/recover_stack.sh"
+
+# Si cambió la lógica o el candidato no es válido: abandonar y preparar otra vez.
+bash "$DIR_INSTALLER_BIN/recover_stack.sh" rebuild
+STACK_REUSE_SOURCES=true bash "$DIR_INSTALLER_BIN/install_stack.sh" update
 ```
 
 No cambia el actualizador de Valve ni el alcance del healthcheck: comprueba el

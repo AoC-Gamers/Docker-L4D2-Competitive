@@ -6,6 +6,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 LIB=Path(__file__).resolve().parents[1]/'lib'
 sys.path.insert(0,str(LIB))
@@ -16,7 +17,7 @@ class Transactions(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
         self.base=Path(self.temp.name); self.root=self.base/'serverfiles/left4dead2'; self.root.mkdir(parents=True)
-        self.transaction=self.root.parent/'.stack-transaction'
+        self.transaction=self.base/'state/publication/test'
         self.stack=self.base/'stack'; self.stack.mkdir()
         self.config=self.base/'config'; self.config.mkdir()
         self.state=self.base/'state'; self.state.mkdir()
@@ -35,7 +36,7 @@ class Transactions(unittest.TestCase):
         tx.plan(self.transaction,self.root,self.stack,self.config,self.state)
         return c
 
-    def test_live_data_no_snapshot_and_publish_rollback(self):
+    def test_live_data_preserved_failed_publication_keeps_candidate_without_backup(self):
         old=self.write(self.root,'addons/sourcemod/plugins/old.smx','old')
         hostname=self.write(self.root,'addons/sourcemod/configs/hostname.cfg','local')
         db=self.write(self.root,'addons/sourcemod/data/sqlite/db.sq3','live')
@@ -46,9 +47,13 @@ class Transactions(unittest.TestCase):
         try:
             with self.assertRaises(RuntimeError): tx.publish(self.transaction)
         finally: os.environ.pop('STACK_TEST_FAIL_PUBLISH_AFTER')
-        tx.recover(self.transaction); tx.recover(self.transaction)
-        self.assertEqual(old.read_text(),'old')
-        self.assertFalse((self.root/'addons/sourcemod/plugins/new.smx').exists())
+        self.assertEqual(json.loads((self.transaction/'journal.json').read_text())['phase'],'publishing')
+        self.assertTrue((c/'addons/sourcemod/plugins/new.smx').is_file())
+        self.assertFalse((self.transaction/'backup').exists())
+        # The first entry was published; it is deliberately not rolled back.
+        self.assertTrue((self.root/'addons/sourcemod/plugins/new.smx').exists())
+        tx.publish(self.transaction); tx.commit(self.transaction)
+        self.assertFalse(old.exists())
         self.assertEqual(hostname.read_text(),'local'); self.assertEqual(db.read_text(),'live'); self.assertEqual(log.read_text(),'evidence')
         self.assertFalse(any((self.transaction/'backup').rglob('*.sq3')))
 
@@ -59,22 +64,69 @@ class Transactions(unittest.TestCase):
         plugins=self.root/'addons/sourcemod/plugins'
         self.assertEqual(sorted(p.name for p in plugins.iterdir()),['new.smx'])
         clean=self.base/'clean/left4dead2'; clean.mkdir(parents=True)
-        clean_tx=self.base/'clean/.stack-transaction'
+        clean_tx=self.base/'clean-state/publication/test'
         tx.seed(clean_tx,clean,self.state)
         self.write(clean_tx/'candidate/serverfiles/left4dead2','addons/sourcemod/plugins/new.smx','new')
         tx.plan(clean_tx,clean,self.stack,self.config,self.base/'clean-state'); tx.publish(clean_tx); tx.commit(clean_tx)
         self.assertEqual({p.name:p.read_bytes() for p in plugins.iterdir()}, {p.name:p.read_bytes() for p in (clean/'addons/sourcemod/plugins').iterdir()})
 
-    def test_sigkill_recovery(self):
+    def test_sigkill_retains_candidate_for_explicit_retry(self):
         old=self.write(self.root,'addons/sourcemod/plugins/old.smx','old')
         self.prepare()
         code='import sys,os; from pathlib import Path; sys.path.insert(0,sys.argv[1]); import transaction_stack as t; t.publish(Path(sys.argv[2]))'
-        # Kill the publisher itself after its durable rename, bypassing all Bash traps.
-        code=code.replace('t.publish(Path(sys.argv[2]))', 'original=t.flush_dir\ndef kill_after(p):\n original(p)\n if str(p).endswith("plugins") and any((Path(sys.argv[2])/"backup").rglob("*.smx")): os.kill(os.getpid(),9)\nt.flush_dir=kill_after\nt.publish(Path(sys.argv[2]))')
+        # Kill after an actual file replacement, bypassing all Bash traps.
+        code=code.replace('t.publish(Path(sys.argv[2]))', 'original=t.flush_dir\ndef kill_after(p):\n original(p)\n if str(p).endswith("plugins"): os.kill(os.getpid(),9)\nt.flush_dir=kill_after\nt.publish(Path(sys.argv[2]))')
         result=subprocess.run(['python3','-c',code,str(LIB),str(self.transaction)])
         self.assertEqual(result.returncode,-9)
-        tx.recover(self.transaction); self.assertEqual(old.read_text(),'old')
-        self.assertEqual(json.loads((self.transaction/'journal.json').read_text())['phase'],'rolled_back')
+        self.assertEqual(json.loads((self.transaction/'journal.json').read_text())['phase'],'publishing')
+        self.assertFalse((self.transaction/'backup').exists())
+        tx.publish(self.transaction); tx.commit(self.transaction)
+        self.assertFalse(old.exists())
+        self.assertEqual((self.root/'addons/sourcemod/plugins/new.smx').read_text(),'new')
+
+    def test_copy_error_does_not_truncate_live_file_and_retry_reuses_candidate(self):
+        active=self.write(self.root,'addons/sourcemod/plugins/new.smx','old bytes')
+        self.prepare()
+        def fail(source,destination):
+            destination.write(b'partial')
+            raise OSError('simulated full disk')
+        with patch.object(tx.shutil,'copyfileobj',fail), self.assertRaises(OSError):
+            tx.publish(self.transaction)
+        self.assertEqual(active.read_text(),'old bytes')
+        self.assertEqual(list(active.parent.glob('.stack-publish-*')),[])
+        tx.publish(self.transaction); tx.commit(self.transaction)
+        self.assertEqual(active.read_text(),'new')
+
+    def test_modified_candidate_is_rejected_before_first_publish(self):
+        old=self.write(self.root,'addons/sourcemod/plugins/old.smx','old')
+        candidate=self.prepare()
+        (candidate/'addons/sourcemod/plugins/new.smx').write_text('changed after validation')
+        with self.assertRaisesRegex(ValueError,'candidate changed'): tx.publish(self.transaction)
+        self.assertEqual(old.read_text(),'old')
+
+    def test_committed_legacy_receipts_move_outside_game_and_pending_backup_survives(self):
+        legacy=self.root.parent/'.stack-transaction'
+        previous=self.root.parent/'.stack-transaction.last'
+        for path in (legacy,previous):
+            self.write(path,'journal.json',json.dumps({'schema_version':1,'target':str(self.root),'phase':'committed','entries':[]}))
+            self.write(path,'backup/old.smx','old')
+        tx.migrate(self.transaction,self.root,self.state)
+        self.assertFalse(legacy.exists()); self.assertFalse(previous.exists())
+        self.assertFalse((self.transaction/'backup').exists())
+        self.assertEqual(len(list((self.state/'history/legacy-publications').iterdir())),1)
+        import shutil
+        shutil.rmtree(self.transaction)
+        self.write(legacy,'journal.json',json.dumps({'schema_version':1,'target':str(self.root),'phase':'publishing','entries':[]}))
+        self.write(legacy,'backup/old.smx','keep recovery evidence')
+        tx.migrate(self.transaction,self.root,self.state)
+        self.assertEqual((self.transaction/'backup/old.smx').read_text(),'keep recovery evidence')
+
+    def test_legacy_rollback_only_for_old_interrupted_journal(self):
+        active=self.write(self.root,'addons/sourcemod/plugins/new.smx','new')
+        self.write(self.transaction,'backup/game/addons/sourcemod/plugins/new.smx','old')
+        self.write(self.transaction,'journal.json',json.dumps({'schema_version':1,'phase':'publishing','target':str(self.root),'state':str(self.state),'entries':[{'area':'game','path':'addons/sourcemod/plugins/new.smx','pending':True,'existed':True}]}))
+        tx.recover_legacy(self.transaction); tx.recover_legacy(self.transaction)
+        self.assertEqual(active.read_text(),'old')
 
     def test_symlink_refused_before_publish(self):
         outside=self.base/'outside'; outside.mkdir()

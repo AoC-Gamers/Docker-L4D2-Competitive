@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Recoverable file publication, not a multi-directory atomic replacement.
+"""Staged publication with explicit manual retry, without automatic backups.
 
-The write-ahead journal and backup live on the destination filesystem. Mutable
-paths are never snapshotted. Each rename and phase update is flushed to disk.
+The candidate survives an incomplete publication. Only each individual file
+replacement is atomic; a multi-file publication can leave a mixed installation.
 """
 import hashlib
 import json
@@ -11,6 +11,7 @@ from pathlib import Path
 import shutil
 import sys
 import zipfile
+import uuid
 from overlay_stack import safe_path, ROOTS
 
 RESET = ['addons/sourcemod/'+s for s in ('extensions','gamedata','configs','plugins','scripting','translations')]
@@ -97,8 +98,6 @@ def seed(tx, root, state):
 def plan(tx, root, stack, config, state):
     candidate=tx/'candidate/serverfiles/left4dead2'
     state.mkdir(parents=True,exist_ok=True)
-    if root.stat().st_dev != state.stat().st_dev:
-        raise ValueError('State and serverfiles must share a filesystem for recoverable renames')
     incoming=files(candidate)
     protect=preserved(stack,config)
     previous=set()
@@ -142,13 +141,12 @@ def plan(tx, root, stack, config, state):
         src=incoming.get(rel)
         if src is None and not active.exists(): continue
         if active.exists() and not active.is_file(): raise ValueError(f'Expected managed file: {rel}')
-        if src and active.is_file() and hashlib.sha256(src.read_bytes()).digest()==hashlib.sha256(active.read_bytes()).digest(): continue
         entries.append({'area':'game','path':rel,'install':src is not None})
     for rel in removals:
         if rel not in ('bin/libstdc++.so.6','bin/dedicated/libstdc++.so.6','bin/libgcc_s.so.1','bin/dedicated/libgcc_s.so.1'): raise ValueError('Unmanaged runtime removal')
         active=safe_path(root.parent,rel)
         if active.is_file(): entries.append({'area':'serverfiles','path':rel,'install':False})
-    # Registry and source metadata participate in the same recovery journal.
+    # Metadata is installed last; deployment ready is written only after commit.
     new_state=tx/'candidate/state'
     baseline_file=tx/'config-default-hashes.json'
     baseline=json.loads(baseline_file.read_text()) if baseline_file.exists() else {}
@@ -161,7 +159,16 @@ def plan(tx, root, stack, config, state):
     for rel in sorted(set(state_files) | prior_state):
         safe_path(state,rel)
         entries.append({'area':'state','path':rel,'install':rel in state_files})
-    journal={'schema_version':1,'phase':'prepared','target':str(root),'state':str(state),'entries':entries,'intent':None}
+    for entry in entries:
+        if entry['install']:
+            src=tx/'candidate'/('state' if entry['area']=='state' else 'serverfiles/left4dead2')/entry['path']
+            entry['sha256']=hashlib.sha256(src.read_bytes()).hexdigest()
+            entry['mode']=src.stat().st_mode & 0o777
+    confirmed={name:json.loads((state/name).read_text()) if (state/name).exists() else None
+               for name in ('source-lock.json','hook-assets.json')}
+    journal={'schema_version':2,'phase':'prepared','target':str(root),'state':str(state),'entries':entries,
+             'confirmed_sources':confirmed,
+             'logic_sha256':os.environ.get('STACK_PREPARATION_LOGIC_SHA','')}
     durable_json(tx/'journal.json',journal)
     return journal
 
@@ -170,10 +177,13 @@ def area_root(journal,area):
     return Path(journal['state']) if area=='state' else (Path(journal['target']).parent if area=='serverfiles' else Path(journal['target']))
 
 
-def recover(tx):
+def recover_legacy(tx):
+    """One-time compatibility for interrupted v1 journals; no new backups."""
     journal_path=tx/'journal.json'
     if not journal_path.exists(): return
     j=json.loads(journal_path.read_text())
+    if j.get('schema_version') != 1:
+        raise ValueError('New publications have no rollback; retry explicitly instead')
     if j['phase'] in ('committed','rolled_back','prepared'): return
     # Every entry is logged before a destructive rename. Recovery is idempotent.
     for e in reversed(j['entries']):
@@ -193,22 +203,51 @@ def recover(tx):
 
 def publish(tx):
     journal_path=tx/'journal.json'; j=json.loads(journal_path.read_text())
-    if j['phase']!='prepared': raise ValueError('Transaction not prepared')
+    if j.get('schema_version') != 2 or j['phase'] not in ('prepared','publishing','published'):
+        raise ValueError('Publication cannot be retried in this phase')
+    # Validate the entire retained candidate before the first change, including
+    # on retry. Publication copies, rather than consumes, this material.
+    for e in j['entries']:
+        if e['install']:
+            src=safe_path(tx/'candidate'/('state' if e['area']=='state' else 'serverfiles/left4dead2'),e['path'])
+            if hashlib.sha256(src.read_bytes()).hexdigest()!=e['sha256']:
+                raise ValueError('Prepared candidate changed; rebuild it explicitly')
+        safe_path(area_root(j,e['area']),e['path'])
     j['phase']='publishing'; durable_json(journal_path,j)
+    progress_path=tx/'progress.json'
+    if progress_path.exists():
+        progress=json.loads(progress_path.read_text())
+        temporary=progress.get('temporary')
+        if temporary:
+            index=progress['index']
+            if not isinstance(index,int) or not 0 <= index < len(j['entries']):
+                raise ValueError('Invalid publication progress index')
+            if not temporary.startswith('.stack-publish-') or '/' in temporary:
+                raise ValueError('Invalid publication temporary path')
+            entry=j['entries'][index]
+            dest=safe_path(area_root(j,entry['area']),entry['path'])
+            leftover=safe_path(dest.parent,temporary)
+            if leftover.exists(): leftover.unlink()
     for index,e in enumerate(j['entries']):
         dest=safe_path(area_root(j,e['area']),e['path'])
-        e['existed']=dest.exists(); e['pending']=True
-        durable_json(journal_path,j)
-        backup=tx/'backup'/e['area']/e['path']
-        if e['existed']:
-            backup.parent.mkdir(parents=True,exist_ok=True)
-            os.replace(dest,backup); flush_dir(dest.parent); flush_dir(backup.parent)
         if e['install']:
             src=tx/'candidate'/('state' if e['area']=='state' else 'serverfiles/left4dead2')/e['path']
+            if dest.is_file() and dest.stat().st_mode & 0o777==e['mode'] and hashlib.sha256(dest.read_bytes()).hexdigest()==e['sha256']:
+                continue
             dest.parent.mkdir(parents=True,exist_ok=True)
-            # fsync source before making it live.
-            with src.open('rb') as f: os.fsync(f.fileno())
-            os.replace(src,dest); flush_dir(dest.parent)
+            temporary_name='.stack-publish-'+uuid.uuid4().hex
+            durable_json(progress_path,{'index':index,'temporary':temporary_name})
+            temporary=dest.parent/temporary_name
+            try:
+                with temporary.open('xb') as output, src.open('rb') as source:
+                    shutil.copyfileobj(source,output)
+                    output.flush(); os.fchmod(output.fileno(),e['mode']); os.fsync(output.fileno())
+                os.replace(temporary,dest); flush_dir(dest.parent)
+            finally:
+                if temporary.exists(): temporary.unlink()
+        elif dest.exists():
+            dest.unlink(); flush_dir(dest.parent)
+        durable_json(progress_path,{'completed':index+1})
         if os.environ.get('STACK_TEST_FAIL_PUBLISH_AFTER')==str(index): raise RuntimeError('Injected publication failure')
         if os.environ.get('STACK_TEST_KILL_PUBLISH_AFTER')==str(index): os.kill(os.getppid(),9); os._exit(137)
     j['phase']='published'; durable_json(journal_path,j)
@@ -223,21 +262,71 @@ def commit(tx):
 
 def resumed(tx):
     p=tx/'journal.json'; j=json.loads(p.read_text())
-    if j['phase']=='committed':
-        j['resume_pending']=False; durable_json(p,j)
+    j['resume_pending']=False; durable_json(p,j)
+
+
+def quiescing(tx):
+    p=tx/'journal.json'; j=json.loads(p.read_text())
+    j['resume_pending']=True; durable_json(p,j)
+
+
+def abandon(tx):
+    """Explicit rebuild restores provenance only, never operational files."""
+    path=tx/'journal.json'; j=json.loads(path.read_text())
+    if j.get('schema_version')!=2 or j['phase']=='committed':
+        raise ValueError('No new incomplete publication to abandon')
+    # A partial state publication must not silently advance reuse-only sources.
+    # These tiny provenance receipts are not backups of game/runtime data.
+    for name,data in j['confirmed_sources'].items():
+        if name not in ('source-lock.json','hook-assets.json'): raise ValueError('Invalid provenance receipt')
+        destination=Path(j['state'])/name
+        if data is None: destination.unlink(missing_ok=True)
+        else: durable_json(destination,data)
+    j['phase']='abandoned'; j['resume_pending']=True; durable_json(path,j)
 
 
 def cleanup(tx):
-    """Committed receipt survives; rollback payload is no longer necessary."""
+    """Only a committed publication can discard its prepared payload."""
     journal = tx/'journal.json'
     if not journal.exists() or json.loads(journal.read_text())['phase'] != 'committed':
-        raise ValueError('Refusing to discard uncommitted recovery data')
+        raise ValueError('Refusing to discard an incomplete publication')
     for name in ('candidate', 'backup', 'sources'):
         path = tx/name
         if path.exists(): shutil.rmtree(path)
     for pattern in ('*.before.json', '*.exclusions'):
         for path in tx.glob(pattern): path.unlink()
+    (tx/'progress.json').unlink(missing_ok=True)
+    data=json.loads(journal.read_text())
+    if data.get('schema_version')==2 and data.get('entries'):
+        data['entry_count']=len(data['entries']); data['entries']=[]
+        data.pop('confirmed_sources',None)
+        durable_json(journal,data)
     flush_dir(tx)
+
+
+def migrate(tx, root, state):
+    """Move old receipts outside the game; never discard a pending v1 backup."""
+    legacy=root.parent/'.stack-transaction'
+    previous=root.parent/'.stack-transaction.last'
+    for source in (legacy,previous):
+        if not source.exists(): continue
+        if source.is_symlink(): raise ValueError('Legacy transaction path is a symlink')
+        journal=source/'journal.json'
+        data=json.loads(journal.read_text()) if journal.exists() else {}
+        if data and Path(data['target']).resolve()!=root.resolve():
+            raise ValueError('Legacy journal belongs to a different destination')
+        if source==previous and data.get('phase') in ('publishing','published'):
+            raise ValueError('An older publication is incomplete; inspect it before migration')
+        if data.get('phase')=='committed': cleanup(source)
+        if source==legacy and not tx.exists():
+            tx.parent.mkdir(parents=True,exist_ok=True)
+            shutil.move(str(source),str(tx))
+        else:
+            if data.get('phase') in ('publishing','published'):
+                raise ValueError('Conflicting incomplete publication journals')
+            archive=state/'history/legacy-publications'/uuid.uuid4().hex
+            archive.parent.mkdir(parents=True,exist_ok=True)
+            shutil.move(str(source),str(archive))
 
 
 if __name__=='__main__':
@@ -245,8 +334,11 @@ if __name__=='__main__':
     if action=='seed': seed(tx,Path(sys.argv[3]),Path(sys.argv[4]))
     elif action=='plan': plan(tx,*(Path(p) for p in sys.argv[3:7]))
     elif action=='publish': publish(tx)
-    elif action=='recover': recover(tx)
+    elif action=='recover-legacy': recover_legacy(tx)
+    elif action=='migrate': migrate(tx,Path(sys.argv[3]),Path(sys.argv[4]))
     elif action=='commit': commit(tx)
     elif action=='cleanup': cleanup(tx)
     elif action=='resumed': resumed(tx)
+    elif action=='quiescing': quiescing(tx)
+    elif action=='abandon': abandon(tx)
     else: raise ValueError('Unknown transaction action')

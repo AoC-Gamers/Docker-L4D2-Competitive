@@ -7,16 +7,22 @@ stack_transaction_command() {
 }
 
 stack_transaction_root() {
-    # Same filesystem as the live tree: publication uses renames, never cross-device moves.
-    printf '%s/.stack-transaction\n' "$(dirname "$(realpath -m "$DIR_LEFT4DEAD2")")"
+    local target_key
+    target_key="$(printf '%s' "$(realpath -m "$DIR_LEFT4DEAD2")" | sha256sum | cut -d' ' -f1)"
+    printf '%s/publication/%s\n' "$STATE_ROOT" "$target_key"
 }
 
 stack_quiesce_instances() {
     local executable name
     if [[ -n "${STACK_RECOVERED_RUNNING_FILE:-}" && -f "$STACK_RECOVERED_RUNNING_FILE" ]]; then
-        cp "$STACK_RECOVERED_RUNNING_FILE" "$STACK_TRANSACTION/running-instances"
+        local saved
+        saved="$(cat "$STACK_RECOVERED_RUNNING_FILE")"
+        printf '%s\n' "$saved" > "$STACK_TRANSACTION/running-instances"
     else
         : > "$STACK_TRANSACTION/running-instances"
+    fi
+    if [[ -f "$STACK_TRANSACTION/journal.json" ]]; then
+        stack_transaction_command quiescing "$STACK_TRANSACTION"
     fi
     for executable in "${DIR_APP:-/app}/${GAMESERVER:-l4d2server}" "${DIR_APP:-/app}/${GAMESERVER:-l4d2server}"-*; do
         [[ -x "$executable" && -f "$executable" ]] || continue
@@ -52,23 +58,23 @@ stack_resume_instances() {
 }
 
 stack_finish_resume() {
-    if [[ -f "$STACK_TRANSACTION/journal.json" && "$(jq -r .phase "$STACK_TRANSACTION/journal.json")" == committed ]]; then
+    if [[ -f "$STACK_TRANSACTION/journal.json" ]]; then
         stack_transaction_command resumed "$STACK_TRANSACTION"
     fi
+    : > "$STACK_TRANSACTION/running-instances"
 }
 
 stack_recover_interrupted() {
     STACK_TRANSACTION="$(stack_transaction_root)"
+    stack_transaction_command migrate "$STACK_TRANSACTION" "$DIR_LEFT4DEAD2" "$STATE_ROOT"
     if [[ -f "$STACK_TRANSACTION/journal.json" ]]; then
         case "$(jq -r .phase "$STACK_TRANSACTION/journal.json")" in
             publishing|published)
-                # A killed publisher may have left a mixed tree. Stop before restoring.
-                # Preserve the original resume list across recovery.
-                cp "$STACK_TRANSACTION/running-instances" "$STACK_TRANSACTION/resume.saved" 2>/dev/null || true
-                stack_quiesce_instances
-                mv "$STACK_TRANSACTION/resume.saved" "$STACK_TRANSACTION/running-instances" 2>/dev/null || true
-                stack_transaction_command recover "$STACK_TRANSACTION"
-                # Do not resume here: instance layouts/reconciliation still need to run.
+                if [[ -f "${DEPLOY_STATE_FILE:-/nonexistent}" ]]; then
+                    jq '.status="failed" | .recovery="publication incomplete; run recover_stack.sh explicitly"' "$DEPLOY_STATE_FILE" > "$DEPLOY_STATE_FILE.tmp"
+                    mv "$DEPLOY_STATE_FILE.tmp" "$DEPLOY_STATE_FILE"
+                fi
+                error_exit "Publication incomplete. Instances must remain stopped; inspect $STACK_TRANSACTION and run recover_stack.sh explicitly."
                 ;;
         esac
         # A crash after durable commit may precede payload cleanup. Finish it
@@ -80,8 +86,10 @@ stack_recover_interrupted() {
             fi
         fi
         case "$(jq -r .phase "$STACK_TRANSACTION/journal.json")" in
-            prepared|rolled_back)
-                STACK_RECOVERED_RUNNING_FILE="$STACK_TRANSACTION/running-instances"
+            prepared|rolled_back|abandoned)
+                if [[ "$(jq -r '.resume_pending // false' "$STACK_TRANSACTION/journal.json")" == true ]]; then
+                    STACK_RECOVERED_RUNNING_FILE="$STACK_TRANSACTION/running-instances"
+                fi
                 ;;
         esac
     fi
@@ -89,14 +97,17 @@ stack_recover_interrupted() {
 
 stack_prepare_transaction() {
     STACK_TRANSACTION="$(stack_transaction_root)"
-    if [[ -d "$STACK_TRANSACTION" ]]; then
-        rm -rf "${STACK_TRANSACTION}.last"
-        mv "$STACK_TRANSACTION" "${STACK_TRANSACTION}.last"
-        if [[ -n "${STACK_RECOVERED_RUNNING_FILE:-}" ]]; then
-            STACK_RECOVERED_RUNNING_FILE="${STACK_TRANSACTION}.last/running-instances"
-        fi
+    local saved=''
+    if [[ -n "${STACK_RECOVERED_RUNNING_FILE:-}" && -f "$STACK_RECOVERED_RUNNING_FILE" ]]; then
+        saved="$(cat "$STACK_RECOVERED_RUNNING_FILE")"
     fi
+    # Entry guard refuses incomplete publication. No previous-tree backup or .last.
+    rm -rf "$STACK_TRANSACTION"
     mkdir -p "$STACK_TRANSACTION/candidate/state"
+    if [[ -n "$saved" ]]; then
+        printf '%s\n' "$saved" > "$STACK_TRANSACTION/running-instances"
+        STACK_RECOVERED_RUNNING_FILE="$STACK_TRANSACTION/running-instances"
+    fi
     stack_transaction_command seed "$STACK_TRANSACTION" "$DIR_LEFT4DEAD2" "$STATE_ROOT"
 }
 
@@ -144,10 +155,7 @@ stack_handle_transaction_failure() {
     phase="$(jq -r .phase "$STACK_TRANSACTION/journal.json")"
     case "$phase" in
         publishing|published)
-            stack_transaction_command recover "$STACK_TRANSACTION" || return 1
-            bash "$DIR_INSTALLER_BIN/sync_instances.sh" "${L4D2_ADDITIONAL_INSTANCES:-$(state_read_additional_instances)}" || return 1
-            stack_run_extension after-sync || return 1
-            stack_resume_instances
+            warn "Publication incomplete: prepared material retained in $STACK_TRANSACTION. No rollback or automatic restart; run recover_stack.sh explicitly."
             ;;
         prepared) stack_resume_instances ;;
     esac
