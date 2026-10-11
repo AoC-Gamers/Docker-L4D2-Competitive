@@ -325,7 +325,7 @@ fi
 
 for executable in "$DIR_APP/$GAMESERVER" "$DIR_APP/$GAMESERVER"-*; do
     [[ -x "$executable" ]] || continue
-    if tmux has-session -t "=$(basename "$executable")" 2>/dev/null; then
+    if instance_is_running "$(basename "$executable")"; then
         error_exit "Stop affected instances before direct sync_instances.sh."
     fi
 done
@@ -357,6 +357,7 @@ for (( i=1; i<=ADDITIONAL_INSTANCES+1; i++ )); do
 
 done
 
+python3 "$DIR_INSTALLER_LIB/validate_instance_policy.py" "$DIR_SOURCEMOD" "${DIR_STACK:-/nonexistent}/final-policy.json"
 success "Instance synchronization completed"
 
 #####################################################

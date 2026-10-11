@@ -10,7 +10,8 @@ import os
 from pathlib import Path
 import shutil
 import sys
-from overlay_stack import safe_path
+import zipfile
+from overlay_stack import safe_path, ROOTS
 
 RESET = ['addons/sourcemod/'+s for s in ('extensions','gamedata','configs','plugins','scripting','translations')]
 
@@ -74,6 +75,18 @@ def seed(tx, root, state):
     overlay=state/'optional-overlays'
     if overlay.exists():
         shutil.copytree(overlay,tx/'candidate/state/optional-overlays',dirs_exist_ok=True)
+        for old in overlay.glob('*.paths'):
+            label=old.stem.rstrip('_'); subtree=ROOTS.get(label)
+            archive_name='whitelist_sound.zip' if label=='whitelist_sound' else 'fortnite_emotes.zip'
+            archive=Path(os.environ.get('REPO_RESOURCES_DIR','/data/resources'))/archive_name
+            if subtree and archive.is_file():
+                with zipfile.ZipFile(archive) as zf:
+                    for value in old.read_text().splitlines():
+                        rel=subtree+'/'+value
+                        if rel.startswith(('addons/sourcemod/data/','addons/sourcemod/logs/')): continue
+                        src=safe_path(root,rel,subtree)
+                        if rel in zf.namelist() and src.is_file() and src.read_bytes()==zf.read(rel):
+                            dst=safe_path(candidate,rel,subtree); dst.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(src,dst)
         for registry in overlay.glob('*.json'):
             data=json.loads(registry.read_text())
             if data.get('schema_version')!=2: raise ValueError('Unknown optional overlay state')
@@ -85,9 +98,13 @@ def seed(tx, root, state):
 
 def plan(tx, root, stack, config, state):
     candidate=tx/'candidate/serverfiles/left4dead2'
+    state.mkdir(parents=True,exist_ok=True)
+    if root.stat().st_dev != state.stat().st_dev:
+        raise ValueError('State and serverfiles must share a filesystem for recoverable renames')
     incoming=files(candidate)
     protect=preserved(stack,config)
     previous=set()
+    retained=set()
     manifest=state/'managed-files.json'
     if manifest.exists(): previous.update(json.loads(manifest.read_text())['files'])
     # First upgrade removes only the previously documented reset subtrees.
@@ -98,7 +115,20 @@ def plan(tx, root, stack, config, state):
     overlay=state/'optional-overlays'
     if overlay.exists():
         for registry in overlay.glob('*.json'):
-            previous.update(json.loads(registry.read_text()).get('files',{}))
+            data=json.loads(registry.read_text())
+            for rel, sha in data.get('files',{}).items():
+                path=safe_path(root,rel,data['subtree'])
+                if path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest()!=sha:
+                    retained.add(rel)
+                else:
+                    previous.add(rel)
+            retained.update(data.get('retained',[]))
+    candidate_overlay=tx/'candidate/state/optional-overlays'
+    if candidate_overlay.exists():
+        for registry in candidate_overlay.glob('*.json'):
+            retained.update(json.loads(registry.read_text()).get('retained',[]))
+    for rel in retained:
+        incoming.pop(rel,None); previous.discard(rel)
     policy=stack/'final-policy.json'
     if policy.exists(): previous.update(json.loads(policy.read_text()).get('remove',{}))
     # Explicit removals outside left4dead2 used by the AoC hook, deferred to publish.

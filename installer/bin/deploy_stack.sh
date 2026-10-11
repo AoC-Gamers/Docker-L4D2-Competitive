@@ -468,6 +468,9 @@ start_runtime() {
   fi
 
   if [[ -n "$PREVIOUS_DEPLOYMENT_ID" && "$L4D2_FRESH_INSTALL" != true ]]; then
+    if [[ "${STACK_CONTAINER_BOOT:-false}" == true ]]; then
+      bash "$DIR_INSTALLER_BIN/runtime_intent.sh" resume
+    fi
     info "Existing deployment: preserving the instance start/stop selection"
     return 0
   fi
@@ -475,24 +478,30 @@ start_runtime() {
   bash "$DIR_INSTALLER_BIN/menu_stack.sh" start
 }
 
-stack_acquire_target_lock
-stack_recover_interrupted
-initialize_deploy_state
-export STACK_DEPLOY_OWNER_PID=$$
-resolve_target_stack_metadata
-record_target_stack_metadata
-prepare_lgsm_tooling
-prepare_user_profile
-install_primary_instance
-prepare_steam_runtime_libraries
-apply_stack_if_needed
+main() {
+  stack_acquire_target_lock
+  stack_recover_interrupted
+  initialize_deploy_state
+  export STACK_DEPLOY_OWNER_PID=$$
+  resolve_target_stack_metadata
+  record_target_stack_metadata
+  prepare_lgsm_tooling
+  prepare_user_profile
+  install_primary_instance
+  prepare_steam_runtime_libraries
+  apply_stack_if_needed
+  
+  section "Update runtime patches"
+  step "Running L4D2 updater bootstrap"
+  bash /app/container/bootstrap/l4d2_updater.sh
+  
+  run_stack_autoupdate_before_start
+  
+  start_runtime
+  
+  success "Deployment orchestration completed"
+}
 
-section "Update runtime patches"
-step "Running L4D2 updater bootstrap"
-bash /app/container/bootstrap/l4d2_updater.sh
-
-run_stack_autoupdate_before_start
-
-start_runtime
-
-success "Deployment orchestration completed"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

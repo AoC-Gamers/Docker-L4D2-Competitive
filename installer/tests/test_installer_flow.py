@@ -72,3 +72,38 @@ printf default > "$DIR_SOURCEMOD/data/sqlite/local.sq3"
         result=self.run_install(extra={'STACK_TEST_FAIL_PUBLISH_AFTER':'0'}); self.assertNotEqual(result.returncode,0)
         self.assertEqual((self.game/'addons/sourcemod/plugins/demo.smx').read_text(),'version1')
         self.assertEqual(json.loads((self.base/'state/current/deploy-state.json').read_text())['status'],'failed')
+
+    def test_extraction_failure_leaves_operational_tree(self):
+        self.assertSuccess(self.run_install('install'))
+        catalog={'demo':{'folder':'demo','source_type':'github_release','github_repo':'example/demo','release_tag':'fixed','asset_name':'bad.zip','branch':'default'}}
+        (self.stack/'manifests/components.json').write_text(json.dumps(catalog))
+        tools=self.installer/'lib/tools_stack.sh'
+        tools.write_text(tools.read_text()+'''
+github_api_request() { printf '%s\\n' '{"assets":[{"id":1,"name":"bad.zip","url":"https://api.github.com/repos/example/demo/releases/assets/1","browser_download_url":"https://github.com/example/demo.zip","updated_at":"fixed"}]}'; }
+download_file() { printf corrupt > "$2"; }
+''')
+        result=self.run_install(); self.assertNotEqual(result.returncode,0)
+        self.assertEqual((self.game/'addons/sourcemod/plugins/demo.smx').read_text(),'version1')
+        self.assertEqual(json.loads((self.base/'state/current/deploy-state.json').read_text())['status'],'failed')
+
+    def test_killed_installer_recovers_on_next_invocation(self):
+        self.assertSuccess(self.run_install('install'))
+        self.hook.write_text(self.hook.read_text()+'printf version2 > "$DIR_SOURCEMOD/plugins/demo.smx"\n')
+        result=self.run_install(extra={'STACK_TEST_KILL_PUBLISH_AFTER':'0'})
+        self.assertNotEqual(result.returncode,0)
+        self.assertNotEqual(json.loads((self.base/'state/current/deploy-state.json').read_text())['status'],'ready')
+        self.hook.write_text(self.hook.read_text().replace('printf version2','printf version3'))
+        self.assertSuccess(self.run_install(extra={'STACK_REUSE_SOURCES':'true'}))
+        self.assertEqual((self.game/'addons/sourcemod/plugins/demo.smx').read_text(),'version3')
+
+    def test_logic_reapply_uses_last_committed_sources_after_failed_remote_update(self):
+        self.assertSuccess(self.run_install('install'))
+        (self.source/'plugin').write_text('version2')
+        subprocess.run(['git','-C',str(self.source),'add','.'],check=True)
+        subprocess.run(['git','-C',str(self.source),'-c','user.name=Test','-c','user.email=test@example.invalid','commit','-qm','new remote fixture'],check=True)
+        original=self.hook.read_text(); self.hook.write_text(original+'exit 19\n')
+        self.assertNotEqual(self.run_install().returncode,0)
+        self.hook.write_text(original+'# new local materialization logic\n')
+        shutil.rmtree(self.source) # Prove no remote resolution is necessary.
+        self.assertSuccess(self.run_install(extra={'STACK_REUSE_SOURCES':'true'}))
+        self.assertEqual((self.game/'addons/sourcemod/plugins/demo.smx').read_text(),'version1')

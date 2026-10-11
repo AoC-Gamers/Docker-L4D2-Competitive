@@ -72,6 +72,25 @@ test "$result" = true
         self.assertEqual((self.root / "metadata-calls").read_text(), "request\n")
         self.assertTrue((self.root / "demo/extracted").is_file())
 
+    def test_expected_checksum_and_bad_archive_fail_before_extract(self):
+        result = self.shell(''' 
+resolve_github_release_asset() {
+    printf '%s\\n' demo.zip https://github.com/example/demo.zip https://api.github.com/repos/example/demo/releases/assets/1 timestamp 1
+}
+download_file() { printf corrupt > "$2"; }
+extract_archive() { touch "$DIR_TMP/unexpected-extraction"; }
+STACK_EXPECTED_SHA256=0000000000000000000000000000000000000000000000000000000000000000
+result=$(download_github_release_source example/demo channel/develop demo.zip "" demo)
+''')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Checksum mismatch", result.stderr)
+        self.assertFalse((self.root / "unexpected-extraction").exists())
+        result = self.shell(''' 
+printf corrupt > "$DIR_TMP/corrupt.zip"
+extract_archive "$DIR_TMP/corrupt.zip" "$DIR_TMP/extracted"
+''')
+        self.assertNotEqual(result.returncode, 0)
+
     def test_missing_component_token_stops_before_download(self):
         result = self.shell('''
 export GITHUB_TOKEN=fake-global-token

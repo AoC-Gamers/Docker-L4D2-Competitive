@@ -57,11 +57,13 @@ def deploy(archive, extract, subtree, root, label, state_dir):
                     safe_path(root, rel, subtree)
                     incoming[rel] = digest(path)
     previous = {}
+    retained = []
     if state.exists():
         data = json.loads(state.read_text())
         if data.get('schema_version') != 2 or data.get('subtree') != subtree:
             raise ValueError('Unknown overlay registry format/subtree')
         previous = data['files']
+        retained = data.get('retained', [])
     for old in legacy:
         if not old.exists():
             continue
@@ -83,6 +85,8 @@ def deploy(archive, extract, subtree, root, label, state_dir):
         safe_path(root, rel, subtree)
     for rel, sha in previous.items():
         path = safe_path(root, rel, subtree)
+        if path.is_file() and digest(path) != sha:
+            retained.append(rel)
         if path.is_file() and digest(path) == sha:
             path.unlink()
             parent = path.parent
@@ -100,7 +104,7 @@ def deploy(archive, extract, subtree, root, label, state_dir):
         path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(extract / rel, path)
     tmp = state.with_suffix('.tmp')
-    tmp.write_text(json.dumps({'schema_version': 2, 'subtree': subtree, 'files': incoming}, sort_keys=True) + '\n')
+    tmp.write_text(json.dumps({'schema_version': 2, 'subtree': subtree, 'files': incoming, 'retained': sorted(set(retained)-set(incoming))}, sort_keys=True) + '\n')
     tmp.replace(state)
 
 

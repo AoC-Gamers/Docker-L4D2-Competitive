@@ -147,6 +147,10 @@ update_deploy_state_installer_metadata() {
     fi
 
     state_update_deploy_install_metadata "$INSTALL_TYPE" "$STATE_RESOLVED_COMPONENTS_FILE" "$resolved_components_sha256" "$resolved_components_summary_json"
+    local logic_sha
+    logic_sha="$(python3 "$DIR_INSTALLER_LIB/materialization.py" "$DIR_STACK" "$DIR_INSTALLER_LIB" "$DIR_INSTALLER_BIN" "$DIR_INSTALLER_CONFIG" "${DIR_APP:-/app}/container")"
+    jq --arg sha "$logic_sha" '.stack.materialization_sha256=$sha' "$DEPLOY_STATE_FILE" > "$DEPLOY_STATE_FILE.tmp"
+    mv "$DEPLOY_STATE_FILE.tmp" "$DEPLOY_STATE_FILE"
 }
 
 #####################################################

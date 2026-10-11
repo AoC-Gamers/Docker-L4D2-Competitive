@@ -1,5 +1,6 @@
 #!/bin/bash
 source "$DIR_INSTALLER_LIB/target_lock.sh"
+source "$DIR_INSTALLER_LIB/instance_stack.sh"
 
 stack_transaction_command() {
     python3 "$DIR_INSTALLER_LIB/transaction_stack.py" "$@"
@@ -21,11 +22,11 @@ stack_quiesce_instances() {
         [[ -x "$executable" && -f "$executable" ]] || continue
         name="$(basename "$executable")"
         [[ "$name" == "${GAMESERVER:-l4d2server}" || "$name" =~ ^${GAMESERVER:-l4d2server}-[0-9]+$ ]] || continue
-        if tmux has-session -t "=$name" 2>/dev/null; then
+        if instance_is_running "$name"; then
             printf '%s\n' "$name" >> "$STACK_TRANSACTION/running-instances"
             sync -f "$STACK_TRANSACTION/running-instances"
             "$executable" stop
-            if tmux has-session -t "=$name" 2>/dev/null; then
+            if instance_is_running "$name"; then
                 error_exit "Instance $name did not stop; publication refused."
             fi
         fi
@@ -40,7 +41,7 @@ stack_resume_instances() {
     case "${L4D2_AUTOSTART:-true}" in false|0|no|off) return 0 ;; esac
     while IFS= read -r name; do
         [[ -n "$name" ]] || continue
-        if ! tmux has-session -t "=$name" 2>/dev/null; then
+        if ! instance_is_running "$name"; then
             "${DIR_APP:-/app}/$name" start
         fi
     done < "$STACK_TRANSACTION/running-instances"
@@ -99,6 +100,7 @@ stack_run_candidate() (
     fi
     apply_stack_sources
     python3 "$DIR_INSTALLER_LIB/final_policy.py" "$DIR_LEFT4DEAD2" "$DIR_STACK/final-policy.json"
+    python3 "$DIR_INSTALLER_LIB/validate_candidate.py" "$DIR_LEFT4DEAD2"
     bash "$DIR_INSTALLER_BIN/geoip_update.sh"
 )
 

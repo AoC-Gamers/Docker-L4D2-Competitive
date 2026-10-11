@@ -101,3 +101,20 @@ class Transactions(unittest.TestCase):
         for p in (a,b,c): p.wait(); p.stdout.close()
         nested='source "$LIB/target_lock.sh"; stack_acquire_target_lock; bash -c \'source "$LIB/target_lock.sh"; stack_acquire_target_lock\''
         subprocess.run(['bash','-c',nested],env=dict(env,DIR_LEFT4DEAD2=str(self.root)),check=True,timeout=2)
+
+    def test_modified_optional_resource_survives_subsequent_publications(self):
+        resource=self.write(self.root,'sound/aoc/probe.wav','local modification')
+        import hashlib
+        self.write(self.state,'optional-overlays/whitelist_sound.json',json.dumps({'schema_version':2,'subtree':'sound','files':{'sound/aoc/probe.wav':hashlib.sha256(b'original').hexdigest()}}))
+        self.write(self.state,'managed-files.json',json.dumps({'files':['sound/aoc/probe.wav']}))
+        tx.seed(self.transaction,self.root,self.state)
+        from overlay_stack import deploy
+        deploy(self.base/'absent.zip',self.base/'extract','sound',self.transaction/'candidate/serverfiles/left4dead2','whitelist_sound',self.transaction/'candidate/state/optional-overlays')
+        tx.plan(self.transaction,self.root,self.stack,self.config,self.state); tx.publish(self.transaction); tx.commit(self.transaction)
+        self.assertEqual(resource.read_text(),'local modification')
+        import shutil
+        shutil.rmtree(self.transaction)
+        tx.seed(self.transaction,self.root,self.state)
+        deploy(self.base/'absent.zip',self.base/'extract','sound',self.transaction/'candidate/serverfiles/left4dead2','whitelist_sound',self.transaction/'candidate/state/optional-overlays')
+        tx.plan(self.transaction,self.root,self.stack,self.config,self.state); tx.publish(self.transaction); tx.commit(self.transaction)
+        self.assertEqual(resource.read_text(),'local modification')
