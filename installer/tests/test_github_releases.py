@@ -62,7 +62,7 @@ resolve_github_release_asset() {
     printf '%s\n' demo.zip https://github.com/example/demo.zip https://api.github.com/repos/example/demo/releases/assets/1 2026-10-10T00:00:00Z
 }
 preflight_github_release_access() { error_exit "unexpected duplicate request"; }
-download_file() { touch "$2"; }
+download_file() { python3 -c 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1],"w"); z.writestr("plugin","payload"); z.close()' "$2"; }
 extract_archive() { touch "$2/extracted"; }
 save_component_state() { :; }
 result=$(download_github_release_source example/demo channel/develop "" '*.zip' demo)
@@ -141,9 +141,6 @@ printf '%s\n' "$first"
             self.assertEqual((self.root / "sdk-cache/archive.sha256").read_text(), expected + "\n")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
     def test_legacy_cache_reuse_does_not_advance_remote_channel(self):
         result = self.shell('''
 mkdir demo
@@ -155,3 +152,41 @@ result=$(download_github_release_source example/demo channel/develop demo.zip ""
         self.assertEqual(result.returncode, 1)
         self.assertIn('Legacy release cache', result.stderr)
         self.assertFalse((self.root/'unexpected-network').exists())
+
+    def test_verified_legacy_tree_reuses_without_original_or_network(self):
+        result=self.shell('''
+export DIR_INSTALLER_LIB="$TEST_LIB"
+mkdir demo
+printf original > demo/plugin
+tree=$(python3 "$TEST_LIB/source_identity.py" demo --payload)
+jq -n --arg tree "$tree" '{sha256:"legacy-hash",tree_sha256:$tree}' > demo/.stack-source.json
+STACK_REUSE_SOURCES=true
+component_cache_matches_source_prefix() { return 0; }
+resolve_github_release_asset() { touch "$DIR_TMP/unexpected-network"; }
+result=$(download_github_release_source example/demo channel/develop demo.zip "" demo)
+test "$result" = false
+workspace=$(prepare_component_workspace component "$DIR_TMP/demo")
+test "$(cat "$workspace/plugin")" = original
+''')
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertFalse((self.root/'unexpected-network').exists())
+
+    def test_expected_original_hash_reuses_bytes_without_second_download(self):
+        archive=self.root/'provider.zip'
+        with zipfile.ZipFile(archive,'w') as z: z.writestr('plugin','original')
+        sha=hashlib.sha256(archive.read_bytes()).hexdigest()
+        (self.root/'expected').write_text(sha)
+        result=self.shell('''
+download_file() { printf call >> "$DIR_TMP/downloads"; cp "$DIR_TMP/provider.zip" "$2"; }
+sha=$(cat "$DIR_TMP/expected")
+first=$(stack_acquire_original_archive https://example.invalid/exact "$sha" demo.zip)
+rm "$DIR_TMP/provider.zip"
+second=$(stack_acquire_original_archive https://example.invalid/exact "$sha" demo.zip)
+test "$first" = "$second"
+''')
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual((self.root/'downloads').read_text(),'call')
+
+
+if __name__ == "__main__":
+    unittest.main()

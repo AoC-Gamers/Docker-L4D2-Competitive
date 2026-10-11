@@ -31,7 +31,7 @@ LEGACY_LOG_FILE="$DIR_INSTALLER_BIN/install_stack.log"
 INSTALLER_MANAGED_DEPLOY_STATE=false
 DEPLOYMENT_ID=""
 RESOLVED_COMPONENTS_JSON=""
-DIR_TMP_ROOT="${DIR_TMP}"
+DIR_TMP_ROOT="${STACK_WORK_ROOT:-${DIR_INSTALLER}/cache/work}"
 INSTALL_TMP_DIR=""
 CACHE_FILE=""
 CACHE_LOCK_FILE=""
@@ -92,9 +92,10 @@ initialize_install_workspace() {
     stack_profile_slug="$(printf '%s' "${STACK_PROFILE:-default}" | tr -c '[:alnum:]_.-' '_')"
     cache_namespace="${stack_profile_slug:-default}"
 
-    # Keep a stable temp root per profile so downloaded artifacts can be reused
-    # across install/update runs until the container itself is removed.
-    INSTALL_TMP_DIR="${DIR_TMP_ROOT}/install_stack/${cache_namespace}"
+    # Persistent, editable workspace; pristine sources and prepared effects are separate.
+    local target_key
+    target_key="$(realpath -m "$DIR_LEFT4DEAD2" | sha256sum | cut -d' ' -f1)"
+    INSTALL_TMP_DIR="${DIR_TMP_ROOT}/install_stack/${cache_namespace}/${target_key}"
     DIR_TMP="$INSTALL_TMP_DIR"
     SOURCES_CACHE_DIR="${STATE_ROOT}/sources/${cache_namespace}"
 
@@ -110,7 +111,10 @@ initialize_install_workspace() {
         touch "$CACHE_FILE"
     fi
 
-    info "Temporary workspace root: $DIR_TMP"
+    export STACK_ARTIFACT_CACHE="${STACK_ARTIFACT_CACHE:-${DIR_INSTALLER}/cache/artifacts}"
+    export STACK_PREPARED_CACHE="${STACK_PREPARED_CACHE:-${DIR_INSTALLER}/cache/prepared}"
+    export DIR_TMP
+    info "Persistent editable workspace: $DIR_TMP"
     info "Component cache: $CACHE_FILE"
     info "Component sources: $SOURCES_CACHE_DIR"
 }
@@ -149,6 +153,7 @@ update_deploy_state_installer_metadata() {
     state_update_deploy_install_metadata "$INSTALL_TYPE" "$STATE_RESOLVED_COMPONENTS_FILE" "$resolved_components_sha256" "$resolved_components_summary_json"
     local logic_sha
     logic_sha="$(python3 "$DIR_INSTALLER_LIB/materialization.py" "$DIR_STACK" "$DIR_INSTALLER_LIB" "$DIR_INSTALLER_BIN" "$DIR_INSTALLER_CONFIG" "${DIR_APP:-/app}/container")"
+    export STACK_PREPARATION_LOGIC_SHA="$logic_sha"
     jq --arg sha "$logic_sha" '.stack.materialization_sha256=$sha' "$DEPLOY_STATE_FILE" > "$DEPLOY_STATE_FILE.tmp"
     mv "$DEPLOY_STATE_FILE.tmp" "$DEPLOY_STATE_FILE"
 }
@@ -223,9 +228,12 @@ initialize_install_workspace
 validate_stack_hooks
 stack_validate_extensions
 stack_prepare_transaction
+section "Phase 1/3: acquire exact original sources"
 prepare_stack_sources
 export STACK_PREPARED_SOURCES_FILE="$STACK_TRANSACTION/prepared-sources.json"
+section "Phase 2/3: prepare and validate candidate"
 stack_run_candidate
+section "Phase 3/3: publish with recovery"
 stack_publish_transaction
 
 section "Stack ${INSTALL_TYPE} completed"

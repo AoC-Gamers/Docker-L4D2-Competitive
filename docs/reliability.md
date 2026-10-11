@@ -27,6 +27,8 @@ Las pruebas offline usan directorios temporales y fixtures; no equivalen a una p
 
 ## Preparación, publicación y recuperación
 
+El [flujo de artefactos persistentes](artifact-flow.md) documenta las tres fases actuales, el contrato de caché preparada y la limpieza del payload tras confirmar.
+
 El instalador mantiene la arquitectura de componentes por capas. No duplica Valve: prepara solo archivos aportados por los componentes, configuraciones locales conservadas y recursos opcionales de propiedad comprobada. Los hooks reciben los cuatro argumentos históricos (`source_dir`, `install|update`, `source_download`, `source_type`), en workspaces independientes del cache bruto. Durante la composición todas las variables de destino (`LGSM_SERVERFILES`, `DIR_LEFT4DEAD2`, `DIR_ADDONS`, `DIR_SOURCEMOD`, `DIR_CFG`, `DIR_INSTALLER_STATE`) apuntan al candidato. Las eliminaciones AoC de cuatro bibliotecas `bin/` se declaran como operaciones diferidas, nunca se ejecutan contra el runtime desde el hook.
 
 Fases del diario `/data/serverfiles/.stack-transaction/journal.json`:

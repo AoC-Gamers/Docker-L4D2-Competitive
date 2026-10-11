@@ -217,7 +217,27 @@ def publish(tx):
 def commit(tx):
     p=tx/'journal.json'; j=json.loads(p.read_text())
     if j['phase']!='published': raise ValueError('Cannot commit incomplete publication')
-    j['phase']='committed'; durable_json(p,j)
+    j['phase']='committed'; j['resume_pending']=True; durable_json(p,j)
+    cleanup(tx)
+
+
+def resumed(tx):
+    p=tx/'journal.json'; j=json.loads(p.read_text())
+    if j['phase']=='committed':
+        j['resume_pending']=False; durable_json(p,j)
+
+
+def cleanup(tx):
+    """Committed receipt survives; rollback payload is no longer necessary."""
+    journal = tx/'journal.json'
+    if not journal.exists() or json.loads(journal.read_text())['phase'] != 'committed':
+        raise ValueError('Refusing to discard uncommitted recovery data')
+    for name in ('candidate', 'backup', 'sources'):
+        path = tx/name
+        if path.exists(): shutil.rmtree(path)
+    for pattern in ('*.before.json', '*.exclusions'):
+        for path in tx.glob(pattern): path.unlink()
+    flush_dir(tx)
 
 
 if __name__=='__main__':
@@ -227,4 +247,6 @@ if __name__=='__main__':
     elif action=='publish': publish(tx)
     elif action=='recover': recover(tx)
     elif action=='commit': commit(tx)
+    elif action=='cleanup': cleanup(tx)
+    elif action=='resumed': resumed(tx)
     else: raise ValueError('Unknown transaction action')

@@ -1,5 +1,6 @@
 #!/bin/bash
 # install_stack_runtime.sh - Helpers for install_stack orchestration.
+source "${DIR_INSTALLER_LIB:-$(dirname "${BASH_SOURCE[0]}")}/artifact_cache.sh"
 
 build_resolved_components_json() {
     local components_file="$1"
@@ -78,7 +79,11 @@ prepare_component_workspace() {
     fi
 
     mkdir -p "$workspace_dir"
-    cp -a "${cache_dir}/." "$workspace_dir/"
+    if [[ -f "$cache_dir/.stack-source.json" && "$(jq -r '.format // "legacy-tree"' "$cache_dir/.stack-source.json")" == original-archive ]]; then
+        stack_expand_original_archive "$(jq -r .archive_cache "$cache_dir/.stack-source.json")" "$(jq -r .sha256 "$cache_dir/.stack-source.json")" "$workspace_dir" >&2 || error_exit "Failed to expand source: $component_name"
+    else
+        cp -a "${cache_dir}/." "$workspace_dir/"
+    fi
     printf '%s\n' "$workspace_dir"
 }
 
@@ -94,7 +99,7 @@ save_component_state() {
     fi
 
     if [[ -f "$CACHE_FILE" ]]; then
-        grep -Fv "${component_name}:" "$CACHE_FILE" > "${CACHE_FILE}.tmp" || true
+        awk -F: -v name="$component_name" '$1 != name' "$CACHE_FILE" > "${CACHE_FILE}.tmp"
         mv "${CACHE_FILE}.tmp" "$CACHE_FILE"
     fi
 
@@ -127,7 +132,7 @@ get_component_cached_state() {
     fi
 
     if [[ -f "$CACHE_FILE" ]]; then
-        old_state=$(grep -F "${component_name}:" "$CACHE_FILE" | tail -n 1 | cut -d':' -f2-)
+        old_state=$(awk -v name="$component_name" 'index($0, name ":") == 1 {value=substr($0,length(name)+2)} END {print value}' "$CACHE_FILE")
     fi
 
     if command -v flock > /dev/null 2>&1; then
@@ -357,7 +362,6 @@ download_git_source() {
 
     if [[ "${GIT_FORCE_DOWNLOAD:-false}" == "true" ]]; then
         source_download=true
-        rm -rf "$folder"
     elif [[ -d "$folder" ]]; then
         step "Checking Git source state for $folder" >&2
         if [[ "$branch" == "default" ]]; then
@@ -367,7 +371,7 @@ download_git_source() {
         fi
 
         if [[ -z "$remote_state_raw" ]]; then
-            if component_cache_matches_source_prefix "$folder" "$source_prefix"; then
+            if component_cache_matches_source_prefix "$folder" "$source_prefix" && stack_git_original_clean "$folder"; then
                 warn "Could not resolve remote Git state for $folder. Reusing compatible local cache."
                 printf '%s\n' "false"
                 return 0
@@ -378,10 +382,9 @@ download_git_source() {
 
         remote_state="${source_prefix}${remote_state_raw}"
 
-        if has_component_changed "$folder" "$remote_state"; then
+        if has_component_changed "$folder" "$remote_state" || ! stack_git_original_clean "$folder"; then
             source_download=true
             info "Repository $folder changed. Refreshing local cache." >&2
-            rm -rf "$folder"
         else
             info "Repository $folder unchanged. Reusing local cache." >&2
         fi
@@ -391,11 +394,14 @@ download_git_source() {
 
     if [[ "$source_download" == "true" ]]; then
         step "Cloning $folder from $sanitized_repo_url (branch: $branch)" >&2
+        rm -rf "$folder.new"
         if [[ "$branch" == "default" ]]; then
-            git clone "$repo_url" "$folder" || error_exit "Failed to clone $sanitized_repo_url"
+            git clone "$repo_url" "$folder.new" || error_exit "Failed to clone $sanitized_repo_url"
         else
-            git clone -b "$branch" "$repo_url" "$folder" || error_exit "Failed to clone $sanitized_repo_url on branch $branch"
+            git clone -b "$branch" "$repo_url" "$folder.new" || error_exit "Failed to clone $sanitized_repo_url on branch $branch"
         fi
+        rm -rf "$folder"
+        mv "$folder.new" "$folder"
         remote_state="git:${repo_url}@${branch}:$(get_latest_commit_hash "$folder")"
         save_component_state "$folder" "$remote_state"
         success "Git source ready for $folder" >&2
@@ -430,6 +436,11 @@ download_github_release_source() {
             error_exit "Cached asset checksum does not match the expected checksum."
         fi
         [[ "$(jq -r .tree_sha256 "$folder/.stack-source.json")" == "$(python3 "$DIR_INSTALLER_LIB/source_identity.py" "$folder" --payload)" ]] || error_exit "Cached release tree is corrupt: $folder"
+        if [[ "$(jq -r '.format // "legacy-tree"' "$folder/.stack-source.json")" == original-archive ]]; then
+            local original
+            original="$(jq -r .archive_cache "$folder/.stack-source.json")"
+            [[ -f "$original" && "$(sha256sum "$original" | cut -d' ' -f1)" == "$(jq -r .sha256 "$folder/.stack-source.json")" ]] || error_exit "Original archive missing/corrupt: $folder"
+        fi
         printf 'false\n'; return 0
     fi
 
@@ -468,17 +479,16 @@ download_github_release_source() {
 
     if [[ "${GIT_FORCE_DOWNLOAD:-false}" == "true" ]]; then
         source_download=true
-        rm -rf "$folder"
     elif [[ -d "$folder" ]]; then
         step "Checking artifact source state for $folder" >&2
         local cached_expected="${STACK_EXPECTED_SHA256:-${asset_metadata[5]:-}}"
         cached_expected="${cached_expected#sha256:}"
-        if [[ ! -f "$folder/.stack-source.json" ]] || \
+        if [[ -z "$cached_expected" || ! -f "$folder/.stack-source.json" ]] || \
+            ! stack_original_source_valid "$folder" || \
             [[ -n "$cached_expected" && "$(jq -r .sha256 "$folder/.stack-source.json")" != "$cached_expected" ]] || \
             [[ "$(jq -r .tree_sha256 "$folder/.stack-source.json")" != "$(python3 "$DIR_INSTALLER_LIB/source_identity.py" "$folder" --payload)" ]] || has_component_changed "$folder" "$remote_state"; then
             source_download=true
             info "Artifact source $folder changed. Refreshing local cache." >&2
-            rm -rf "$folder"
         else
             info "Artifact source $folder unchanged. Reusing local cache." >&2
         fi
@@ -487,33 +497,30 @@ download_github_release_source() {
     fi
 
     if [[ "$source_download" == "true" ]]; then
-        archive_path="$DIR_TMP/$resolved_asset_name"
-        rm -f "$archive_path"
-        mkdir -p "$folder"
-        # The successful metadata resolution already verified the release and
-        # selected asset. Avoid a duplicate API request for every download.
-        success "GitHub release access verified for ${github_repo}@${release_tag} (${resolved_asset_name})" >&2
-        step "Downloading release asset $resolved_asset_name from $github_repo@$release_tag" >&2
-        if [[ -n "$github_auth_token" ]]; then
-            GITHUB_AUTH_TOKEN="$github_auth_token" download_file "$asset_api_url" "$archive_path" || error_exit "Failed to download $resolved_asset_name from $sanitized_asset_download_url"
-        else
-            download_file "$asset_api_url" "$archive_path" || error_exit "Failed to download $resolved_asset_name from $sanitized_asset_download_url"
-        fi
         local content_sha expected_sha
-        content_sha="$(sha256sum "$archive_path" | cut -d' ' -f1)"
         expected_sha="${STACK_EXPECTED_SHA256:-${asset_metadata[5]:-}}"
         expected_sha="${expected_sha#sha256:}"
-        if [[ -n "$expected_sha" && "$content_sha" != "$expected_sha" ]]; then
-            error_exit "Checksum mismatch for ${resolved_asset_name}."
+        success "GitHub release access verified for ${github_repo}@${release_tag} (${resolved_asset_name})" >&2
+        if [[ -n "$github_auth_token" ]]; then
+            archive_path="$(GITHUB_AUTH_TOKEN="$github_auth_token" stack_acquire_original_archive "$asset_api_url" "$expected_sha" "$resolved_asset_name")" || error_exit "Failed to acquire original archive: $resolved_asset_name"
+        else
+            archive_path="$(stack_acquire_original_archive "$asset_api_url" "$expected_sha" "$resolved_asset_name")" || error_exit "Failed to acquire original archive: $resolved_asset_name"
         fi
-        rm -rf "$folder"
-        mkdir -p "$folder"
-        extract_archive "$archive_path" "$folder"
-        local extracted_tree_sha
-        extracted_tree_sha="$(python3 "${DIR_INSTALLER_LIB:-$(dirname "${BASH_SOURCE[0]}")}/source_identity.py" "$folder" --payload)"
-        jq -n --arg tree_sha "$extracted_tree_sha" --arg repo "$github_repo" --arg tag "$release_tag" --arg name "$resolved_asset_name" \
+        content_sha="$(sha256sum "$archive_path" | cut -d' ' -f1)"
+        rm -rf "$folder.new"
+        mkdir -p "$folder.new"
+        if [[ "${STACK_FETCH_ONLY:-false}" != true ]]; then
+            # Backward-compatible direct library call. The installer expands in phase 2.
+            extract_archive "$archive_path" "$folder.new" || error_exit "Failed to extract original archive."
+        fi
+        local extracted_tree_sha format=original-archive
+        [[ "${STACK_FETCH_ONLY:-false}" == true ]] || format=legacy-tree
+        extracted_tree_sha="$(python3 "${DIR_INSTALLER_LIB:-$(dirname "${BASH_SOURCE[0]}")}/source_identity.py" "$folder.new" --payload)"
+        jq -n --arg format "$format" --arg archive "$archive_path" --arg tree_sha "$extracted_tree_sha" --arg repo "$github_repo" --arg tag "$release_tag" --arg name "$resolved_asset_name" \
             --arg id "${asset_metadata[4]:-}" --arg sha256 "$content_sha" --arg expected "$expected_sha" \
-            '{tree_sha256:$tree_sha,source_type:"github_release",repo:$repo,reference:$tag,asset:$name,asset_id:$id,sha256:$sha256,expected_sha256:$expected}' > "$folder/.stack-source.json"
+            '{format:$format,archive_cache:$archive,tree_sha256:$tree_sha,source_type:"github_release",repo:$repo,reference:$tag,asset:$name,asset_id:$id,sha256:$sha256,expected_sha256:$expected}' > "$folder.new/.stack-source.json"
+        rm -rf "$folder"
+        mv "$folder.new" "$folder"
         save_component_state "$folder" "$remote_state"
         success "Release artifact ready for $folder" >&2
     fi
@@ -564,7 +571,7 @@ apply_stack_sources() {
         fi
 
         local source_key pinned_row pinned_key pinned_dir pinned_sha
-        source_key="$(jq -cS '{source_type,folder,repo_url,github_repo,branch,release_tag,asset_name,asset_name_glob,sha256}' <<< "$component_json" | sha256sum | cut -d' ' -f1)"
+        source_key="$(jq -cS 'if .source_type=="archive" then {source_type,folder,url,archive_name,sha256} else {source_type,folder,repo_url,github_repo,branch,release_tag,asset_name,asset_name_glob,sha256} end' <<< "$component_json" | sha256sum | cut -d' ' -f1)"
         pinned_row=""
         if [[ "${STACK_FETCH_ONLY:-false}" == true && "${STACK_REUSE_SOURCES:-false}" == true && -f "$STATE_ROOT/source-lock.json" ]]; then
             pinned_row="$(jq -c --arg folder "$folder" --arg key "$source_key" '.[] | select(.folder==$folder and .source_key==$key)' "$STATE_ROOT/source-lock.json")"
@@ -615,9 +622,21 @@ apply_stack_sources() {
                 source_download=$(printf '%s\n' "$source_download_raw" | tail -n 1 | tr -d '\r')
                 component_cache_dir="${PWD}/${folder}"
                 ;;
+            archive)
+                component_cache_dir="${PWD}/${folder}"
+                source_download_raw="$(download_archive_source "$component_json" "$component_cache_dir")" || error_exit "Failed to acquire archive: $folder"
+                source_download="$source_download_raw"
+                ;;
             hook_only)
                 source_download=false
-                info "Hook-only component $folder does not download external sources."
+                if [[ "${STACK_FETCH_ONLY:-false}" == true ]]; then
+                    local asset name url
+                    while IFS= read -r asset; do
+                        name="$(jq -r .name <<< "$asset")"
+                        url="$(jq -r .url <<< "$asset")"
+                        stack_download_release_tarball_if_changed "$name" "$url" "" > /dev/null || error_exit "Declared hook asset acquisition failed: $name"
+                    done < <(jq -c '.prepare_downloads // [] | .[]' <<< "$component_json")
+                fi
                 ;;
             *)
                 error_exit "Unsupported source_type '$source_type' for folder '$folder'."
@@ -630,17 +649,29 @@ apply_stack_sources() {
             local snapshot_key='' snapshot_sha256=''
             if [[ "$source_type" == git ]]; then
                 identity="$(jq -n --arg commit "$(git -C "$component_cache_dir" rev-parse HEAD)" '{source_type:"git",commit:$commit}')"
-            elif [[ "$source_type" == github_release ]]; then
+            elif [[ "$source_type" == github_release || "$source_type" == archive ]]; then
                 identity="$(cat "$component_cache_dir/.stack-source.json")"
+            elif [[ "$source_type" == hook_only && -f "${STACK_HOOK_ASSETS_FILE:-/nonexistent}" ]]; then
+                identity="$(jq --argjson names "$(jq '[.prepare_downloads // [] | .[] | .name]' <<< "$component_json")" 'with_entries(select(.key as $k | $names | index($k)))' "$STACK_HOOK_ASSETS_FILE")"
+            fi
+            if [[ -f "$component_cache_dir/.stack-source.json" && "$(jq -r '.format // "legacy-tree"' "$component_cache_dir/.stack-source.json")" == original-archive ]]; then
+                local original_archive original_sha
+                original_archive="$(jq -r .archive_cache "$component_cache_dir/.stack-source.json")"
+                original_sha="$(jq -r .sha256 "$component_cache_dir/.stack-source.json")"
+                [[ -f "$original_archive" && "$(sha256sum "$original_archive" | cut -d' ' -f1)" == "$original_sha" ]] || error_exit "Original archive missing/corrupt: $folder"
             fi
             if [[ -n "$component_cache_dir" ]]; then
                 snapshot_sha256="$(python3 "$DIR_INSTALLER_LIB/source_identity.py" "$component_cache_dir")"
                 snapshot_key="$(printf '%s:%s' "$source_key" "$snapshot_sha256" | sha256sum | cut -d' ' -f1)"
+                mkdir -p "$STATE_ROOT/pinned-sources"
+                exec 4>"$STATE_ROOT/pinned-sources/$snapshot_key.lock"; flock 4
                 if [[ ! -d "$STATE_ROOT/pinned-sources/$snapshot_key" ]]; then
+                    rm -rf "$STATE_ROOT/pinned-sources/$snapshot_key.new"
                     mkdir -p "$STATE_ROOT/pinned-sources/$snapshot_key.new"
                     cp -a "$component_cache_dir/." "$STATE_ROOT/pinned-sources/$snapshot_key.new/"
                     mv "$STATE_ROOT/pinned-sources/$snapshot_key.new" "$STATE_ROOT/pinned-sources/$snapshot_key"
                 fi
+                flock -u 4; exec 4>&-
                 component_cache_dir="$STATE_ROOT/pinned-sources/$snapshot_key"
             fi
             jq -n --arg source_key "$source_key" --arg snapshot_key "$snapshot_key" --arg snapshot_sha256 "$snapshot_sha256" \
@@ -658,14 +689,8 @@ apply_stack_sources() {
         hook_required="$(printf '%s\n' "$component_json" | jq -r 'if has("hook_required") then .hook_required else true end')"
         subscript_file="$DIR_STACK_HOOKS/${folder}.${hook_variant}.sh"
         if [[ -f "$subscript_file" ]]; then
-            if [[ "$source_type" != "hook_only" ]]; then
-                component_work_dir="$(prepare_component_workspace "$folder" "$component_cache_dir")"
-            else
-                component_work_dir="$folder"
-            fi
-            step "Executing hook $subscript_file"
-            bash "$subscript_file" "$component_work_dir" "$INSTALL_TYPE" "$source_download" "$source_type"
-            success "Hook completed for $folder"
+            stack_prepare_component_hook "$component_json" "$component_cache_dir" "$subscript_file" "$source_download" "$source_type"
+            success "Component ready for $folder"
         else
             [[ "$hook_required" == false ]] || error_exit "Required hook missing: $folder.$hook_variant"
             info "Optional hook absent for $folder."
@@ -694,21 +719,85 @@ validate_stack_hooks() {
 prepare_stack_sources() (
     exec 7>"${CACHE_FILE}.sources.lock"
     flock 7
+    source "$DIR_INSTALLER_LIB/stack_component_lib.sh"
+    export STACK_HOOK_ASSETS_FILE="$STACK_TRANSACTION/candidate/state/hook-assets.json"
+    if [[ "${STACK_REUSE_SOURCES:-false}" == true && -f "$STATE_ROOT/hook-assets.json" ]]; then
+        cp "$STATE_ROOT/hook-assets.json" "$STACK_HOOK_ASSETS_FILE"
+    fi
     STACK_SOURCES_ROWS="$STACK_TRANSACTION/source-rows.jsonl"
     : > "$STACK_SOURCES_ROWS"
     STACK_FETCH_ONLY=true apply_stack_sources
     jq -s . "$STACK_SOURCES_ROWS" > "$STACK_TRANSACTION/prepared-sources.json"
-    local folder cache snapshot
-    while IFS=$'\t' read -r folder cache; do
-        [[ -n "$cache" ]] || continue
-        snapshot="$STACK_TRANSACTION/sources/$folder"
-        mkdir -p "$snapshot"
-        cp -a "$cache/." "$snapshot/"
-        jq --arg folder "$folder" --arg path "$snapshot" 'map(if .folder==$folder then .cache_dir=$path else . end)' \
-            "$STACK_TRANSACTION/prepared-sources.json" > "$STACK_TRANSACTION/prepared-sources.tmp"
-        mv "$STACK_TRANSACTION/prepared-sources.tmp" "$STACK_TRANSACTION/prepared-sources.json"
-    done < <(jq -r '.[] | select(.cache_dir!="") | [.folder,.cache_dir] | @tsv' "$STACK_TRANSACTION/prepared-sources.json")
+    # Pinned sources are immutable. Hooks only receive a disposable working copy;
+    # a second copy under the transaction adds no isolation or recovery value.
     export STACK_PREPARED_SOURCES_FILE="$STACK_TRANSACTION/prepared-sources.json"
     # Paths belong to the cache, not to the candidate; provenance omits URLs/tokens.
     jq '[.[] | {folder,source_key,snapshot_key,snapshot_sha256,identity}]' "$STACK_PREPARED_SOURCES_FILE" > "$STACK_TRANSACTION/candidate/state/source-lock.json"
 )
+
+# Only explicitly declared deterministic hooks may skip execution. Capture their
+# candidate effects (including deletions), not modifications to original sources.
+stack_prepare_component_hook() (
+    local component_json="$1" cache_dir="$2" hook="$3" downloaded="$4" kind="$5"
+    local name key='' entry='' before='' exclusions='' source='{}'
+    name="$(jq -r .folder <<< "$component_json")"
+    if [[ "$(jq -r '.prepare_cache // false' <<< "$component_json")" == true && -n "${STACK_PREPARED_SOURCES_FILE:-}" ]]; then
+        source="$(jq -c --arg name "$name" '.[] | select(.folder==$name) | {snapshot_sha256,identity}' "$STACK_PREPARED_SOURCES_FILE")"
+        key="$(python3 "$DIR_INSTALLER_LIB/prepared_cache.py" key "$STACK_TRANSACTION/candidate" "$component_json" "$source" "$STACK_PREPARATION_LOGIC_SHA" "$INSTALL_TYPE")"
+        entry="$STACK_PREPARED_CACHE/$name/$key"
+        mkdir -p "$(dirname "$entry")"
+        exec 6>"$entry.lock"; flock 6
+        if python3 "$DIR_INSTALLER_LIB/prepared_cache.py" replay "$STACK_TRANSACTION/candidate" "$entry"; then
+            info "Prepared cache reused: $name ($key)"
+            return 0
+        else
+            local cache_status=$?
+            [[ "$cache_status" == 1 ]] || error_exit "Prepared cache replay failed for $name; candidate discarded."
+        fi
+        before="$STACK_TRANSACTION/$name.before.json"
+        exclusions="$STACK_TRANSACTION/$name.exclusions"
+        : > "$exclusions"
+        export STACK_EXCLUSION_RECORD="$exclusions"
+        python3 "$DIR_INSTALLER_LIB/prepared_cache.py" inventory "$STACK_TRANSACTION/candidate" "$before"
+    fi
+    local workspace="$name"
+    if [[ "$kind" != hook_only ]]; then
+        workspace="$(prepare_component_workspace "$name" "$cache_dir")"
+    fi
+    step "Preparing component $name using $hook"
+    bash "$hook" "$workspace" "$INSTALL_TYPE" "$downloaded" "$kind" || exit $?
+    if [[ -n "$entry" ]]; then
+        python3 "$DIR_INSTALLER_LIB/prepared_cache.py" store "$STACK_TRANSACTION/candidate" "$before" "$entry" "$exclusions"
+    fi
+)
+
+# Direct archives require an expected checksum: their mutable URL has no release
+# metadata contract. Authentication for private GitHub releases stays in the
+# github_release adapter; Git uses normal credential helpers/SSH agents.
+download_archive_source() {
+    local component="$1" destination="$2" url name sha archive
+    url="$(jq -r .url <<< "$component")"
+    name="$(jq -r '.archive_name // "artifact.zip"' <<< "$component")"
+    sha="$(jq -r .sha256 <<< "$component")"
+    archive="$(stack_acquire_original_archive "$url" "$sha" "$name")" || error_exit "Direct archive acquisition failed."
+    rm -rf "$destination.new"; mkdir -p "$destination.new"
+    jq -n --arg archive "$archive" --arg name "$name" --arg sha "$sha" \
+        '{format:"original-archive",source_type:"archive",archive_cache:$archive,asset:$name,sha256:$sha,expected_sha256:$sha}' > "$destination.new/.stack-source.json"
+    rm -rf "$destination"; mv "$destination.new" "$destination"
+    printf 'false\n'
+}
+
+stack_original_source_valid() {
+    local folder="$1" archive sha
+    [[ -f "$folder/.stack-source.json" ]] || return 1
+    [[ "$(jq -r '.format // "legacy-tree"' "$folder/.stack-source.json")" == original-archive ]] || return 0
+    archive="$(jq -r .archive_cache "$folder/.stack-source.json")"
+    sha="$(jq -r .sha256 "$folder/.stack-source.json")"
+    [[ -f "$archive" && "$(sha256sum "$archive" | cut -d' ' -f1)" == "$sha" ]]
+}
+
+stack_git_original_clean() {
+    local folder="$1"
+    GIT_OPTIONAL_LOCKS=0 git -C "$folder" diff --quiet HEAD -- || return 1
+    [[ -z "$(GIT_OPTIONAL_LOCKS=0 git -C "$folder" ls-files --others --exclude-standard)" ]]
+}

@@ -72,10 +72,11 @@ Es el comando principal del framework. Resuelve e instala el stack a partir de `
 Capacidades:
 
 - soporta `source_type=git`
-- soporta `source_type=github_release`
+- soporta `source_type=github_release` y archivos directos `source_type=archive` con SHA-256 esperado
 - resuelve assets por nombre exacto o `asset_name_glob`
 - mantiene cache persistente por perfil en `/data/installer/state/cache/`
-- usa un workspace temporal aislado por corrida bajo `/app/tmp/install_stack/`
+- conserva originales, expansiones y salidas preparadas bajo `/data/installer/cache/`; workspace editable por perfil/destino
+- publica con diario recuperable y elimina el payload transaccional al confirmar; ver [flujo de artefactos](artifact-flow.md)
 - puede degradar a reuse de cache local si la fuente remota no responde, siempre que el cache corresponda a la misma fuente efectiva
 - ejecuta hooks desde `stack/hooks/`
 

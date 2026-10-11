@@ -4,6 +4,7 @@
     "repo_url": "https://github.com/SirPlease/L4D2-Competitive-Rework.git",
     "folder": "sir",
     "branch": "default",
-    "hook_required": true
+    "hook_required": true,
+    "prepare_cache": true
   }
 }

@@ -33,7 +33,7 @@ cp "$1/plugin" "$DIR_SOURCEMOD/plugins/demo.smx"
 printf default > "$DIR_SOURCEMOD/data/sqlite/local.sq3"
 ''')
         (self.installer/'bin/sync_instances.sh').write_text('#!/bin/bash\nexit 0\n')
-        (self.stack/'manifests/components.json').write_text(json.dumps({'demo':{'folder':'demo','source_type':'git','repo_url':str(self.source),'branch':'default'}}))
+        (self.stack/'manifests/components.json').write_text(json.dumps({'demo':{'folder':'demo','source_type':'git','repo_url':str(self.source),'branch':'default','prepare_cache':True}}))
         (self.stack/'profiles/test.json').write_text('{"components":["demo"]}')
         self.env=dict(os.environ,PATH=str(self.mock)+':'+os.environ['PATH'],USER=os.environ['USER'],DIR_INSTALLER=str(self.installer),DIR_INSTALLER_BIN=str(self.installer/'bin'),DIR_INSTALLER_LIB=str(self.installer/'lib'),DIR_INSTALLER_CONFIG=str(self.installer/'config'),DIR_INSTALLER_STATE=str(self.base/'state'),DIR_STACK=str(self.stack),DIR_STACK_HOOKS=str(self.stack/'hooks'),DIR_LEFT4DEAD2=str(self.game),DIR_SOURCEMOD=str(self.game/'addons/sourcemod'),DIR_ADDONS=str(self.game/'addons'),DIR_CFG=str(self.game/'cfg'),DIR_APP=str(self.app),DIR_TMP=str(self.base/'tmp'),STACK_PROFILE='test',GAMESERVER='l4d2server',L4D2_AUTOSTART='false',STACK_LOCK_ROOT=str(self.base/'locks'),GEOIPUPDATE_ENABLED='false')
 
@@ -50,7 +50,7 @@ printf default > "$DIR_SOURCEMOD/data/sqlite/local.sq3"
                 (self.stack/'profiles'/f'{profile}.json').write_text('{"components":["demo"]}')
                 result=self.run_install('install',extra={'STACK_PROFILE':profile})
                 self.assertSuccess(result)
-                self.assertTrue((self.base/'tmp/install_stack'/profile).is_dir())
+                self.assertTrue((self.installer/'cache/work/install_stack'/profile).is_dir())
                 self.assertTrue((self.base/'state/sources'/profile/'demo').is_dir())
                 self.assertTrue((self.base/'state/cache'/f'{profile}.log').is_file())
                 self.assertFalse((self.base/'state/sources'/(profile+'_')).exists())
@@ -74,7 +74,7 @@ printf default > "$DIR_SOURCEMOD/data/sqlite/local.sq3"
         shutil.rmtree(self.source)
         for _ in range(2):
             self.assertSuccess(self.run_install(extra={'STACK_PROFILE':'develop','STACK_REUSE_SOURCES':'true'}))
-            self.assertTrue((self.base/'tmp/install_stack/develop').is_dir())
+            self.assertTrue((self.installer/'cache/work/install_stack/develop').is_dir())
             self.assertTrue((self.base/'state/sources/develop').is_dir())
             self.assertTrue((self.base/'state/cache/develop.log').is_file())
             self.assertEqual(old_cache.read_bytes(),cached_state)
@@ -158,3 +158,119 @@ printf default > "$DIR_CFG/local.cfg"
             self.assertSuccess(self.run_install(extra={'STACK_REUSE_SOURCES':'true'}))
             self.assertEqual(dbcfg.read_text(),'local credentials fixture')
             self.assertEqual(local.read_text(),'custom local config')
+
+    def test_prepared_cache_survives_ephemeral_directory_and_skips_hook(self):
+        calls=self.base/'hook-calls'
+        self.hook.write_text(self.hook.read_text()+f'printf call >> "{calls}"\n')
+        self.assertSuccess(self.run_install())
+        self.assertEqual(calls.read_text(),'call')
+        shutil.rmtree(self.base/'tmp',ignore_errors=True)
+        self.assertSuccess(self.run_install(extra={'STACK_REUSE_SOURCES':'true'}))
+        self.assertEqual(calls.read_text(),'call')
+        tx=self.base/'serverfiles/.stack-transaction'
+        self.assertEqual(json.loads((tx/'journal.json').read_text())['phase'],'committed')
+        for name in ('candidate','sources','backup'):
+            self.assertFalse((tx/name).exists())
+        plugin=self.game/'addons/sourcemod/plugins/demo.smx'
+        plugin.unlink()
+        result=self.run_install(extra={'STACK_REUSE_SOURCES':'true'})
+        self.assertSuccess(result)
+        self.assertIn('Prepared cache reused: demo',result.stdout)
+        self.assertEqual(plugin.read_text(),'version1')
+        self.assertEqual(calls.read_text(),'call')
+        self.hook.write_text(self.hook.read_text()+'# changed hook\n')
+        self.assertSuccess(self.run_install(extra={'STACK_REUSE_SOURCES':'true'}))
+        self.assertEqual(calls.read_text(),'callcall')
+
+    def test_corrupt_prepared_cache_is_rebuilt_without_publishing_bad_bytes(self):
+        self.assertSuccess(self.run_install())
+        payloads=list((self.installer/'cache/prepared').rglob('demo.smx'))
+        self.assertEqual(len(payloads),1)
+        payloads[0].write_text('corrupt')
+        self.assertSuccess(self.run_install(extra={'STACK_REUSE_SOURCES':'true'}))
+        self.assertEqual((self.game/'addons/sourcemod/plugins/demo.smx').read_text(),'version1')
+        self.assertEqual(payloads[0].read_text(),'version1')
+
+    def test_direct_zip_is_persistent_pristine_and_extracts_only_once(self):
+        import zipfile, hashlib
+        archive=self.base/'artifact.zip'
+        with zipfile.ZipFile(archive,'w') as z: z.writestr('plugin','archive version')
+        sha=hashlib.sha256(archive.read_bytes()).hexdigest()
+        (self.stack/'manifests/components.json').write_text(json.dumps({'demo':{
+            'folder':'demo','source_type':'archive','url':archive.as_uri(),
+            'sha256':sha,'prepare_cache':True}}))
+        self.assertSuccess(self.run_install())
+        original=self.installer/'cache/artifacts'/sha/'artifact.zip'
+        self.assertEqual(original.read_bytes(),archive.read_bytes())
+        archive.unlink()
+        self.assertSuccess(self.run_install(extra={'STACK_REUSE_SOURCES':'true'}))
+        self.assertEqual((self.game/'addons/sourcemod/plugins/demo.smx').read_text(),'archive version')
+        # Force hook invalidation, while the pristine extraction remains reusable.
+        self.hook.write_text(self.hook.read_text()+'# new policy\n')
+        extractor=self.installer/'lib/tools_stack.sh'
+        extractor.write_text(extractor.read_text()+'\nextract_archive() { echo unexpected extraction >&2; return 31; }\n')
+        self.assertSuccess(self.run_install(extra={'STACK_REUSE_SOURCES':'true'}))
+        self.assertEqual(hashlib.sha256(original.read_bytes()).hexdigest(),sha)
+
+    def test_declared_environment_and_upstream_layer_invalidate_prepared_cache(self):
+        catalog=json.loads((self.stack/'manifests/components.json').read_text())
+        catalog['demo']['prepare_env']=['PLUGIN_FLAVOR']
+        (self.stack/'manifests/components.json').write_text(json.dumps(catalog))
+        self.hook.write_text(self.hook.read_text()+'printf "%s" "$PLUGIN_FLAVOR" > "$DIR_SOURCEMOD/plugins/demo.smx"\n')
+        for flavor in ('one','two','two'):
+            self.assertSuccess(self.run_install(extra={'PLUGIN_FLAVOR':flavor,'STACK_REUSE_SOURCES':'true'}))
+            self.assertEqual((self.game/'addons/sourcemod/plugins/demo.smx').read_text(),flavor)
+
+    def test_hook_downloads_are_acquired_once_before_candidate_hooks(self):
+        import zipfile
+        archive=self.base/'framework.zip'
+        with zipfile.ZipFile(archive,'w') as z: z.writestr('plugin','framework')
+        catalog={'framework':{'folder':'framework','source_type':'hook_only','prepare_cache':True,
+            'prepare_downloads':[{'name':'framework','url':'https://example.invalid/latest'}]}}
+        (self.stack/'manifests/components.json').write_text(json.dumps(catalog))
+        (self.stack/'profiles/test.json').write_text('{"components":["framework"]}')
+        tools=self.installer/'lib/tools_stack.sh'
+        tools.write_text(tools.read_text()+f'''
+stack_resolve_archive_url() {{ printf '%s\\n' framework.zip https://example.invalid/exact; }}
+download_file() {{ printf download >> "{self.base}/downloads"; cp "{archive}" "$2"; }}
+''')
+        # Resolver belongs to stack_component_lib; mock curl instead to cover its
+        # redirect-resolution contract without contacting a public endpoint.
+        curl=self.mock/'curl'
+        curl.write_text('#!/bin/bash\nprintf resolve >> "'+str(self.base/'resolutions')+'"\nprintf https://example.invalid/framework.zip\n')
+        curl.chmod(0o755)
+        (self.stack/'hooks/framework.default.sh').write_text('''#!/bin/bash
+set -euo pipefail
+source "$DIR_INSTALLER_LIB/tools_stack.sh"
+source "$DIR_INSTALLER_LIB/stack_component_lib.sh"
+file=$(stack_download_release_tarball_if_changed framework https://example.invalid/latest "")
+mkdir -p "$DIR_SOURCEMOD/plugins"
+printf framework > "$DIR_SOURCEMOD/plugins/framework.smx"
+''')
+        self.assertSuccess(self.run_install())
+        self.assertEqual((self.base/'downloads').read_text(),'download')
+        self.assertEqual((self.base/'resolutions').read_text(),'resolve')
+        lock=json.loads((self.base/'state/source-lock.json').read_text())
+        self.assertEqual(len(lock[0]['identity']['framework']['sha256']),64)
+        archive.unlink()
+        self.assertSuccess(self.run_install(extra={'STACK_REUSE_SOURCES':'true'}))
+        self.assertEqual((self.base/'downloads').read_text(),'download')
+        self.assertEqual((self.base/'resolutions').read_text(),'resolve')
+        self.assertEqual((self.game/'addons/sourcemod/plugins/framework.smx').read_text(),'framework')
+
+    def test_failed_raw_expansion_never_caches_partial_output_or_publishes(self):
+        import zipfile,hashlib
+        self.assertSuccess(self.run_install())
+        archive=self.base/'later.zip'
+        with zipfile.ZipFile(archive,'w') as z: z.writestr('plugin','version2')
+        sha=hashlib.sha256(archive.read_bytes()).hexdigest()
+        (self.stack/'manifests/components.json').write_text(json.dumps({'demo':{
+            'folder':'demo','source_type':'archive','url':archive.as_uri(),
+            'sha256':sha,'prepare_cache':True}}))
+        tools=self.installer/'lib/tools_stack.sh'
+        tools.write_text(tools.read_text()+'\nextract_archive() { touch "$2/partial"; return 31; }\n')
+        result=self.run_install()
+        self.assertNotEqual(result.returncode,0)
+        self.assertEqual((self.game/'addons/sourcemod/plugins/demo.smx').read_text(),'version1')
+        self.assertEqual(json.loads((self.base/'state/current/deploy-state.json').read_text())['status'],'failed')
+        self.assertEqual(list((self.installer/'cache/artifacts/expanded').glob('*.sha256')),[])

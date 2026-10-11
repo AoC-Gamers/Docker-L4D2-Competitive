@@ -196,6 +196,9 @@ stack_log_exclusion() {
         display_path="${target_path#"$DIR_LEFT4DEAD2/"}"
     fi
     log "Excluded path from deployment: $display_path ($status)"
+    if [[ -n "${STACK_EXCLUSION_RECORD:-}" ]]; then
+        printf '%s (%s)\n' "$display_path" "$status" >> "$STACK_EXCLUSION_RECORD"
+    fi
 }
 
 verify_and_delete_dir() {

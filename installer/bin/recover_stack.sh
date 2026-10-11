@@ -11,7 +11,11 @@ STACK_TRANSACTION="$(stack_transaction_root)"
 [[ -f "$STACK_TRANSACTION/journal.json" ]] || { info 'No publication journal to recover.'; exit 0; }
 phase="$(jq -r .phase "$STACK_TRANSACTION/journal.json")"
 case "$phase" in
-    committed|rolled_back) info "Publication is already $phase."; exit 0 ;;
+    committed)
+        stack_recover_interrupted
+        if [[ "$(jq -r '.resume_pending // false' "$STACK_TRANSACTION/journal.json")" == true ]]; then stack_resume_instances; fi
+        info 'Publication is committed; recovery payload cleaned.'; exit 0 ;;
+    rolled_back) info "Publication is already $phase."; exit 0 ;;
     prepared)
         stack_resume_instances
         ;;

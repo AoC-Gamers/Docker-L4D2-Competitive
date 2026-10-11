@@ -14,6 +14,8 @@
 #
 # When adding new helpers, keep them in the section that matches their purpose.
 
+source "${DIR_INSTALLER_LIB:-$(dirname "${BASH_SOURCE[0]}")}/artifact_cache.sh"
+
 #######################################
 # Environment helpers
 #######################################
@@ -296,13 +298,12 @@ stack_download_release_tarball_if_changed() {
     local file_pattern="$3"
 
     local record="${STACK_HOOK_ASSETS_FILE:-${DIR_INSTALLER_STATE:-/data/installer/state}/hook-assets.json}"
-    local cache_root="${DIR_INSTALLER:-/data/installer}/cache/hook-assets"
     local filename archive sha resolved_url metadata
     local -a resolved=()
     local previous='{}'
-    mkdir -p "$(dirname "$record")" "$cache_root"
+    mkdir -p "$(dirname "$record")"
     [[ ! -f "$record" ]] || previous="$(cat "$record")"
-    if [[ "${STACK_REUSE_SOURCES:-false}" == true ]] && jq -e --arg name "$package_name" '.[$name]' <<< "$previous" >/dev/null; then
+    if [[ "${STACK_REUSE_SOURCES:-false}" == true || "${STACK_PREPARED_HOOK_ASSETS:-false}" == true ]] && jq -e --arg name "$package_name" '.[$name]' <<< "$previous" >/dev/null; then
         archive="$(jq -r --arg name "$package_name" '.[$name].cache_path' <<< "$previous")"
         sha="$(jq -r --arg name "$package_name" '.[$name].sha256' <<< "$previous")"
         [[ -f "$archive" && "$(sha256sum "$archive" | cut -d' ' -f1)" == "$sha" ]] || error_exit "Pinned hook asset unavailable: $package_name. Restore its cache or request an explicit update."
@@ -314,13 +315,8 @@ stack_download_release_tarball_if_changed() {
     filename="${resolved[0]:-}"
     resolved_url="${resolved[1]:-}"
     [[ "$filename" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ && "$filename" != *..* && -n "$resolved_url" ]] || error_exit "Invalid asset filename for $package_name."
-    archive="$DIR_TMP/$filename"
-    download_file "$resolved_url" "$archive.part" || return 1
-    validate_archive "$archive.part" || return 1
-    sha="$(sha256sum "$archive.part" | cut -d' ' -f1)"
-    mkdir -p "$cache_root/$sha"
-    archive="$cache_root/$sha/$filename"
-    mv "$DIR_TMP/$filename.part" "$archive"
+    archive="$(stack_acquire_original_archive "$resolved_url" "" "$filename")" || return 1
+    sha="$(sha256sum "$archive" | cut -d' ' -f1)"
     jq --arg name "$package_name" --arg sha "$sha" --arg path "$archive" --arg asset "$filename" \
         '.[$name]={asset:$asset,sha256:$sha,cache_path:$path,verification:"content identity only"}' <<< "$previous" > "$record.tmp"
     mv "$record.tmp" "$record"

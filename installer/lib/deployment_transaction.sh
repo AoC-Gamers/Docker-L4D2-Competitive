@@ -38,13 +38,23 @@ stack_quiesce_instances() {
 stack_resume_instances() {
     local name
     [[ -f "$STACK_TRANSACTION/running-instances" ]] || return 0
-    case "${L4D2_AUTOSTART:-true}" in false|0|no|off) return 0 ;; esac
+    case "${L4D2_AUTOSTART:-true}" in false|0|no|off)
+        stack_finish_resume
+        return 0 ;;
+    esac
     while IFS= read -r name; do
         [[ -n "$name" ]] || continue
         if ! instance_is_running "$name"; then
             "${DIR_APP:-/app}/$name" start
         fi
     done < "$STACK_TRANSACTION/running-instances"
+    stack_finish_resume
+}
+
+stack_finish_resume() {
+    if [[ -f "$STACK_TRANSACTION/journal.json" && "$(jq -r .phase "$STACK_TRANSACTION/journal.json")" == committed ]]; then
+        stack_transaction_command resumed "$STACK_TRANSACTION"
+    fi
 }
 
 stack_recover_interrupted() {
@@ -61,6 +71,14 @@ stack_recover_interrupted() {
                 # Do not resume here: instance layouts/reconciliation still need to run.
                 ;;
         esac
+        # A crash after durable commit may precede payload cleanup. Finish it
+        # here without rollback; preserve the receipt and resume intent.
+        if [[ "$(jq -r .phase "$STACK_TRANSACTION/journal.json")" == committed ]]; then
+            stack_transaction_command cleanup "$STACK_TRANSACTION"
+            if [[ "$(jq -r '.resume_pending // false' "$STACK_TRANSACTION/journal.json")" == true ]]; then
+                STACK_RECOVERED_RUNNING_FILE="$STACK_TRANSACTION/running-instances"
+            fi
+        fi
         case "$(jq -r .phase "$STACK_TRANSACTION/journal.json")" in
             prepared|rolled_back)
                 STACK_RECOVERED_RUNNING_FILE="$STACK_TRANSACTION/running-instances"
@@ -99,6 +117,7 @@ stack_run_candidate() (
     if [[ "${STACK_REUSE_SOURCES:-false}" == true && -f "$STATE_ROOT/hook-assets.json" ]]; then
         cp "$STATE_ROOT/hook-assets.json" "$STACK_HOOK_ASSETS_FILE"
     fi
+    export STACK_PREPARED_HOOK_ASSETS=true
     apply_stack_sources
     python3 "$DIR_INSTALLER_LIB/final_policy.py" "$DIR_LEFT4DEAD2" "$DIR_STACK/final-policy.json"
     python3 "$DIR_INSTALLER_LIB/merge_local_configs.py" "$DIR_LEFT4DEAD2" "$STACK_ACTIVE_GAME_ROOT" "$STATE_ROOT" "$STACK_TRANSACTION/config-default-hashes.json"
