@@ -1,6 +1,7 @@
 """Real Bash entry point, local Git component, no Valve/Docker/private credentials."""
 import json
 import os
+import pwd
 from pathlib import Path
 import shutil
 import subprocess
@@ -35,7 +36,10 @@ printf default > "$DIR_SOURCEMOD/data/sqlite/local.sq3"
         (self.installer/'bin/sync_instances.sh').write_text('#!/bin/bash\nexit 0\n')
         (self.stack/'manifests/components.json').write_text(json.dumps({'demo':{'folder':'demo','source_type':'git','repo_url':str(self.source),'branch':'default','prepare_cache':True}}))
         (self.stack/'profiles/test.json').write_text('{"components":["demo"]}')
-        self.env=dict(os.environ,PATH=str(self.mock)+':'+os.environ['PATH'],USER=os.environ['USER'],DIR_INSTALLER=str(self.installer),DIR_INSTALLER_BIN=str(self.installer/'bin'),DIR_INSTALLER_LIB=str(self.installer/'lib'),DIR_INSTALLER_CONFIG=str(self.installer/'config'),DIR_INSTALLER_STATE=str(self.base/'state'),DIR_STACK=str(self.stack),DIR_STACK_HOOKS=str(self.stack/'hooks'),DIR_LEFT4DEAD2=str(self.game),DIR_SOURCEMOD=str(self.game/'addons/sourcemod'),DIR_ADDONS=str(self.game/'addons'),DIR_CFG=str(self.game/'cfg'),DIR_APP=str(self.app),DIR_TMP=str(self.base/'tmp'),STACK_PROFILE='test',GAMESERVER='l4d2server',L4D2_AUTOSTART='false',STACK_LOCK_ROOT=str(self.base/'locks'),GEOIPUPDATE_ENABLED='false')
+        # Docker can run as root while USER still names the image's LinuxGSM
+        # account. The fixture belongs to the effective user, not that variable.
+        fixture_user=pwd.getpwuid(os.geteuid()).pw_name
+        self.env=dict(os.environ,PATH=str(self.mock)+':'+os.environ['PATH'],USER=fixture_user,DIR_INSTALLER=str(self.installer),DIR_INSTALLER_BIN=str(self.installer/'bin'),DIR_INSTALLER_LIB=str(self.installer/'lib'),DIR_INSTALLER_CONFIG=str(self.installer/'config'),DIR_INSTALLER_STATE=str(self.base/'state'),DIR_STACK=str(self.stack),DIR_STACK_HOOKS=str(self.stack/'hooks'),DIR_LEFT4DEAD2=str(self.game),DIR_SOURCEMOD=str(self.game/'addons/sourcemod'),DIR_ADDONS=str(self.game/'addons'),DIR_CFG=str(self.game/'cfg'),DIR_APP=str(self.app),DIR_TMP=str(self.base/'tmp'),STACK_PROFILE='test',GAMESERVER='l4d2server',L4D2_AUTOSTART='false',STACK_LOCK_ROOT=str(self.base/'locks'),GEOIPUPDATE_ENABLED='false')
 
     def run_install(self,mode='update',extra=None):
         result=subprocess.run(['bash',str(self.installer/'bin/install_stack.sh'),mode],env=dict(self.env,**(extra or {})),capture_output=True,text=True,timeout=20)
@@ -43,6 +47,14 @@ printf default > "$DIR_SOURCEMOD/data/sqlite/local.sq3"
 
     def assertSuccess(self,result):
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+
+    def test_inherited_user_does_not_switch_away_from_fixture_owner(self):
+        from unittest.mock import patch
+        with patch.dict(os.environ, {'USER':'not-the-fixture-owner'}):
+            fixture=InstallerFlow()
+            fixture.setUp()
+            self.addCleanup(fixture.doCleanups)
+        fixture.assertSuccess(fixture.run_install())
 
     def test_profile_workspace_names_have_no_generated_trailing_underscore(self):
         for profile in ('develop', 'latest', 'feature_test', 'develop_'):

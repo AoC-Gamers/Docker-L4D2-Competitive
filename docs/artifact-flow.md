@@ -171,3 +171,10 @@ No cambia el actualizador de Valve ni el alcance del healthcheck: comprueba el
 entorno de administración y el estado de despliegue previsto, **no** disponibilidad
 SRCDS. Las pruebas offline usan fixtures temporales; no equivalen a ejecución
 real de Docker, red privada o partidas.
+
+Los fixtures usan el usuario efectivo que creó su directorio temporal. Esto
+permite ejecutarlos también dentro de una imagen con UID root y `USER=linuxgsm`,
+como hace CI, sin cambiar al propietario de los archivos ni alterar la política
+de usuario del instalador real. Las pruebas de hooks heredados se comprobaron
+además en contenedores desechables con esa combinación de UID y entorno; no se
+montaron volúmenes de servidores ni se ejecutó SRCDS.
