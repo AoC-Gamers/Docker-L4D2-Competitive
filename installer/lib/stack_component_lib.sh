@@ -276,7 +276,9 @@ stack_download_release_tarball_if_changed() {
 
     local record="${STACK_HOOK_ASSETS_FILE:-${DIR_INSTALLER_STATE:-/data/installer/state}/hook-assets.json}"
     local cache_root="${DIR_INSTALLER:-/data/installer}/cache/hook-assets"
-    local filename archive sha previous='{}'
+    local filename archive sha resolved_url metadata
+    local -a resolved=()
+    local previous='{}'
     mkdir -p "$(dirname "$record")" "$cache_root"
     [[ ! -f "$record" ]] || previous="$(cat "$record")"
     if [[ "${STACK_REUSE_SOURCES:-false}" == true ]] && jq -e --arg name "$package_name" '.[$name]' <<< "$previous" >/dev/null; then
@@ -286,10 +288,13 @@ stack_download_release_tarball_if_changed() {
         printf '%s\n' "$archive"
         return 0
     fi
-    filename="$(stack_get_filename_from_url "$download_url")"
-    [[ -n "$filename" && "$filename" == "$(basename "$filename")" && "$filename" != *..* ]] || error_exit "Invalid asset filename for $package_name."
+    metadata="$(stack_resolve_archive_url "$download_url")" || return 1
+    mapfile -t resolved <<< "$metadata"
+    filename="${resolved[0]:-}"
+    resolved_url="${resolved[1]:-}"
+    [[ "$filename" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ && "$filename" != *..* && -n "$resolved_url" ]] || error_exit "Invalid asset filename for $package_name."
     archive="$DIR_TMP/$filename"
-    download_file "$download_url" "$archive.part" || return 1
+    download_file "$resolved_url" "$archive.part" || return 1
     validate_archive "$archive.part" || return 1
     sha="$(sha256sum "$archive.part" | cut -d' ' -f1)"
     mkdir -p "$cache_root/$sha"
@@ -342,4 +347,20 @@ stack_extract_cached_archive_by_sha() {
 deploy_optional_archive_tree_if_present() {
     python3 "$DIR_INSTALLER_LIB/overlay_stack.py" "$1" "$2" "$3" "$4" "$5" \
         "${OPTIONAL_OVERLAY_STATE_DIR:-${DIR_INSTALLER_STATE:-/data/installer/state}/optional-overlays}"
+}
+
+# Resolve the public hook archive once; download that exact URL rather than
+# resolving a mobile latest.php channel again. Never persist signed URLs.
+stack_resolve_archive_url() {
+    local url="$1" headers effective filename
+    mkdir -p "$DIR_TMP"
+    headers="$(mktemp "$DIR_TMP/archive-headers.XXXXXX")"
+    if ! effective="$(curl -fsSLI -D "$headers" -o /dev/null -w '%{url_effective}' "$url")"; then
+        rm -f "$headers"
+        return 1
+    fi
+    filename="$(sed -nE 's/.*filename="?([^";[:space:]]+).*/\1/p' "$headers" | tail -n 1 | tr -d '\r')"
+    rm -f "$headers"
+    [[ -n "$filename" ]] || filename="$(basename "${effective%%\?*}")"
+    printf '%s\n%s\n' "$filename" "$effective"
 }

@@ -422,10 +422,14 @@ download_github_release_source() {
     local source_prefix=""
 
     source_prefix="github_release:${github_repo}@${release_tag}:"
+    if [[ "${STACK_REUSE_SOURCES:-false}" == true && -d "$folder" && ! -f "$folder/.stack-source.json" ]] && component_cache_matches_source_prefix "$folder" "$source_prefix"; then
+        error_exit "Legacy release cache has no verifiable content identity: $folder. Establish a source lock with an explicit update or restore verified pinned sources."
+    fi
     if [[ "${STACK_REUSE_SOURCES:-false}" == true && -d "$folder" && -f "$folder/.stack-source.json" ]] && component_cache_matches_source_prefix "$folder" "$source_prefix"; then
         if [[ -n "${STACK_EXPECTED_SHA256:-}" && "$(jq -r .sha256 "$folder/.stack-source.json")" != "$STACK_EXPECTED_SHA256" ]]; then
             error_exit "Cached asset checksum does not match the expected checksum."
         fi
+        [[ "$(jq -r .tree_sha256 "$folder/.stack-source.json")" == "$(python3 "$DIR_INSTALLER_LIB/source_identity.py" "$folder" --payload)" ]] || error_exit "Cached release tree is corrupt: $folder"
         printf 'false\n'; return 0
     fi
 
@@ -467,7 +471,11 @@ download_github_release_source() {
         rm -rf "$folder"
     elif [[ -d "$folder" ]]; then
         step "Checking artifact source state for $folder" >&2
-        if [[ ! -f "$folder/.stack-source.json" ]] || has_component_changed "$folder" "$remote_state"; then
+        local cached_expected="${STACK_EXPECTED_SHA256:-${asset_metadata[5]:-}}"
+        cached_expected="${cached_expected#sha256:}"
+        if [[ ! -f "$folder/.stack-source.json" ]] || \
+            [[ -n "$cached_expected" && "$(jq -r .sha256 "$folder/.stack-source.json")" != "$cached_expected" ]] || \
+            [[ "$(jq -r .tree_sha256 "$folder/.stack-source.json")" != "$(python3 "$DIR_INSTALLER_LIB/source_identity.py" "$folder" --payload)" ]] || has_component_changed "$folder" "$remote_state"; then
             source_download=true
             info "Artifact source $folder changed. Refreshing local cache." >&2
             rm -rf "$folder"
@@ -501,9 +509,11 @@ download_github_release_source() {
         rm -rf "$folder"
         mkdir -p "$folder"
         extract_archive "$archive_path" "$folder"
-        jq -n --arg repo "$github_repo" --arg tag "$release_tag" --arg name "$resolved_asset_name" \
+        local extracted_tree_sha
+        extracted_tree_sha="$(python3 "${DIR_INSTALLER_LIB:-$(dirname "${BASH_SOURCE[0]}")}/source_identity.py" "$folder" --payload)"
+        jq -n --arg tree_sha "$extracted_tree_sha" --arg repo "$github_repo" --arg tag "$release_tag" --arg name "$resolved_asset_name" \
             --arg id "${asset_metadata[4]:-}" --arg sha256 "$content_sha" --arg expected "$expected_sha" \
-            '{source_type:"github_release",repo:$repo,reference:$tag,asset:$name,asset_id:$id,sha256:$sha256,expected_sha256:$expected}' > "$folder/.stack-source.json"
+            '{tree_sha256:$tree_sha,source_type:"github_release",repo:$repo,reference:$tag,asset:$name,asset_id:$id,sha256:$sha256,expected_sha256:$expected}' > "$folder/.stack-source.json"
         save_component_state "$folder" "$remote_state"
         success "Release artifact ready for $folder" >&2
     fi

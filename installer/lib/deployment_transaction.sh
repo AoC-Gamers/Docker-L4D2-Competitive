@@ -83,6 +83,7 @@ stack_prepare_transaction() {
 }
 
 stack_run_candidate() (
+    export STACK_ACTIVE_GAME_ROOT="$DIR_LEFT4DEAD2"
     # All destination aliases, including parent-of-left4dead2 runtime libraries,
     # point inside the candidate. Caches and source workspaces remain separate.
     export LGSM_SERVERFILES="$STACK_TRANSACTION/candidate/serverfiles"
@@ -100,6 +101,8 @@ stack_run_candidate() (
     fi
     apply_stack_sources
     python3 "$DIR_INSTALLER_LIB/final_policy.py" "$DIR_LEFT4DEAD2" "$DIR_STACK/final-policy.json"
+    python3 "$DIR_INSTALLER_LIB/merge_local_configs.py" "$DIR_LEFT4DEAD2" "$STACK_ACTIVE_GAME_ROOT" "$STATE_ROOT" "$STACK_TRANSACTION/config-default-hashes.json"
+    python3 "$DIR_INSTALLER_LIB/final_policy.py" "$DIR_LEFT4DEAD2" "$DIR_STACK/final-policy.json"
     python3 "$DIR_INSTALLER_LIB/validate_candidate.py" "$DIR_LEFT4DEAD2"
     bash "$DIR_INSTALLER_BIN/geoip_update.sh"
 )
@@ -114,7 +117,7 @@ stack_publish_transaction() {
     bash "$DIR_INSTALLER_BIN/sync_instances.sh" "${L4D2_ADDITIONAL_INSTANCES:-$(state_read_additional_instances)}"
     stack_run_extension after-sync
     stack_transaction_command commit "$STACK_TRANSACTION"
-    stack_resume_instances
+    if [[ "${STACK_DEFER_RESUME:-false}" != true ]]; then stack_resume_instances; fi
 }
 
 stack_handle_transaction_failure() {

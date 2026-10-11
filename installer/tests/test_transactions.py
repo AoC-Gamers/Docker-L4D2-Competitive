@@ -55,6 +55,7 @@ class Transactions(unittest.TestCase):
     def test_success_equivalence_clean_and_update(self):
         self.write(self.root,'addons/sourcemod/plugins/stale.smx','stale')
         self.prepare(); tx.publish(self.transaction); tx.commit(self.transaction)
+        self.assertEqual((self.root/'addons/sourcemod/configs/hostname.cfg').read_text(),'default')
         plugins=self.root/'addons/sourcemod/plugins'
         self.assertEqual(sorted(p.name for p in plugins.iterdir()),['new.smx'])
         clean=self.base/'clean/left4dead2'; clean.mkdir(parents=True)

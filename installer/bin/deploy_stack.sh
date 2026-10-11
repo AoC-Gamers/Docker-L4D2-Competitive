@@ -362,14 +362,14 @@ apply_stack_if_needed() {
 
   if [ "$L4D2_FRESH_INSTALL" = "true" ]; then
     step "Installing stack files"
-    bash "$DIR_INSTALLER_BIN/install_stack.sh" install
+    STACK_DEFER_RESUME=true bash "$DIR_INSTALLER_BIN/install_stack.sh" install
     STACK_UPDATED_DURING_DEPLOY="true"
     return 0
   fi
 
   if stack_requires_reapply; then
     step "Applying stack update because the resolved stack definition changed"
-    STACK_REUSE_SOURCES="$(is_stack_autoupdate_enabled && echo false || echo true)" bash "$DIR_INSTALLER_BIN/install_stack.sh" update
+    STACK_DEFER_RESUME=true STACK_REUSE_SOURCES="$(is_stack_autoupdate_enabled && echo false || echo true)" bash "$DIR_INSTALLER_BIN/install_stack.sh" update
     STACK_UPDATED_DURING_DEPLOY="true"
     return 0
   fi
@@ -396,7 +396,8 @@ run_stack_autoupdate_before_start() {
   fi
 
   step "Running install_stack.sh update before server startup"
-  bash "$DIR_INSTALLER_BIN/install_stack.sh" 1
+  STACK_DEFER_RESUME=true bash "$DIR_INSTALLER_BIN/install_stack.sh" 1
+  STACK_UPDATED_DURING_DEPLOY=true
 }
 
 prepare_user_profile() {
@@ -459,6 +460,9 @@ start_runtime() {
     stack_quiesce_instances
     "$DIR_INSTALLER_BIN/sync_instances.sh" "$additional_instances_target"
     stack_run_extension after-sync
+    stack_resume_instances
+  else
+    STACK_TRANSACTION="$(stack_transaction_root)"
     stack_resume_instances
   fi
 

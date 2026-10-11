@@ -68,9 +68,6 @@ def under(rel, prefixes):
 
 def seed(tx, root, state):
     candidate=tx/'candidate/serverfiles/left4dead2'; candidate.mkdir(parents=True,exist_ok=True)
-    if (root/'cfg').exists():
-        for rel, src in files(root/'cfg').items():
-            dst=candidate/'cfg'/rel; dst.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(src,dst)
     # Optional registries need their old owned bytes for safe retirement. No Valve copy.
     overlay=state/'optional-overlays'
     if overlay.exists():
@@ -91,6 +88,7 @@ def seed(tx, root, state):
             data=json.loads(registry.read_text())
             if data.get('schema_version')!=2: raise ValueError('Unknown optional overlay state')
             for rel in data['files']:
+                if rel.startswith(('addons/sourcemod/data/','addons/sourcemod/logs/')): continue
                 src=safe_path(root,rel,data['subtree'])
                 if src.is_file():
                     dst=safe_path(candidate,rel,data['subtree']); dst.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(src,dst)
@@ -136,10 +134,11 @@ def plan(tx, root, stack, config, state):
     removals=json.loads(runtime_remove.read_text()) if runtime_remove.exists() else []
     entries=[]
     for rel in sorted(previous | set(incoming)):
-        if under(rel,protect): continue
+        if under(rel,['addons/sourcemod/logs','bansystem']): continue
+        if any(under(rel,[p]) and ((root/p).exists() or (root/p).is_symlink()) for p in protect): continue
+        # Existing data is live; never follow or snapshot it, even through a link.
+        if rel.startswith('addons/sourcemod/data/') and ((root/rel).exists() or (root/rel).is_symlink()): continue
         active=safe_path(root,rel)
-        # Existing data is live, even when not yet listed in preserve-paths.
-        if rel.startswith('addons/sourcemod/data/') and active.exists(): continue
         src=incoming.get(rel)
         if src is None and not active.exists(): continue
         if active.exists() and not active.is_file(): raise ValueError(f'Expected managed file: {rel}')
@@ -151,7 +150,10 @@ def plan(tx, root, stack, config, state):
         if active.is_file(): entries.append({'area':'serverfiles','path':rel,'install':False})
     # Registry and source metadata participate in the same recovery journal.
     new_state=tx/'candidate/state'
-    durable_json(new_state/'managed-files.json',{'schema_version':1,'files':sorted(incoming)})
+    baseline_file=tx/'config-default-hashes.json'
+    baseline=json.loads(baseline_file.read_text()) if baseline_file.exists() else {}
+    hashes={rel:baseline.get(rel) if rel.startswith(('cfg/','addons/sourcemod/configs/')) else hashlib.sha256(path.read_bytes()).hexdigest() for rel,path in incoming.items()}
+    durable_json(new_state/'managed-files.json',{'schema_version':2,'files':sorted(incoming),'hashes':hashes})
     state_files=files(new_state)
     prior_state=set()
     if (state/'optional-overlays').exists():

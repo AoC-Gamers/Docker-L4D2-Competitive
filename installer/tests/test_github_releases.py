@@ -143,3 +143,15 @@ printf '%s\n' "$first"
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_legacy_cache_reuse_does_not_advance_remote_channel(self):
+        result = self.shell('''
+mkdir demo
+STACK_REUSE_SOURCES=true
+component_cache_matches_source_prefix() { return 0; }
+resolve_github_release_asset() { touch "$DIR_TMP/unexpected-network"; }
+result=$(download_github_release_source example/demo channel/develop demo.zip "" demo)
+''')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('Legacy release cache', result.stderr)
+        self.assertFalse((self.root/'unexpected-network').exists())

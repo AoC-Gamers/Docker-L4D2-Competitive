@@ -107,3 +107,16 @@ download_file() { printf corrupt > "$2"; }
         shutil.rmtree(self.source) # Prove no remote resolution is necessary.
         self.assertSuccess(self.run_install(extra={'STACK_REUSE_SOURCES':'true'}))
         self.assertEqual((self.game/'addons/sourcemod/plugins/demo.smx').read_text(),'version1')
+
+    def test_local_configs_survive_defaults_and_repeated_updates(self):
+        self.hook.write_text(self.hook.read_text()+'''mkdir -p "$DIR_SOURCEMOD/configs" "$DIR_CFG"
+printf default > "$DIR_SOURCEMOD/configs/databases.cfg"
+printf default > "$DIR_CFG/local.cfg"
+''')
+        self.assertSuccess(self.run_install('install'))
+        dbcfg=self.game/'addons/sourcemod/configs/databases.cfg'; dbcfg.write_text('local credentials fixture')
+        local=self.game/'cfg/local.cfg'; local.write_text('custom local config')
+        for _ in range(2):
+            self.assertSuccess(self.run_install(extra={'STACK_REUSE_SOURCES':'true'}))
+            self.assertEqual(dbcfg.read_text(),'local credentials fixture')
+            self.assertEqual(local.read_text(),'custom local config')
