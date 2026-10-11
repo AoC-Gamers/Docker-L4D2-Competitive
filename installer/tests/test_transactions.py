@@ -104,6 +104,17 @@ class Transactions(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'candidate changed'): tx.publish(self.transaction)
         self.assertEqual(old.read_text(),'old')
 
+    def test_manual_config_edit_after_preparation_is_not_overwritten_on_retry(self):
+        old=self.write(self.root,'addons/sourcemod/plugins/old.smx','old')
+        config=self.write(self.root,'cfg/local.cfg','previous settings')
+        candidate=self.prepare()
+        self.write(candidate,'cfg/local.cfg','previous settings')
+        tx.plan(self.transaction,self.root,self.stack,self.config,self.state)
+        config.write_text('operator repaired settings')
+        with self.assertRaisesRegex(ValueError,'Local config changed'): tx.publish(self.transaction)
+        self.assertEqual(config.read_text(),'operator repaired settings')
+        self.assertEqual(old.read_text(),'old')
+
     def test_committed_legacy_receipts_move_outside_game_and_pending_backup_survives(self):
         legacy=self.root.parent/'.stack-transaction'
         previous=self.root.parent/'.stack-transaction.last'

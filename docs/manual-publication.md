@@ -16,7 +16,9 @@ validar el candidato, publicar. Se conserva la caché persistente bajo
 La migración ocurre bajo el bloqueo del destino. No requiere borrar cachés ni
 volúmenes. Los conflictos y archivos no identificados se conservan y detienen la
 operación para revisión. Las instancias retiradas conservan configuración y
-archivos particulares. `instances_exclude.json` y `preserve-paths.json` mantienen
+archivos particulares. Las copias físicas estáticas no excluidas se sustituyen
+por enlaces al origen compartido y se retiran sus archivos obsoletos; no se
+conservan binarios locales implícitos fuera del JSON. `instances_exclude.json` y `preserve-paths.json` mantienen
 su autoridad; los logs y datos vivos nunca se respaldan/restauran como estáticos.
 
 Una publicación v1 interrumpida conserva su backup existente. El operador usa
@@ -50,7 +52,9 @@ Rebuild restablece únicamente los recibos de procedencia de las fuentes a la
 No restaura archivos operativos. Un reintento completo confirma la publicación,
 sincroniza/reconcilia las instancias y respeta su selección de arranque y
 `L4D2_AUTOSTART=false`. Tras confirmar se elimina el candidato y queda un recibo
-pequeño. No borrar el candidato ni el progreso de una publicación pendiente.
+pequeño. No borrar el candidato ni el progreso de una publicación pendiente. Si se edita
+una configuración local después de preparar, el reintento detecta el cambio y
+exige rebuild para incorporarlo, evitando sobrescribir la reparación manual.
 
 ## Caché y permisos
 
@@ -68,10 +72,10 @@ capas anteriores también invalidan la preparación deliberadamente.
 
 ## Verificación de este cambio
 
-- Base: `bash scripts/test-stack.sh`, 73 pruebas Python y sintaxis Bash.
+- Base: `bash scripts/test-stack.sh`, 75 pruebas Python y sintaxis Bash.
 - AoC: `bash scripts/test-stack.sh ../Docker-L4D2-Competitive`, 9 pruebas y fixtures Bash del reconciliador.
 - Vanilla: el mismo comando, 6 pruebas.
-- Contenedor desechable sin red, repositorio montado de solo lectura y `/tmp` efímero: 8 pruebas de sincronización, permisos y reutilización de caché.
+- Contenedor desechable sin red, repositorio montado de solo lectura y `/tmp` efímero: 9 pruebas de sincronización, permisos y reutilización de caché.
 
 Se cubren interrupciones por SIGKILL, fallos de copia, reintento sin hooks/red,
 rechazo de candidatos modificados, migración legacy, conservación de inodos,

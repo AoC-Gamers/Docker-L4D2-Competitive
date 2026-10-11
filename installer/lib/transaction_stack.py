@@ -164,6 +164,9 @@ def plan(tx, root, stack, config, state):
             src=tx/'candidate'/('state' if entry['area']=='state' else 'serverfiles/left4dead2')/entry['path']
             entry['sha256']=hashlib.sha256(src.read_bytes()).hexdigest()
             entry['mode']=src.stat().st_mode & 0o777
+            if entry['area']=='game' and entry['path'].startswith(('cfg/','addons/sourcemod/configs/')):
+                active=safe_path(root,entry['path'])
+                entry['previous_sha256']=hashlib.sha256(active.read_bytes()).hexdigest() if active.is_file() else None
     confirmed={name:json.loads((state/name).read_text()) if (state/name).exists() else None
                for name in ('source-lock.json','hook-assets.json')}
     journal={'schema_version':2,'phase':'prepared','target':str(root),'state':str(state),'entries':entries,
@@ -213,6 +216,10 @@ def publish(tx):
             if hashlib.sha256(src.read_bytes()).hexdigest()!=e['sha256']:
                 raise ValueError('Prepared candidate changed; rebuild it explicitly')
         safe_path(area_root(j,e['area']),e['path'])
+        if 'previous_sha256' in e:
+            dest=safe_path(area_root(j,e['area']),e['path'])
+            if dest.is_file() and hashlib.sha256(dest.read_bytes()).hexdigest() not in (e['sha256'],e['previous_sha256']):
+                raise ValueError('Local config changed after preparation; rebuild explicitly to preserve it')
     j['phase']='publishing'; durable_json(journal_path,j)
     progress_path=tx/'progress.json'
     if progress_path.exists():

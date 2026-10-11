@@ -157,7 +157,8 @@ verifica todos los hashes del candidato antes de escribir, repite las copias de
 forma idempotente y ejecuta sincronización/reconciliación antes del commit.
 No descarga fuentes ni vuelve a ejecutar hooks de componentes.
 
-Si cambió la lógica de preparación o falta/se modificó el candidato, el
+Si cambió la lógica de preparación, falta/se modificó el candidato o una
+configuración local se editó después de preparar, el
 reintento se rechaza. `recover_stack.sh rebuild` abandona explícitamente ese
 candidato y mantiene las instancias detenidas; después ejecutar una instalación
 completa para reconstruirlo. Si se habían escrito parcialmente los recibos de
