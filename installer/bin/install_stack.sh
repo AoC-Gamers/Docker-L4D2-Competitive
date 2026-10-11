@@ -89,7 +89,7 @@ initialize_install_workspace() {
     local stack_profile_slug=""
     local cache_namespace=""
 
-    stack_profile_slug="$(printf '%s\n' "${STACK_PROFILE:-default}" | tr -c '[:alnum:]_.-' '_')"
+    stack_profile_slug="$(printf '%s' "${STACK_PROFILE:-default}" | tr -c '[:alnum:]_.-' '_')"
     cache_namespace="${stack_profile_slug:-default}"
 
     # Keep a stable temp root per profile so downloaded artifacts can be reused

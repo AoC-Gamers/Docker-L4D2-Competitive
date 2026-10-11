@@ -44,6 +44,44 @@ printf default > "$DIR_SOURCEMOD/data/sqlite/local.sq3"
     def assertSuccess(self,result):
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
+    def test_profile_workspace_names_have_no_generated_trailing_underscore(self):
+        for profile in ('develop', 'latest', 'feature_test', 'develop_'):
+            with self.subTest(profile=profile):
+                (self.stack/'profiles'/f'{profile}.json').write_text('{"components":["demo"]}')
+                result=self.run_install('install',extra={'STACK_PROFILE':profile})
+                self.assertSuccess(result)
+                self.assertTrue((self.base/'tmp/install_stack'/profile).is_dir())
+                self.assertTrue((self.base/'state/sources'/profile/'demo').is_dir())
+                self.assertTrue((self.base/'state/cache'/f'{profile}.log').is_file())
+                self.assertFalse((self.base/'state/sources'/(profile+'_')).exists())
+
+    def test_legacy_profile_cache_keeps_pinned_sources_reusable_without_remote(self):
+        entry=self.installer/'bin/install_stack.sh'
+        current=entry.read_text()
+        # Reproduce the previous formatter, including its accidental newline.
+        legacy=current.replace("stack_profile_slug=\"$(printf '%s'",
+                               "stack_profile_slug=\"$(printf '%s\\n'",1)
+        self.assertNotEqual(current,legacy)
+        entry.write_text(legacy)
+        (self.stack/'profiles/develop.json').write_text('{"components":["demo"]}')
+        self.assertSuccess(self.run_install('install',extra={'STACK_PROFILE':'develop'}))
+        old_cache=self.base/'state/cache/develop_.log'
+        old_source=self.base/'state/sources/develop_/demo/plugin'
+        cached_state=old_cache.read_bytes()
+        cached_source=old_source.read_bytes()
+        pinned=json.loads((self.base/'state/source-lock.json').read_text())
+        entry.write_text(current)
+        shutil.rmtree(self.source)
+        for _ in range(2):
+            self.assertSuccess(self.run_install(extra={'STACK_PROFILE':'develop','STACK_REUSE_SOURCES':'true'}))
+            self.assertTrue((self.base/'tmp/install_stack/develop').is_dir())
+            self.assertTrue((self.base/'state/sources/develop').is_dir())
+            self.assertTrue((self.base/'state/cache/develop.log').is_file())
+            self.assertEqual(old_cache.read_bytes(),cached_state)
+            self.assertEqual(old_source.read_bytes(),cached_source)
+            self.assertEqual(json.loads((self.base/'state/source-lock.json').read_text()),pinned)
+            self.assertEqual((self.game/'addons/sourcemod/plugins/demo.smx').read_text(),'version1')
+
     def test_install_repeat_local_reapply_and_hook_fail(self):
         self.assertSuccess(self.run_install('install'))
         plugin=self.game/'addons/sourcemod/plugins/demo.smx'; self.assertEqual(plugin.read_text(),'version1')

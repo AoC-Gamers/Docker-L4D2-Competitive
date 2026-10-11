@@ -81,6 +81,10 @@ La coordinación utiliza los sockets UID de LinuxGSM (`<selfname>-<selfname.uid>
 
 Cachés de fuentes por perfil mantienen su propia exclusión mientras se preparan snapshots. Dos destinos pueden trabajar en paralelo; si comparten la misma caché por perfil, solo la preparación de esa caché se serializa. Cada destino independiente debe tener su propio directorio de estado. En procesos de contenedores distintos que compartan serverfiles, montar también un `STACK_LOCK_ROOT` común con el mismo UID; `/tmp` por contenedor no constituye un bloqueo entre contenedores.
 
+Los nombres del workspace y la caché se generan sin añadir un salto de línea: el perfil `develop` usa `tmp/install_stack/develop`, `state/sources/develop` y `state/cache/develop.log`. El sufijo accidental de versiones anteriores (`develop_`) no era parte del nombre de la rama Git. Los guiones bajos que sí pertenecen al perfil, como `feature_test` o `develop_`, se mantienen.
+
+Las carpetas y registros de caché antiguos se conservan; no se renombran ni fusionan automáticamente con los nuevos. Una reaplicación con `STACK_REUSE_SOURCES=true` reutiliza los snapshots fijados en `state/pinned-sources` mediante `state/source-lock.json`, independientes del nombre de esas carpetas. No requiere consultar fuentes remotas ni borrar la caché anterior. Una actualización remota explícita podrá poblar la nueva caché del perfil.
+
 ## Identidades y reaplicación
 
 Se distinguen tres identidades:
