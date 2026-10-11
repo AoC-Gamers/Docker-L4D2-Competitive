@@ -5,9 +5,12 @@ from pathlib import Path
 import sys
 
 
-def tree_sha(root, ignore_marker=False):
+def tree_sha(root, ignore_marker=False, ignore_git=False):
     sha=hashlib.sha256()
     for base,dirs,names in os.walk(root):
+        if ignore_git:
+            dirs[:]=[name for name in dirs if name != '.git']
+            names=[name for name in names if name != '.git']
         dirs.sort(); names.sort()
         for name in names:
             if ignore_marker and name == ".stack-source.json": continue
@@ -20,4 +23,4 @@ def tree_sha(root, ignore_marker=False):
             sha.update(b'\0')
     return sha.hexdigest()
 
-if __name__=='__main__': print(tree_sha(Path(sys.argv[1]),len(sys.argv)>2 and sys.argv[2]=='--payload'))
+if __name__=='__main__': print(tree_sha(Path(sys.argv[1]),len(sys.argv)>2 and sys.argv[2]=='--payload',len(sys.argv)>2 and sys.argv[2]=='--git-payload'))

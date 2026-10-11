@@ -173,11 +173,11 @@ source /etc/environment
 set +o allexport
 
 # Change owner and permissions
-step "Setting executable permissions on /app and /data"
+step "Setting executable permissions on runtime entry points"
 chown -R linuxgsm:linuxgsm /app
 apply_data_tree_action chown linuxgsm:linuxgsm
-chmod -R +x /app
-apply_data_tree_action chmod +x
+source /app/container/runtime-permissions.sh
+stack_set_runtime_executables /app
 
 section "Hand-off to user runtime"
 info "Switching to user ${USER}"

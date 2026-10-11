@@ -84,6 +84,9 @@ prepare_component_workspace() {
     else
         cp -a "${cache_dir}/." "$workspace_dir/"
     fi
+    if [[ -d "$workspace_dir/.git" ]]; then
+        python3 "$DIR_INSTALLER_LIB/git_original.py" "$workspace_dir" || error_exit "Git workspace has modified content: $component_name"
+    fi
     printf '%s\n' "$workspace_dir"
 }
 
@@ -353,6 +356,7 @@ download_git_source() {
     local remote_state_raw=""
     local sanitized_repo_url
     local source_prefix=""
+    local original_commit=""
 
     if [[ "${STACK_REUSE_SOURCES:-false}" == true && -d "$folder/.git" ]] && component_cache_matches_source_prefix "$folder" "git:${repo_url}@${branch}:"; then
         printf 'false\n'; return 0
@@ -381,8 +385,14 @@ download_git_source() {
         fi
 
         remote_state="${source_prefix}${remote_state_raw}"
+        original_commit="$(GIT_OPTIONAL_LOCKS=0 git -C "$folder" rev-parse HEAD 2>/dev/null || true)"
 
-        if has_component_changed "$folder" "$remote_state" || ! stack_git_original_clean "$folder"; then
+        # Older entrypoints chmodded all of /data. Restore only tracked modes
+        # when content, index and untracked-file checks permit reuse.
+        if ! has_component_changed "$folder" "$remote_state" && [[ "$original_commit" == "$remote_state_raw" ]] && ! stack_git_original_clean "$folder"; then
+            python3 "$DIR_INSTALLER_LIB/git_original.py" "$folder" >&2 || true
+        fi
+        if has_component_changed "$folder" "$remote_state" || [[ "$original_commit" != "$remote_state_raw" ]] || ! stack_git_original_clean "$folder"; then
             source_download=true
             info "Repository $folder changed. Refreshing local cache." >&2
         else
@@ -760,6 +770,11 @@ stack_prepare_component_hook() (
     name="$(jq -r .folder <<< "$component_json")"
     if [[ "$(jq -r '.prepare_cache // false' <<< "$component_json")" == true && -n "${STACK_PREPARED_SOURCES_FILE:-}" ]]; then
         source="$(jq -c --arg name "$name" '.[] | select(.folder==$name) | {snapshot_sha256,identity}' "$STACK_PREPARED_SOURCES_FILE")"
+        if [[ "$kind" == git ]]; then
+            # Transport metadata can differ between clones of the same commit.
+            # Verify snapshots above; key deterministic effects on payload bytes.
+            source="$(jq --arg payload "$(python3 "$DIR_INSTALLER_LIB/source_identity.py" "$cache_dir" --git-payload)" 'del(.snapshot_sha256) + {payload_sha256:$payload}' <<< "$source")"
+        fi
         key="$(python3 "$DIR_INSTALLER_LIB/prepared_cache.py" key "$STACK_TRANSACTION/candidate" "$component_json" "$source" "$STACK_PREPARATION_LOGIC_SHA" "$INSTALL_TYPE")"
         entry="$STACK_PREPARED_CACHE/$name/$key"
         mkdir -p "$(dirname "$entry")"
