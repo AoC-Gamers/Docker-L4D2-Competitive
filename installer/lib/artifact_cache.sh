@@ -41,11 +41,11 @@ stack_expand_original_archive() (
     mkdir -p "$root"
     exec 5>"$root/$key.lock"; flock 5
     expanded="$root/$key"
-    if [[ ! -d "$expanded" || ! -f "$expanded.sha256" || "$(python3 "$DIR_INSTALLER_LIB/source_identity.py" "$expanded")" != "$(cat "$expanded.sha256")" ]]; then
+    if [[ ! -d "$expanded" || ! -f "$expanded.sha256" || "$(python3 "$DIR_INSTALLER_LIB/source_identity.py" "$expanded" --archive-tree-v1)" != "$(cat "$expanded.sha256")" ]]; then
         rm -rf "$expanded.new"
         mkdir -p "$expanded.new"
         extract_archive "$archive" "$expanded.new" || return 1
-        python3 "$DIR_INSTALLER_LIB/source_identity.py" "$expanded.new" > "$expanded.sha256.new" || return 1
+        python3 "$DIR_INSTALLER_LIB/source_identity.py" "$expanded.new" --archive-tree-v1 > "$expanded.sha256.new" || return 1
         rm -rf "$expanded"
         mv "$expanded.new" "$expanded" || return 1
         mv "$expanded.sha256.new" "$expanded.sha256" || return 1
