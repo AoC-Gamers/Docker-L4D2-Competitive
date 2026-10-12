@@ -30,7 +30,7 @@ case "${1:-}" in
         while IFS= read -r name; do
             [[ "$name" == "$GAMESERVER" || "$name" =~ ^${GAMESERVER}-[0-9]+$ ]] || error_exit "Invalid saved runtime intent."
             [[ -x "$DIR_APP/$name" ]] || continue
-            if ! instance_is_running "$name"; then "$DIR_APP/$name" start; fi
+            if ! instance_is_running "$name"; then "$DIR_APP/$name" start 8>&-; fi
         done < <(jq -r '.[]' "$intent")
         ;;
     *) error_exit "Use capture or resume." ;;

@@ -108,7 +108,7 @@ start_instance_callback() {
 
     if [[ -x "$executable" ]]; then
         step "Starting $executable"
-        "$executable" start || warn "Could not start $executable. Continuing."
+        "$executable" start 8>&- || warn "Could not start $executable. Continuing."
     else
         error_exit "The executable $executable does not exist or is not executable."
     fi
@@ -120,7 +120,7 @@ stop_instance_callback() {
 
     if [[ -x "$executable" ]]; then
         step "Stopping $executable"
-        "$executable" stop || warn "Could not stop $executable. Continuing."
+        "$executable" stop 8>&- || warn "Could not stop $executable. Continuing."
     else
         error_exit "The executable $executable does not exist or is not executable."
     fi
@@ -132,7 +132,7 @@ restart_instance_callback() {
 
     if [[ -x "$executable" ]]; then
         step "Restarting $executable"
-        "$executable" restart || warn "Could not restart $executable. Continuing."
+        "$executable" restart 8>&- || warn "Could not restart $executable. Continuing."
     else
         error_exit "The executable $executable does not exist or is not executable."
     fi

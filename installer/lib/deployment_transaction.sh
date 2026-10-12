@@ -31,7 +31,7 @@ stack_quiesce_instances() {
         if instance_is_running "$name"; then
             printf '%s\n' "$name" >> "$STACK_TRANSACTION/running-instances"
             sync -f "$STACK_TRANSACTION/running-instances"
-            "$executable" stop
+            "$executable" stop 8>&-
             if instance_is_running "$name"; then
                 error_exit "Instance $name did not stop; publication refused."
             fi
@@ -52,7 +52,7 @@ stack_resume_instances() {
     while IFS= read -r name; do
         [[ -n "$name" ]] || continue
         if ! instance_is_running "$name"; then
-            "${DIR_APP:-/app}/$name" start
+            "${DIR_APP:-/app}/$name" start 8>&-
         fi
     done < "$STACK_TRANSACTION/running-instances"
     stack_finish_resume

@@ -15,6 +15,9 @@ stack_acquire_target_lock() {
         fi
     fi
     exec 8>"$lock_file"
-    flock 8
+    if ! flock -n 8; then
+        printf 'Waiting for stack deployment lock: %s\n' "$target" >&2
+        flock 8
+    fi
     export STACK_LOCK_TARGET="$target"
 }

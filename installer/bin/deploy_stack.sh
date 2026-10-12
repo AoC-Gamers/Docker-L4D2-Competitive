@@ -302,7 +302,7 @@ prepare_lgsm_tooling() {
   if [ "${LGSM_GITHUBBRANCH:-master}" != "master" ]; then
     warn "Non-master LGSM branch detected. Refreshing modules."
     rm -rf /app/lgsm/modules/*
-    ./"${GAMESERVER}" update-lgsm
+    ./"${GAMESERVER}" update-lgsm 8>&-
   elif [ -d "/app/lgsm/modules" ]; then
     step "Ensuring LGSM modules are executable"
     chmod +x /app/lgsm/modules/*
@@ -310,7 +310,7 @@ prepare_lgsm_tooling() {
 
   if [ "${LGSM_DEV:-false}" = "true" ]; then
     info "Developer mode enabled"
-    ./"${GAMESERVER}" developer
+    ./"${GAMESERVER}" developer 8>&-
   fi
 }
 
@@ -376,7 +376,7 @@ install_primary_instance() {
 
     if [ "$install_mode" = "force" ] || ! is_gameserver_installed; then
       step "Installing the primary instance using the official Steam method"
-      ./"${GAMESERVER}" auto-install
+      ./"${GAMESERVER}" auto-install 8>&-
       L4D2_FRESH_INSTALL="true"
       clean_steam_password
       success "Primary instance installation completed"
@@ -384,7 +384,7 @@ install_primary_instance() {
     fi
 
     info "Skipping installation because the primary instance is already installed"
-    ./"${GAMESERVER}" sponsor
+    ./"${GAMESERVER}" sponsor 8>&-
     clean_steam_password
     return 0
   fi
