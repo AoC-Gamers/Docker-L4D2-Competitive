@@ -131,25 +131,39 @@ stack_run_candidate() (
     fi
     export STACK_PREPARED_HOOK_ASSETS=true
     apply_stack_sources
+    subsection "Apply final exclusions to composed artifacts"
     python3 "$DIR_INSTALLER_LIB/final_policy.py" "$DIR_LEFT4DEAD2" "$DIR_STACK/final-policy.json"
+    subsection "Preserve local configuration in candidate"
     python3 "$DIR_INSTALLER_LIB/merge_local_configs.py" "$DIR_LEFT4DEAD2" "$STACK_ACTIVE_GAME_ROOT" "$STATE_ROOT" "$STACK_TRANSACTION/config-default-hashes.json"
+    subsection "Apply final exclusions after preserving local configuration"
     python3 "$DIR_INSTALLER_LIB/final_policy.py" "$DIR_LEFT4DEAD2" "$DIR_STACK/final-policy.json"
+    subsection "Inspect shared plugin loads in composed candidate"
     python3 "$DIR_INSTALLER_LIB/validate_candidate.py" "$DIR_LEFT4DEAD2"
+    subsection "Prepare GeoIP database"
     bash "$DIR_INSTALLER_BIN/geoip_update.sh"
 )
 
 stack_publish_transaction() {
     export STACK_PUBLICATION_FINALIZES_DEPLOY_STATE="${INSTALLER_MANAGED_DEPLOY_STATE:-false}"
+    subsection "Plan managed-file publication"
     stack_transaction_command plan "$STACK_TRANSACTION" "$DIR_LEFT4DEAD2" "$DIR_STACK" "$DIR_INSTALLER_CONFIG" "$STATE_ROOT"
+    subsection "Stop affected running instances"
     stack_quiesce_instances
+    subsection "Publish managed files"
     if ! stack_transaction_command publish "$STACK_TRANSACTION"; then
         return 1
     fi
     # Sync runs while consumers are stopped. A failure leaves a recoverable published journal.
+    subsection "Synchronize instance links and private paths"
     bash "$DIR_INSTALLER_BIN/sync_instances.sh" "${L4D2_ADDITIONAL_INSTANCES:-$(state_read_additional_instances)}"
+    subsection "Run after-sync extensions"
     stack_run_extension after-sync
+    subsection "Confirm publication"
     stack_transaction_command commit "$STACK_TRANSACTION"
-    if [[ "${STACK_DEFER_RESUME:-false}" != true ]]; then stack_resume_instances; fi
+    if [[ "${STACK_DEFER_RESUME:-false}" != true ]]; then
+        subsection "Resume eligible instances"
+        stack_resume_instances
+    fi
 }
 
 stack_handle_transaction_failure() {

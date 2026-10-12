@@ -145,6 +145,16 @@ Referencias del contrato: [sockets LinuxGSM](https://github.com/GameServerManage
 
 ## Logs
 
+### Bloques de tareas y diagnóstico de cargas
+
+`section` identifica la fase y el componente; `subsection` imprime `--- <tarea> ---` para adquisición de fuentes, descarga/validación, extracción o reutilización, workspace editable, procesamiento por hook, copia, conservación de configuración, políticas finales, publicación y sincronización. Los originales y las expansiones reutilizados se identifican como tales; un acierto de caché preparada omite el bloque de procesamiento del hook. Los helpers que devuelven una ruta por stdout escriben estos subtítulos por stderr para no contaminar su resultado.
+
+La conservación de configuración no se presenta como un backup: el flujo no crea respaldos automáticos de addons ni de bases de datos activas. Las dos aplicaciones de la política final tienen bloques distintos: después de componer componentes y después de conservar CFG locales. Son dos verificaciones del candidato, no dos ejecuciones del hook de un componente.
+
+Después de componer todas las capas, conservar configuraciones y aplicar políticas, `validate_candidate.py` analiza las cargas explícitas `sm plugins load` de `cfg/sharedplugins.cfg` y `cfg/sharedplugins1.cfg`. Para cada binario ausente informa `WARN`, archivo, línea y ruta esperada en `addons/sourcemod/plugins`. No modifica CFG ni decide si la ausencia es intencional; el aviso no impide publicar. Admite comillas dobles, extensión `.smx` opcional, comentarios `//` y comandos separados por `;`. Una sintaxis de carga no reconocida pide revisión manual. No sigue cadenas `exec`, no descubre procesos ni comprueba carga efectiva en SourceMod. Las rutas absolutas, con `..`, con barras invertidas o enlaces simbólicos siguen fallando por seguridad del candidato.
+
+El repositorio que publica el CFG debe corregir sus cargas y mantiene sus validaciones estrictas de empaquetado, dependencias externas, opcionales y exclusiones. Este diagnóstico runtime evalúa el candidato compuesto y no exige que todos los plugins pertenezcan al paquete AoC individual. No representa una prueba de disponibilidad de SRCDS.
+
 ### Exclusiones de artefactos
 
 Los hooks deben usar `stack_remove_files_if_present <rutas...>` para exclusiones de archivos y `stack_remove_paths_if_present <rutas...>` cuando se permite retirar también directorios. Ambas funciones usan `stack_log_exclusion` y registran **cada ruta en cada invocación**, incluso si no existe o se reutiliza la caché:
@@ -159,7 +169,7 @@ Excluded path from deployment: serverfiles/bin/libgcc_s.so.1 (deferred)
 
 `final_policy.py` usa el mismo formato para todas sus rutas y añade `Excluded command from deployment: <comando> (<estado>; occurrences=<cantidad>)` para cada `exec` o `sm plugins load` excluido. Las políticas se ejecutan después de las capas y de conservar los CFG locales: una segunda línea `absent` es esperable. Los scripts autónomos, como el reconciliador BanSystem, respetan el mismo formato e identifican cada instancia mediante su ruta completa.
 
-Los helpers `verify_and_delete_file/dir` se reservan para limpieza temporal o sustitución de archivos durante una copia; esas operaciones no son exclusiones de política. Las listas de exclusión y las políticas de conservación no cambian por este contrato de logs. Integrar primero la biblioteca base actualizada, después los hooks AoC y finalmente Vanilla.
+Los helpers `verify_and_delete_file/dir` se reservan para limpiezas explícitas. `stack_sync_file` reemplaza el archivo mediante la propia copia, sin eliminación previa separada ni mensajes de archivo ausente. Reemplaza el enlace de destino si existe, sin escribir en su objetivo; rechaza un directorio como destino de archivo. Las listas de exclusión y las políticas de conservación no cambian por este contrato de logs. Integrar primero la biblioteca base actualizada, después los hooks AoC y finalmente Vanilla.
 
 El update no elimina `errors_*.log`. El historial conserva los logs del instalador y los locks de fuentes por despliegue. Se proporciona `installer/lib/retain_error_logs.py` como política **opcional** para nombres diarios SourceMod: compresión tras dos días sin escritura y retención de 90 días, exigiendo antigüedad tanto de la fecha del nombre como del último write. Solo acepta errors_YYYYMMDD.log y su versión .gz, sin seguir symlinks. Por defecto muestra el plan; `--apply` lo ejecuta. Nunca la invoca install/update. Ajustar retención a la capacidad y exportación de evidencia del nodo antes de programarla. Un logrotate convencional por nombre diario no garantiza expiración si ese nombre no vuelve a escribirse; por eso se usa antigüedad explícita. Ejemplo de revisión: `python3 "$DIR_INSTALLER_LIB/retain_error_logs.py" "$DIR_SOURCEMOD/logs" --days 90`; repetir por cada directorio privado de logs que se desee incluir. Si una compresión se interrumpe, el .pending se conserva y el original permanece: revisar ese archivo antes de reintentar. La carpeta de snapshots de fuentes crece con identidades nuevas; no se recolectan automáticamente snapshots que puedan ser necesarios para recuperación.
 

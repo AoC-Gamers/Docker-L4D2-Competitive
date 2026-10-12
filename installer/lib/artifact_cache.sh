@@ -12,13 +12,16 @@ stack_acquire_original_archive() (
         archive="$root/$expected/$label"
         exec 5>"$root/$expected.lock"; flock 5
         if [[ "${GIT_FORCE_DOWNLOAD:-false}" != true && -f "$archive" && "$(sha256sum "$archive" | cut -d' ' -f1)" == "$expected" ]]; then
+            subsection "Reuse original archive: $label" >&2
             info "Original archive reused: $label (verified checksum)" >&2
             printf '%s\n' "$archive"; return
         fi
     fi
     part="$(mktemp "$root/.download-XXXXXX")"
     trap 'rm -f -- "$part"' EXIT
+    subsection "Download original archive: $label" >&2
     download_file "$url" "$part" || return 1
+    subsection "Validate original archive: $label" >&2
     sha="$(sha256sum "$part" | cut -d' ' -f1)"
     [[ -z "$expected" || "$sha" == "$expected" ]] || error_exit "Checksum mismatch for $label."
     validate_archive "$part" || error_exit "Invalid archive: $label."
@@ -42,6 +45,7 @@ stack_expand_original_archive() (
     exec 5>"$root/$key.lock"; flock 5
     expanded="$root/$key"
     if [[ ! -d "$expanded" || ! -f "$expanded.sha256" || "$(python3 "$DIR_INSTALLER_LIB/source_identity.py" "$expanded" --archive-tree-v1)" != "$(cat "$expanded.sha256")" ]]; then
+        subsection "Extract original archive: $(basename "$archive")" >&2
         rm -rf "$expanded.new"
         mkdir -p "$expanded.new"
         extract_archive "$archive" "$expanded.new" || return 1
@@ -49,6 +53,9 @@ stack_expand_original_archive() (
         rm -rf "$expanded"
         mv "$expanded.new" "$expanded" || return 1
         mv "$expanded.sha256.new" "$expanded.sha256" || return 1
+    else
+        subsection "Reuse extracted archive: $(basename "$archive")" >&2
     fi
+    subsection "Copy original archive to editable workspace" >&2
     cp -a "$expanded/." "$destination/"
 )

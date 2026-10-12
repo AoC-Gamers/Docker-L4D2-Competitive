@@ -49,6 +49,7 @@ stack_sync_dir() {
     fi
 
     mkdir -p "$target_root"
+    subsection "Copy artifact tree: $(basename "$source_dir")"
     cp -r "$source_dir" "$target_root"
 }
 
@@ -101,9 +102,11 @@ stack_sync_file() {
         return 0
     fi
 
-    verify_and_delete_file "$target_file"
     mkdir -p "$target_root"
-    cp "$source_file" "$target_file"
+    subsection "Copy artifact file: $(basename "$source_file")"
+    # Replace the directory entry as part of copying; never follow a destination
+    # symlink or report normal replacement as an exclusion/missing file.
+    cp -T --remove-destination -- "$source_file" "$target_file"
 }
 
 stack_install_named_files_if_present() {

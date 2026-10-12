@@ -4,6 +4,7 @@ import os
 import pwd
 from pathlib import Path
 import shutil
+import shlex
 import subprocess
 import tempfile
 import unittest
@@ -105,6 +106,38 @@ printf default > "$DIR_SOURCEMOD/data/sqlite/local.sq3"
         self.assertEqual(plugin.read_text(),'version1'); self.assertEqual(db.read_text(),'live')
         state=json.loads((self.base/'state/current/deploy-state.json').read_text()); self.assertEqual(state['status'],'failed')
         sources=json.loads((self.base/'state/source-lock.json').read_text()); self.assertEqual(len(sources[0]['identity']['commit']),40)
+
+    def test_missing_shared_load_is_advisory_before_publication_and_repeated_cache_replay(self):
+        cfg = 'sm plugins load demo.smx\nsm plugins load external/missing.smx\n'
+        self.hook.write_text(self.hook.read_text() +
+            'mkdir -p "$DIR_CFG"\n' +
+            'printf %s ' + shlex.quote(cfg) + ' > "$DIR_CFG/sharedplugins.cfg"\n')
+        runs = [('install', {}), ('update', {'STACK_REUSE_SOURCES': 'true'}),
+                ('update', {'STACK_REUSE_SOURCES': 'true'})]
+        for iteration, (mode, extra) in enumerate(runs):
+            result = self.run_install(mode, extra)
+            self.assertSuccess(result)
+            self.assertEqual((self.game/'cfg/sharedplugins.cfg').read_text(), cfg)
+            self.assertEqual(result.stdout.count('Plugin load has no binary'), 1)
+            self.assertIn('cfg/sharedplugins.cfg:2: addons/sourcemod/plugins/external/missing.smx', result.stdout)
+            blocks = ['Acquire stack sources', 'Compose prepared stack artifacts',
+                      'Apply final exclusions to composed artifacts',
+                      'Preserve local configuration in candidate',
+                      'Apply final exclusions after preserving local configuration',
+                      'Inspect shared plugin loads in composed candidate',
+                      'Plan managed-file publication', 'Stop affected running instances',
+                      'Publish managed files', 'Synchronize instance links and private paths',
+                      'Run after-sync extensions', 'Confirm publication']
+            positions = [result.stdout.index(block) for block in blocks]
+            self.assertEqual(positions, sorted(positions))
+            self.assertEqual(json.loads((self.base/'state/current/deploy-state.json').read_text())['status'], 'ready')
+            if iteration < 2:
+                self.assertEqual(result.stdout.count('Process artifact with component hook: demo'), 1)
+                if iteration == 0:
+                    self.assertIn('Download Git source: demo', result.stdout + result.stderr)
+            else:
+                self.assertIn('Prepared cache reused: demo', result.stdout)
+                self.assertNotIn('Process artifact with component hook: demo', result.stdout)
 
     def test_download_failure_and_required_hook_leave_tree(self):
         self.assertSuccess(self.run_install('install'))
@@ -531,17 +564,29 @@ if __name__ == '__main__' and Path(sys.argv[1]) == Path({str(original)!r}) and n
         (self.stack/'manifests/components.json').write_text(json.dumps({'demo':{
             'folder':'demo','source_type':'archive','url':archive.as_uri(),
             'sha256':sha,'prepare_cache':True}}))
-        self.assertSuccess(self.run_install())
+        result=self.run_install()
+        self.assertSuccess(result)
+        for block in ('Download original archive: artifact.zip',
+                      'Validate original archive: artifact.zip',
+                      'Extract original archive: artifact.zip',
+                      'Copy original archive to editable workspace'):
+            self.assertIn(block,result.stdout+result.stderr)
         original=self.installer/'cache/artifacts'/sha/'artifact.zip'
         self.assertEqual(original.read_bytes(),archive.read_bytes())
         archive.unlink()
-        self.assertSuccess(self.run_install(extra={'STACK_REUSE_SOURCES':'true'}))
+        result=self.run_install(extra={'STACK_REUSE_SOURCES':'true'})
+        self.assertSuccess(result)
+        self.assertIn('Prepared cache reused: demo',result.stdout)
+        self.assertNotIn('Extract original archive:',result.stdout+result.stderr)
         self.assertEqual((self.game/'addons/sourcemod/plugins/demo.smx').read_text(),'archive version')
         # Force hook invalidation, while the pristine extraction remains reusable.
         self.hook.write_text(self.hook.read_text()+'# new policy\n')
         extractor=self.installer/'lib/tools_stack.sh'
         extractor.write_text(extractor.read_text()+'\nextract_archive() { echo unexpected extraction >&2; return 31; }\n')
-        self.assertSuccess(self.run_install(extra={'STACK_REUSE_SOURCES':'true'}))
+        result=self.run_install(extra={'STACK_REUSE_SOURCES':'true'})
+        self.assertSuccess(result)
+        self.assertIn('Reuse extracted archive: artifact.zip',result.stdout+result.stderr)
+        self.assertNotIn('Download original archive:',result.stdout+result.stderr)
         self.assertEqual(hashlib.sha256(original.read_bytes()).hexdigest(),sha)
 
     def test_declared_environment_and_upstream_layer_invalidate_prepared_cache(self):

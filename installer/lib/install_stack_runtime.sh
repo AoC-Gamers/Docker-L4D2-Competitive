@@ -82,6 +82,7 @@ prepare_component_workspace() {
     if [[ -f "$cache_dir/.stack-source.json" && "$(jq -r '.format // "legacy-tree"' "$cache_dir/.stack-source.json")" == original-archive ]]; then
         stack_expand_original_archive "$(jq -r .archive_cache "$cache_dir/.stack-source.json")" "$(jq -r .sha256 "$cache_dir/.stack-source.json")" "$workspace_dir" >&2 || error_exit "Failed to expand source: $component_name"
     else
+        subsection "Copy original source to editable workspace: $component_name" >&2
         cp -a "${cache_dir}/." "$workspace_dir/"
     fi
     if [[ -d "$workspace_dir/.git" ]]; then
@@ -403,6 +404,7 @@ download_git_source() {
     fi
 
     if [[ "$source_download" == "true" ]]; then
+        subsection "Download Git source: $(basename "$folder")" >&2
         step "Cloning $folder from $sanitized_repo_url (branch: $branch)" >&2
         rm -rf "$folder.new"
         if [[ "$branch" == "default" ]]; then
@@ -556,7 +558,11 @@ apply_stack_sources() {
     local component_cache_dir
     local component_work_dir
 
-    section "Applying stack sources"
+    if [[ "${STACK_FETCH_ONLY:-false}" == true ]]; then
+        section "Acquire stack sources"
+    else
+        section "Compose prepared stack artifacts"
+    fi
     while IFS= read -r component_json; do
         [[ -n "$component_json" ]] || continue
 
@@ -768,6 +774,7 @@ stack_prepare_component_hook() (
     local component_json="$1" cache_dir="$2" hook="$3" downloaded="$4" kind="$5"
     local name key='' entry='' before='' exclusions='' source='{}'
     name="$(jq -r .folder <<< "$component_json")"
+    subsection "Prepare component: $name"
     if [[ "$(jq -r '.prepare_cache // false' <<< "$component_json")" == true && -n "${STACK_PREPARED_SOURCES_FILE:-}" ]]; then
         source="$(jq -c --arg name "$name" '.[] | select(.folder==$name) | {snapshot_sha256,identity}' "$STACK_PREPARED_SOURCES_FILE")"
         if [[ "$kind" == git ]]; then
@@ -779,6 +786,7 @@ stack_prepare_component_hook() (
         entry="$STACK_PREPARED_CACHE/$name/$key"
         mkdir -p "$(dirname "$entry")"
         exec 6>"$entry.lock"; flock 6
+        subsection "Check prepared artifact cache: $name"
         if python3 "$DIR_INSTALLER_LIB/prepared_cache.py" replay "$STACK_TRANSACTION/candidate" "$entry"; then
             info "Prepared cache reused: $name ($key)"
             return 0
@@ -794,11 +802,14 @@ stack_prepare_component_hook() (
     fi
     local workspace="$name"
     if [[ "$kind" != hook_only ]]; then
+        subsection "Prepare editable workspace: $name"
         workspace="$(prepare_component_workspace "$name" "$cache_dir")"
     fi
+    subsection "Process artifact with component hook: $name"
     step "Preparing component $name using $hook"
     bash "$hook" "$workspace" "$INSTALL_TYPE" "$downloaded" "$kind" || exit $?
     if [[ -n "$entry" ]]; then
+        subsection "Store prepared artifact: $name"
         python3 "$DIR_INSTALLER_LIB/prepared_cache.py" store "$STACK_TRANSACTION/candidate" "$before" "$entry" "$exclusions"
     fi
 )

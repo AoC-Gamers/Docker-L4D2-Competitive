@@ -90,12 +90,43 @@ class ExclusionLogging(unittest.TestCase):
     def test_copy_replacement_is_not_an_exclusion(self):
         source = self.root.parent / 'source'
         source.mkdir()
-        (source / 'community.smx').write_text('new')
-        (self.root / 'community.smx').write_text('old')
-        result = self.bash('stack_sync_file "$1" "$2"', source / 'community.smx', self.root)
+        original = source / 'community.smx'
+        original.write_text('new')
+        for previous in (None, 'old', 'new'):
+            with self.subTest(previous=previous):
+                if previous is not None:
+                    (self.root / original.name).write_text(previous)
+                result = self.bash('stack_sync_file "$1" "$2"', original, self.root)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertNotIn('Excluded path', result.stdout)
+                self.assertNotIn('does not exist', result.stdout)
+                self.assertNotIn('deleted', result.stdout)
+                self.assertIn('Copy artifact file: community.smx', result.stdout)
+                self.assertEqual((self.root / original.name).read_text(), 'new')
+
+    def test_file_copy_replaces_destination_symlink_without_touching_its_target(self):
+        source = self.root.parent / 'community.smx'
+        source.write_text('artifact')
+        outside = self.root.parent / 'outside.smx'
+        outside.write_text('unrelated')
+        destination = self.root / source.name
+        destination.symlink_to(outside)
+        result = self.bash('stack_sync_file "$1" "$2"', source, self.root)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertNotIn('Excluded path', result.stdout)
-        self.assertEqual((self.root / 'community.smx').read_text(), 'new')
+        self.assertFalse(destination.is_symlink())
+        self.assertEqual(destination.read_text(), 'artifact')
+        self.assertEqual(outside.read_text(), 'unrelated')
+
+    def test_file_copy_refuses_existing_directory(self):
+        source = self.root.parent / 'community.smx'
+        source.write_text('artifact')
+        destination = self.root / source.name
+        destination.mkdir()
+        (destination / 'keep').write_text('unrelated')
+        result = self.bash('stack_sync_file "$1" "$2"', source, self.root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual((destination / 'keep').read_text(), 'unrelated')
+        self.assertFalse((destination / source.name).exists())
 
     def test_sir_logs_named_and_discovered_exclusions(self):
         source = self.root.parent / 'sir'

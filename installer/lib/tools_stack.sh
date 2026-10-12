@@ -42,6 +42,10 @@ section() {
     print_divider
 }
 
+subsection() {
+    printf '\n--- %s ---\n' "$1"
+}
+
 info() {
     log "$(color_text "1;34" "INFO") : $1"
 }
