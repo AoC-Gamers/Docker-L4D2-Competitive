@@ -39,7 +39,7 @@ Como usuario LinuxGSM, con el entorno del contenedor:
 jq '{status,last_error,recovery}' "$DIR_INSTALLER_STATE/current/deploy-state.json"
 jq '{phase,resume_pending}' "$DIR_INSTALLER_STATE"/publication/*/journal.json
 
-# Repetir el mismo candidato verificado: sin descargar ni ejecutar hooks.
+# Repetir candidato: sin descargar fuentes ni ejecutar hooks de componentes.
 bash "$DIR_INSTALLER_BIN/recover_stack.sh"
 
 # Si falta material o cambió la lógica, abandonar explícitamente y preparar otra vez.
@@ -51,10 +51,42 @@ Rebuild restablece únicamente los recibos de procedencia de las fuentes a la
 última selección confirmada, si una copia parcial había alcanzado esos recibos.
 No restaura archivos operativos. Un reintento completo confirma la publicación,
 sincroniza/reconcilia las instancias y respeta su selección de arranque y
-`L4D2_AUTOSTART=false`. Tras confirmar se elimina el candidato y queda un recibo
+`L4D2_AUTOSTART=false`, incluyendo sus variantes en mayúsculas. Tras confirmar se elimina el candidato y queda un recibo
 pequeño. No borrar el candidato ni el progreso de una publicación pendiente. Si se edita
 una configuración local después de preparar, el reintento detecta el cambio y
 exige rebuild para incorporarlo, evitando sobrescribir la reparación manual.
+
+Los recibos nuevos registran el `deployment_id` y quién puede finalizar el
+despliegue. Si una instalación directa se interrumpe después del commit,
+`recover_stack.sh` termina la reanudación pendiente y confirma `ready` solo para
+ese mismo despliegue. También cubre el corte posterior al reconocimiento de la
+reanudación, sin volver a arrancar las instancias. Un error al arrancar mantiene
+`failed` y la intención pendiente.
+
+Si el instalador fue invocado por `deploy_stack.sh`, el reintento publica pero
+deja las instancias detenidas y el estado pendiente de finalizar: ejecutar
+`bash "$DIR_INSTALLER_BIN/deploy_stack.sh"` para completar las fases del padre.
+Los recibos anteriores sin propietario explícito y los de otro despliegue
+tampoco permiten declarar `ready` ni reanudar automáticamente desde el comando
+de recuperación. La selección pendiente se conserva para el siguiente deploy.
+El reintento conserva el perfil y los metadatos originales. Una publicación
+pendiente con ID ajeno rechaza `retry` y `rebuild` antes de tocar el árbol, el
+candidato o el estado actual. Los argumentos inválidos y el rechazo de rebuild
+de un recibo confirmado tampoco convierten un despliegue sano en fallido.
+
+Antes del commit se repiten la sincronización y la extensión `after-sync`, incluso
+si una ejecución anterior de esa extensión quedó a medias. La extensión debe ser
+idempotente y tolerar reintentos; puede realizar E/S o acceder a la red según su
+implementación. La recuperación no garantiza estar completamente aislada de la
+red: lo que evita es resolver/descargar fuentes y repetir hooks de componentes.
+Un error de `after-sync` mantiene la publicación pendiente y no permite `ready`.
+
+La sincronización rechaza enlaces externos en los padres de rutas particulares,
+tanto si el archivo ya existe como si falta. La migración también rechaza una
+raíz de instancia simbólica y padres simbólicos en el origen legacy antes de
+renombrar sus archivos. El enlace y los datos externos se conservan para revisión;
+no deben borrarse como remedio automático. `--migrate-all` comprueba el origen
+SourceMod físico antes de mover datos de cualquier instancia.
 
 ## Caché y permisos
 
@@ -70,14 +102,24 @@ por commit y contenido fuera de `.git`, evitando invalidaciones por transporte.
 forma diferente en cada modo. Cambios de lógica, recursos, entorno declarado o
 capas anteriores también invalidan la preparación deliberadamente.
 
+Las expansiones ZIP/TAR usan una identidad de filesystem versionada que incluye
+tipos, permisos y directorios vacíos, incluida la raíz, y excluye timestamps. Un
+marcador antiguo o una expansión alterada provoca reextraer el original ya
+verificado de la caché, sin volver a descargarlo. Se conserva la identidad
+histórica de snapshots y pins para permitir su reutilización sin red.
+
 ## Verificación de este cambio
 
-- Base: `bash scripts/test-stack.sh`, 75 pruebas Python y sintaxis Bash.
+- Base: `bash scripts/test-stack.sh`, 96 pruebas Python y sintaxis Bash.
 - AoC: `bash scripts/test-stack.sh ../Docker-L4D2-Competitive`, 9 pruebas y fixtures Bash del reconciliador.
 - Vanilla: el mismo comando, 6 pruebas.
-- Contenedor desechable sin red, repositorio montado de solo lectura y `/tmp` efímero: 9 pruebas de sincronización, permisos y reutilización de caché.
+- Validación anterior, no repetida en esta auditoría: contenedor desechable sin red, repositorio montado de solo lectura y `/tmp` efímero, 9 pruebas de sincronización, permisos y reutilización de caché.
 
-Se cubren interrupciones por SIGKILL, fallos de copia, reintento sin hooks/red,
+La [auditoría iterativa del flujo](flow-audit.md) detalla los nueve issues cerrados,
+las revisiones cruzadas y los límites de las 111 pruebas finales.
+
+Se cubren interrupciones por SIGKILL, fallos de copia, reintento sin descargas
+de fuentes ni hooks de componentes,
 rechazo de candidatos modificados, migración legacy, conservación de inodos,
 archivos privados y logs, retiro de instancias, exclusiones finales y caché.
 No se recreó el contenedor del servidor ni se migraron sus volúmenes reales.

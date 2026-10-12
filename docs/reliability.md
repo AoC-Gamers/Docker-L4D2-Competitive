@@ -28,6 +28,8 @@ Las pruebas offline usan directorios temporales y fixtures; no equivalen a una p
 ## Preparación, publicación y recuperación
 
 El [procedimiento operativo vigente](manual-publication.md) describe migración, reintento manual y las pruebas del flujo sin respaldos automáticos.
+La [auditoría iterativa del flujo](flow-audit.md) registra nueve issues cerrados
+y las 111 pruebas finales de base y derivadas, sin confundirlas con validación SRCDS.
 
 El [flujo de artefactos persistentes](artifact-flow.md) documenta las tres fases actuales, el contrato de caché preparada y la limpieza del payload tras confirmar.
 
@@ -50,7 +52,9 @@ temporal del destino antes del reemplazo individual. El plan se escribe una vez;
 el avance se persiste en un registro pequeño separado, evitando reescribir todo
 el plan por archivo. Un fallo mantiene evidencia y bloquea el arranque normal.
 `recover_stack.sh` es una operación manual que vuelve a publicar el material
-verificado, sin ejecutar hooks ni descargar fuentes. La ruta ya no está dentro
+verificado, sin ejecutar hooks de componentes ni descargar fuentes. La extensión
+`after-sync` sí se repite: debe ser idempotente y puede realizar E/S o acceder a
+la red según su implementación. La ruta ya no está dentro
 de la instalación del juego. Para archivos temporales y destino se usa el mismo
 filesystem; el estado puede estar en otro filesystem.
 
@@ -65,15 +69,19 @@ bash "$DIR_INSTALLER_BIN/install_stack.sh" update
 # Reaplicar lógica local usando las últimas fuentes confirmadas compatibles.
 STACK_REUSE_SOURCES=true bash "$DIR_INSTALLER_BIN/install_stack.sh" update
 
-# Reintento manual del candidato retenido, sin red, hooks ni Valve.
+# Reintento del candidato, sin descargas de fuentes ni hooks de componentes.
 bash "$DIR_INSTALLER_BIN/recover_stack.sh"
 
 jq '{status,stack,last_error,recovery}' "$DIR_INSTALLER_STATE/current/deploy-state.json"
 ```
 
 `recover_stack.sh` verifica el candidato y la identidad de la lógica, repite la
-publicación y sincronización/reconciliación, confirma y reanuda solo la selección
-anterior permitida. Un fallo no llega a `ready`. Si falta material o cambió la
+publicación y sincronización/reconciliación y confirma. Solo finaliza `ready` y
+reanuda la selección anterior permitida cuando el recibo corresponde al mismo
+despliegue y a una instalación directa. Las publicaciones invocadas por deploy,
+las anteriores sin dueño explícito y las de otro despliegue requieren completar
+`deploy_stack.sh`; no reanudan desde recovery. Un fallo no llega a `ready`.
+Si falta material o cambió la
 lógica, usar `recover_stack.sh rebuild` y después `install_stack.sh update`
 (con `STACK_REUSE_SOURCES=true` para las fuentes fijadas disponibles). El rebuild
 es una decisión explícita: conserva la selección anterior confirmada de fuentes
@@ -131,7 +139,7 @@ GitHub: se comprueba `sha256` del componente o el digest SHA256 del asset anunci
 
 Los hooks de componentes son obligatorios por defecto (`hook_required=true`, explícito en catálogos). `hook_required=false` declara una ausencia opcional. Se valida existencia y sintaxis antes de preparar/publicar. Un fallo de descarga, extracción o hook termina la preparación sin limpiar el árbol operativo. Los hooks deben limitar escrituras al candidato y a sus cachés declaradas; este contrato no es un sandbox contra un script malicioso con rutas absolutas codificadas.
 
-Solo hay dos puntos de extensión síncronos: `container/extensions/after-sync.sh` y `idle.sh`, en ese orden del ciclo cuando corresponde. Reciben la fase como primer argumento y el entorno runtime. `after-sync` corre como LinuxGSM, después de sincronizar y antes de arrancar; un fallo impide confirmar la publicación. `idle` corre en el entrypoint después de la fase de usuario, antes del `tail`. Si existe, su error es fatal para esa fase. `extension-policy.json` declara qué slots son obligatorios; ausentes y no declarados son opcionales. AoC declara ambos obligatorios y conserva los comandos del reconciliador/estado de espera. No se insertan líneas mediante grep/sed en scripts heredados.
+Solo hay dos puntos de extensión síncronos: `container/extensions/after-sync.sh` y `idle.sh`, en ese orden del ciclo cuando corresponde. Reciben la fase como primer argumento y el entorno runtime. `after-sync` corre como LinuxGSM, después de sincronizar y antes de arrancar; un fallo impide confirmar la publicación. Puede repetirse durante recovery y debe tolerar repetición y ejecución parcial; no se garantiza exactamente una ejecución ni ausencia de E/S/red. `idle` corre en el entrypoint después de la fase de usuario, antes del `tail`. Si existe, su error es fatal para esa fase. `extension-policy.json` declara qué slots son obligatorios; ausentes y no declarados son opcionales. AoC declara ambos obligatorios y conserva los comandos del reconciliador/estado de espera. No se insertan líneas mediante grep/sed en scripts heredados.
 
 Referencias del contrato: [sockets LinuxGSM](https://github.com/GameServerManagers/LinuxGSM/blob/master/linuxgsm.sh), [inspección de digest Docker](https://docs.docker.com/reference/cli/docker/buildx/imagetools/inspect/).
 

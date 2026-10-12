@@ -155,7 +155,10 @@ el despliegue no puede indicar `ready`. El operador corrige la causa y ejecuta
 `recover_stack.sh` explícitamente para repetir el mismo plan. El reintento
 verifica todos los hashes del candidato antes de escribir, repite las copias de
 forma idempotente y ejecuta sincronización/reconciliación antes del commit.
-No descarga fuentes ni vuelve a ejecutar hooks de componentes.
+No descarga fuentes ni vuelve a ejecutar hooks de componentes. La extensión
+`after-sync` sí se repite y debe ser idempotente, incluyendo ejecuciones previas
+interrumpidas. Puede realizar E/S o acceder a la red según su implementación;
+un error mantiene la publicación pendiente y bloquea `ready`.
 
 Si cambió la lógica de preparación, falta/se modificó el candidato o una
 configuración local se editó después de preparar, el
@@ -210,7 +213,7 @@ STACK_REUSE_SOURCES=true bash "$DIR_INSTALLER_BIN/install_stack.sh" update
 # Actualizar deliberadamente las fuentes remotas.
 bash "$DIR_INSTALLER_BIN/install_stack.sh" update
 
-# Reintentar explícitamente el candidato retenido, sin hooks, red ni Valve.
+# Reintentar candidato, sin descargas de fuentes ni hooks de componentes.
 bash "$DIR_INSTALLER_BIN/recover_stack.sh"
 
 # Si cambió la lógica o el candidato no es válido: abandonar y preparar otra vez.
