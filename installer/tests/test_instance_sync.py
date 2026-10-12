@@ -141,3 +141,136 @@ class InstanceSync(unittest.TestCase):
                 self.assertEqual((dest/'plugins/shared.smx').read_text(),'new canonical version')
                 self.assertFalse((dest/'plugins/stale.smx').exists())
                 self.assertEqual(local.read_text(),'local')
+
+    def test_missing_nested_private_path_rejects_external_symlink_parent_repeatedly(self):
+        for folder in ('data','configs','plugins'):
+            for target_exists in (False,True):
+                with self.subTest(folder=folder,target_exists=target_exists), tempfile.TemporaryDirectory() as tmp:
+                    root=Path(tmp); sm=root/'sourcemod'; (sm/folder).mkdir(parents=True)
+                    dest=root/'sourcemod1'; (dest/folder).mkdir(parents=True)
+                    external=root/'outside'; external.mkdir(); sentinel=external/'keep.txt'; sentinel.write_text('external data')
+                    if target_exists: (external/'missing').mkdir()
+                    (dest/folder/'custom').symlink_to(external, target_is_directory=True)
+                    policy=root/'policy.json'; policy.write_text(json.dumps({folder:['custom/missing']}))
+
+                    for _ in range(2):
+                        with self.assertRaisesRegex(ValueError,'Private path has a symlink parent'):
+                            synchronize(sm,dest,policy)
+                        self.assertTrue((dest/folder/'custom').is_symlink())
+                        self.assertEqual((dest/folder/'custom').resolve(),external.resolve())
+                        self.assertEqual(sentinel.read_text(),'external data')
+                        self.assertEqual((external/'missing').is_dir(),target_exists)
+                        self.assertFalse((sm/folder/'custom').exists())
+
+    def test_refresh_rejects_external_symlink_parent_without_detaching_its_data(self):
+        for folder in ('data','configs','plugins'):
+            with self.subTest(folder=folder), tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp); sm=root/'sourcemod'; canonical=sm/folder/'custom'
+                canonical.mkdir(parents=True); (canonical/'shared.cfg').write_text('canonical')
+                dest=root/'sourcemod1'; (dest/folder).mkdir(parents=True)
+                external=root/'outside'; external.mkdir(); sentinel=external/'keep.txt'; sentinel.write_text('external data')
+                (dest/folder/'custom').symlink_to(external, target_is_directory=True)
+                policy=root/'policy.json'; policy.write_text(json.dumps({folder:['custom/missing']}))
+
+                with self.assertRaisesRegex(ValueError,'Unverified symlink blocks private instance layout'):
+                    synchronize(sm,dest,policy)
+                self.assertTrue((dest/folder/'custom').is_symlink())
+                self.assertEqual((dest/folder/'custom').resolve(),external.resolve())
+                self.assertEqual(sentinel.read_text(),'external data')
+                self.assertFalse((external/'missing').exists())
+                self.assertEqual((canonical/'shared.cfg').read_text(),'canonical')
+
+    def test_nested_private_path_replaces_only_a_verified_canonical_parent_link(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); sm=root/'sourcemod'; canonical=sm/'data/custom'
+            canonical.mkdir(parents=True); (canonical/'shared.cfg').write_text('canonical')
+            dest=root/'sourcemod1'; (dest/'data').mkdir(parents=True)
+            (dest/'data/custom').symlink_to(canonical, target_is_directory=True)
+            policy=root/'policy.json'; policy.write_text(json.dumps({'data':['custom/missing']}))
+
+            for _ in range(2):
+                synchronize(sm,dest,policy)
+                local=dest/'data/custom'
+                self.assertFalse(local.is_symlink())
+                self.assertEqual((local/'shared.cfg').read_text(),'canonical')
+                self.assertTrue((local/'shared.cfg').is_symlink())
+                self.assertTrue((local/'missing').is_dir())
+                self.assertFalse((canonical/'missing').exists())
+
+    def test_legacy_private_override_rejects_external_symlink_parent_without_moving_data(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); sm=root/'sourcemod'; (sm/'data').mkdir(parents=True)
+            dest=root/'sourcemod1'; (dest/'data').mkdir(parents=True)
+            external=root/'outside'; external.mkdir(); sentinel=external/'keep.txt'; sentinel.write_text('external data')
+            (dest/'data/custom').symlink_to(external, target_is_directory=True)
+            stable=root/'.instance-data/sourcemod1'
+            legacy=stable/'overrides/data/custom/missing/private.db'
+            legacy.parent.mkdir(parents=True); legacy.write_text('legacy private data')
+            policy=root/'policy.json'; policy.write_text(json.dumps({'data':['custom/missing']}))
+
+            for _ in range(2):
+                with self.assertRaisesRegex(ValueError,'Shared parent hides private override'):
+                    synchronize(sm,dest,policy)
+                self.assertEqual(legacy.read_text(),'legacy private data')
+                self.assertEqual(sentinel.read_text(),'external data')
+                self.assertFalse((external/'missing').exists())
+                self.assertTrue((dest/'data/custom').is_symlink())
+
+    def test_legacy_override_source_rejects_external_symlink_parent_before_rename(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); sm=root/'sourcemod'; sm.mkdir()
+            dest=root/'sourcemod1'; dest.mkdir()
+            stable=root/'.instance-data/sourcemod1'; overrides=stable/'overrides'
+            overrides.mkdir(parents=True)
+            external=root/'outside'; external.mkdir(); legacy=external/'private.smx'; legacy.write_text('external private bytes')
+            (overrides/'plugins').symlink_to(external, target_is_directory=True)
+            policy=root/'policy.json'; policy.write_text(json.dumps({'plugins':['private.smx']}))
+
+            for _ in range(2):
+                with self.assertRaisesRegex(ValueError,'Private path has a symlink parent'):
+                    synchronize(sm,dest,policy)
+                self.assertEqual(legacy.read_text(),'external private bytes')
+                self.assertTrue((overrides/'plugins').is_symlink())
+                self.assertEqual((overrides/'plugins').resolve(),external.resolve())
+                self.assertFalse((dest/'plugins/private.smx').exists())
+
+    def test_legacy_migration_rejects_symlink_instance_root_before_moving_private_data(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); outside=root/'outside'; outside.mkdir()
+            dest=root/'addons/sourcemod1'; dest.parent.mkdir()
+            dest.symlink_to(outside, target_is_directory=True)
+            stable=dest.parent/'.instance-data/sourcemod1'
+            private=stable/'data/dumps/local.db'; private.parent.mkdir(parents=True); private.write_text('legacy private bytes')
+            inode=private.stat().st_ino
+
+            for _ in range(2):
+                with self.assertRaisesRegex(ValueError,'Instance root cannot be a symlink'):
+                    migrate(dest,{})
+                self.assertTrue(dest.is_symlink())
+                self.assertEqual(dest.resolve(),outside.resolve())
+                self.assertEqual(private.read_text(),'legacy private bytes')
+                self.assertEqual(private.stat().st_ino,inode)
+                self.assertFalse((outside/'data').exists())
+
+    def test_migrate_all_rejects_symlink_sourcemod_root_before_any_legacy_rename(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); addons=root/'addons'; addons.mkdir()
+            outside=root/'outside'; outside.mkdir()
+            source=addons/'sourcemod'; source.symlink_to(outside, target_is_directory=True)
+            legacy=addons/'.instance-data/sourcemod2/data/private.db'
+            legacy.parent.mkdir(parents=True); legacy.write_text('legacy private bytes')
+            inode=legacy.stat().st_ino
+            policy=root/'policy.json'; policy.write_text(json.dumps({'data':['private.db']}))
+
+            for _ in range(2):
+                result=subprocess.run(
+                    ['python3',str(INSTALLER/'lib/instance_layout.py'),'--migrate-all',str(source),str(policy)],
+                    capture_output=True,text=True)
+                self.assertNotEqual(result.returncode,0,result.stdout+result.stderr)
+                self.assertIn('SourceMod root must be a physical directory',result.stderr)
+                self.assertTrue(source.is_symlink())
+                self.assertEqual(source.resolve(),outside.resolve())
+                self.assertEqual(legacy.read_text(),'legacy private bytes')
+                self.assertEqual(legacy.stat().st_ino,inode)
+                self.assertFalse((addons/'sourcemod2').exists())
+                self.assertFalse((outside/'data').exists())

@@ -53,6 +53,8 @@ def remove_links_only(root):
 
 
 def migrate(destination, policy):
+    if destination.is_symlink():
+        raise ValueError(f'Instance root cannot be a symlink: {destination}')
     previous=Path(str(destination)+'.previous')
     if not exists(destination) and previous.is_dir() and not previous.is_symlink():
         os.replace(previous, destination)
@@ -65,6 +67,7 @@ def migrate(destination, policy):
         for rel in entries:
             source=stable/'overrides'/folder/rel
             if exists(source):
+                reject_symlink_parents(source,stable)
                 # No traversing a shared parent while migrating an override.
                 parent=destination/folder
                 if any(p.is_symlink() for p in (destination/folder/rel).parents if p==destination or destination in p.parents):
@@ -114,6 +117,17 @@ def private_default(source, destination, empty=False):
         shutil.copy2(source, destination)
 
 
+def reject_symlink_parents(path, root):
+    """Do not create an instance-private route through an unverified link."""
+    parent=path.parent
+    while parent != root:
+        if root not in parent.parents:
+            raise ValueError(f'Private path escapes instance root: {path}')
+        if parent.is_symlink():
+            raise ValueError(f'Private path has a symlink parent; inspect before retry: {parent}')
+        parent=parent.parent
+
+
 def refresh(source, destination, exclusions, relative='', mutable=False, empty_private=False, keep_local=False):
     if relative in exclusions:
         private_default(source, destination, empty=empty_private)
@@ -123,7 +137,10 @@ def refresh(source, destination, exclusions, relative='', mutable=False, empty_p
     # Existing physical configs/overrides also remain physical during refresh.
     physical=destination.is_dir() and not destination.is_symlink()
     if source.is_dir() and (nested or physical or mutable):
-        if destination.is_symlink(): destination.unlink()
+        if destination.is_symlink():
+            if destination.resolve() != source.resolve():
+                raise ValueError(f'Unverified symlink blocks private instance layout: {destination}')
+            destination.unlink()
         destination.mkdir(parents=True, exist_ok=True)
         names={p.name for p in source.iterdir()}
         for p in list(destination.iterdir()):
@@ -147,7 +164,9 @@ def refresh(source, destination, exclusions, relative='', mutable=False, empty_p
         for rel in exclusions:
             if relative: continue
             target=destination/rel
-            if not exists(target): private_default(source/rel,target,empty=mutable)
+            reject_symlink_parents(target,destination)
+            if not exists(target):
+                private_default(source/rel,target,empty=mutable)
         if not keep_local and not nested:
             # Collapse old physical shared copies back to the canonical link.
             remove_links_only(destination)
@@ -187,6 +206,8 @@ def synchronize(source, destination, policy_file):
 if __name__ == '__main__':
     if sys.argv[1]=='--migrate-all':
         source,policy_file=map(Path,sys.argv[2:4])
+        if source.is_symlink() or not source.is_dir():
+            raise ValueError(f'SourceMod root must be a physical directory: {source}')
         policy=json.loads(policy_file.read_text()) if policy_file.exists() else {}
         validate_policy(policy)
         container=source.parent/'.instance-data'
