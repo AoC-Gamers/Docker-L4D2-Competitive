@@ -38,7 +38,7 @@ Orquesta la fase de usuario LinuxGSM. Su flujo principal es:
 
 1. Ejecutar `deploy_stack.sh`.
 2. Preparar o reparar L4D2 cuando corresponde.
-3. Resolver el stack efectivo y reaplicarlo si cambio.
+3. Resolver el stack efectivo. En instalaciones existentes, omitir adquisición, preparación y publicación con `L4D2_STACK_AUTOUPDATE=false`; con `true`, permitir la actualización. La instalación inicial y las actualizaciones manuales siguen disponibles.
 4. Sincronizar instancias con `sync_instances.sh`.
 5. Lanzar `menu_stack.sh` para arranque u operacion del runtime.
 

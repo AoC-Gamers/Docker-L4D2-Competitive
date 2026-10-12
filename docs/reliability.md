@@ -125,11 +125,22 @@ Las carpetas y registros de caché antiguos se conservan; no se renombran ni fus
 
 Se distinguen tres identidades:
 
-- `stack.materialization_sha256`: bytes efectivos de bibliotecas, comandos, hooks, configuración del instalador, políticas y extensiones heredadas/derivadas, y recursos ZIP locales relevantes. Excluye mtimes, logs, cachés y secretos. Los cambios locales provocan reaplicación aun con autoupdate desactivado.
+- `stack.materialization_sha256`: bytes efectivos de bibliotecas, comandos, hooks, configuración del instalador, políticas y extensiones heredadas/derivadas, y recursos ZIP locales relevantes. Excluye mtimes, logs, cachés y secretos. Los cambios locales provocan reaplicación automática solo con autoupdate activado; con `false` quedan pendientes.
 - `stack.resolved_components_sha256`: definición efectiva del perfil y sus overrides, distinta de las versiones descargadas.
 - `source-lock.json` y `hook-assets.json`: commits Git efectivos, asset ID, SHA256 de contenido y checksum esperado cuando exista; snapshots verificados de fuentes y assets auxiliares consumidos por hooks.
 
-La preparación obtiene las fuentes una vez y compone desde snapshots propios de esa corrida. Una reaplicación con autoupdate desactivado reutiliza la última publicación confirmada compatible, no una descarga más reciente de un intento fallido. Un cache legacy de release sin identidad comprobable no se convierte en una actualización implícita: requiere restaurar fuentes verificadas o ejecutar una actualización remota explícita para establecer el lock inicial. Si falta o está corrupto un snapshot fijado, falla con una instrucción de restaurar caché o pedir una actualización explícita; no avanza canales silenciosamente. Un componente nuevo o una fuente deliberadamente distinta sí necesita su primera resolución.
+La preparación obtiene las fuentes una vez y compone desde snapshots propios de esa corrida. Una reaplicación manual con `STACK_REUSE_SOURCES=true` reutiliza la última publicación confirmada compatible, no una descarga más reciente de un intento fallido. Un cache legacy de release sin identidad comprobable no se convierte en una actualización implícita: requiere restaurar fuentes verificadas o ejecutar una actualización remota explícita para establecer el lock inicial. Si falta o está corrupto un snapshot fijado, falla con una instrucción de restaurar caché o pedir una actualización explícita; no avanza canales silenciosamente. Un componente nuevo o una fuente deliberadamente distinta sí necesita su primera resolución.
+
+En instalaciones existentes, `L4D2_STACK_AUTOUPDATE=false` omite toda adquisición, preparación y publicación automática del stack. No vuelve a instalar los paquetes cacheados ni aplica hooks o políticas de una imagen nueva. Este comportamiento sustituye la reaplicación automática con fuentes fijadas de versiones anteriores. La primera instalación sigue componiendo el stack, y una actualización manual sigue disponible:
+
+```bash
+# Consultar fuentes remotas y aplicar sus versiones actuales.
+bash "$DIR_INSTALLER_BIN/install_stack.sh" update
+# O reaplicar deliberadamente las fuentes confirmadas sin avanzar canales.
+STACK_REUSE_SOURCES=true bash "$DIR_INSTALLER_BIN/install_stack.sh" update
+```
+
+Al omitir el instalador, `stack.profile`, `stack.materialization_sha256`, la definición resuelta y las identidades de componentes conservan lo instalado. `stack.automatic_apply_skipped=true` registra la omisión y `stack.pending` contiene perfil y hashes deseados cuando difieren. Reiniciar no adopta esos hashes pendientes. El estado previo debe ser `ready` y su definición archivada debe coincidir con su hash; si falta ese recibo o hubo un fallo sin publicación confirmada, ejecutar instalación/actualización manual. Tras una recuperación, también se acepta un diario v2 `committed` cuyo despliegue y huella coincidan con el estado anterior: deploy completa las fases de runtime pendientes antes de declarar `ready`, sin reinstalar componentes. Un diario incompleto, ajeno o con otra huella no habilita esa continuación. Una publicación incompleta mantiene su bloqueo y procedimiento de recuperación. El arranque conserva la sincronización de instancias, las extensiones de runtime, `L4D2_AUTOSTART` y el actualizador de Valve con sus controles propios.
 
 GitHub: se comprueba `sha256` del componente o el digest SHA256 del asset anunciado por la API cuando está disponible, antes de extraer/publicar. Sin checksum esperado, el hash calculado solo registra identidad de contenido; no acredita autenticidad. Las fuentes hook-only registran sus assets descargados y conservan la caché persistente. La compilación experimental de SourceTV conserva sus mecanismos previos de caché/build; esta tarea no fija todas las dependencias transitivas de ese toolchain ni convierte su build en reproducible.
 
@@ -187,7 +198,7 @@ Antes de la primera adopción, configurar la variable de repositorio GitHub `AOC
 4. Integrar Vanilla y construir contra el digest exacto de AoC del paso anterior. No reconstruir hijos contra una API base antigua.
 5. Validar las imágenes en volúmenes desechables. Solo después planificar la adopción en servidores; esta tarea no publica producción ni modifica sus volúmenes.
 
-Para actualizar un volumen existente: conservar sus backups operativos habituales, seleccionar la nueva imagen por digest, conservar perfil/overrides y montajes de recursos/BanSystem, y recrear el contenedor. El deploy detecta la lógica nueva y recompone con fuentes confirmadas cuando autoupdate está desactivado. Revisar `current/deploy-state.json`, `source-lock.json`, `state/publication/<hash-destino>/journal.json` y registros `.paths.unresolved`. Establecer la selección de arranque durante la primera migración si no hay `runtime-intent.json`. No usar `rsync --delete` sobre `/data` ni sobre Valve.
+Para actualizar un volumen existente: conservar sus backups operativos habituales, seleccionar la nueva imagen por digest, conservar perfil/overrides y montajes de recursos/BanSystem, y recrear el contenedor. Con autoupdate desactivado, el deploy conserva el stack instalado y deja la lógica nueva pendiente: ejecutar uno de los comandos manuales anteriores para aplicarla. Revisar `current/deploy-state.json`, `source-lock.json`, `state/publication/<hash-destino>/journal.json` y registros `.paths.unresolved`. Establecer la selección de arranque durante la primera migración si no hay `runtime-intent.json`. No usar `rsync --delete` sobre `/data` ni sobre Valve.
 
 ## Registro histórico de la entrega inicial
 

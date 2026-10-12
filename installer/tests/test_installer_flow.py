@@ -49,6 +49,21 @@ printf default > "$DIR_SOURCEMOD/data/sqlite/local.sq3"
     def assertSuccess(self,result):
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
+    def test_explicit_update_refreshes_sources_when_automatic_update_is_disabled(self):
+        extra = {'L4D2_STACK_AUTOUPDATE': 'false'}
+        self.assertSuccess(self.run_install('install', extra))
+        lock = self.base/'state/source-lock.json'
+        previous = json.loads(lock.read_text())
+        (self.source/'plugin').write_text('version2')
+        subprocess.run(['git', '-C', str(self.source), 'add', '.'], check=True)
+        subprocess.run(['git', '-C', str(self.source), '-c', 'user.name=Test',
+                        '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'updated fixture'], check=True)
+        self.assertSuccess(self.run_install('update', extra))
+        self.assertEqual((self.game/'addons/sourcemod/plugins/demo.smx').read_text(), 'version2')
+        self.assertNotEqual(json.loads(lock.read_text()), previous)
+        state = json.loads((self.base/'state/current/deploy-state.json').read_text())
+        self.assertEqual(state['status'], 'ready')
+
     def test_inherited_user_does_not_switch_away_from_fixture_owner(self):
         from unittest.mock import patch
         with patch.dict(os.environ, {'USER':'not-the-fixture-owner'}):

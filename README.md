@@ -108,7 +108,7 @@ El deploy ya no se limita a "instalar y arrancar". El comportamiento actual es:
 | `L4D2_INSTALL` | Modo de instalacion base: `normal`, `skip`, `force` | `normal` |
 | `L4D2_AUTOSTART` | Controla el inicio automatico del servidor | `true` |
 | `L4D2_ADDITIONAL_INSTANCES` | Cantidad de instancias adicionales a sincronizar | `0` |
-| `L4D2_STACK_AUTOUPDATE` | Ejecuta `install_stack.sh update` antes del arranque de los gameservers | `false` |
+| `L4D2_STACK_AUTOUPDATE` | Con `true`, actualiza el stack antes del arranque; con `false`, omite descarga, preparación y publicación automáticas en instalaciones existentes, incluso tras cambiar la imagen. La instalación inicial y los comandos manuales siguen disponibles | `false` |
 | `L4D2_UPDATER` | Habilita o deshabilita el updater legacy de la base | `true` |
 | `NPM_CONFIG_AUDIT` | Deshabilita por defecto la auditoria interactiva de npm durante comandos LinuxGSM/GameDig | `false` |
 | `STACK_PROFILE` | Perfil de stack a materializar | `default` |

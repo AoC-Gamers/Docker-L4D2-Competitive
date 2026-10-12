@@ -39,11 +39,20 @@ del original; un hash anterior a la copia no describe necesariamente los bytes
 conservados. Un snapshot existente que no coincida sigue rechazándose: esta
 verificación no acepta ni repara silenciosamente contenido corrupto.
 
-Con `STACK_REUSE_SOURCES=true` se verifican y utilizan las últimas fuentes
-**confirmadas**, sin consultar canales remotos. Así se mantiene
-`L4D2_STACK_AUTOUPDATE=false`: una corrección local del instalador no actualiza
-indiscriminadamente los componentes. Un snapshot o archivo original corrupto
-produce un error, nunca una sustitución silenciosa por otra versión.
+En instalaciones existentes, `L4D2_STACK_AUTOUPDATE=false` omite las tres fases
+automáticas: no consulta fuentes, procesa caché ni publica componentes, incluso
+si cambió la lógica de la imagen. El estado conserva la identidad instalada y
+registra los cambios locales pendientes. La instalación inicial sigue aplicando
+el stack. Una publicación incompleta sigue bloqueando el arranque y requiere
+recuperación; esta variable no permite ignorarla.
+
+Los comandos manuales siguen disponibles. `bash "$DIR_INSTALLER_BIN/install_stack.sh" update`
+consulta fuentes remotas aunque autoupdate sea `false`. Para reaplicar solamente
+las fuentes **confirmadas**, ejecutar explícitamente
+`STACK_REUSE_SOURCES=true bash "$DIR_INSTALLER_BIN/install_stack.sh" update`.
+Este último comando verifica snapshots sin consultar canales remotos. Un
+snapshot o archivo original corrupto produce un error, nunca una sustitución
+silenciosa por otra versión.
 
 Una actualización explícita consulta el commit Git o los metadatos del release.
 Cuando el checksum esperado coincide con los bytes conservados, no descarga de

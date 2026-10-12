@@ -64,7 +64,7 @@ El flujo actual es:
 2. `container/bootstrap/` valida dependencias y crea symlinks.
 3. `container/entrypoint-user.sh` ejecuta `deploy_stack.sh`.
 4. `deploy_stack.sh` instala o repara L4D2 si hace falta.
-5. `deploy_stack.sh` aplica `install_stack.sh install|update` cuando el stack cambia o cuando es una instalacion fresca.
+5. en una instalación fresca, `deploy_stack.sh` aplica `install_stack.sh install`. En una instalación existente, `L4D2_STACK_AUTOUPDATE=false` omite el instalador, incluso si cambió la imagen o el perfil; con `true`, permite aplicar esos cambios.
 6. se sincronizan instancias segun `L4D2_ADDITIONAL_INSTANCES`.
 7. si `L4D2_STACK_AUTOUPDATE=true`, se permite un update pre-start solo cuando el stack no fue reaplicado ya en ese deploy.
 8. `installer/bin/menu_stack.sh` opera las instancias.

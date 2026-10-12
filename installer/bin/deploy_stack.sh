@@ -27,6 +27,7 @@ TARGET_RESOLVED_COMPONENTS_JSON=""
 TARGET_RESOLVED_COMPONENTS_SHA256=""
 TARGET_MATERIALIZATION_SHA256=""
 STACK_UPDATED_DURING_DEPLOY="false"
+STACK_APPLY_SKIPPED="false"
 
 finalize_deploy_state() {
   local exit_code=$?
@@ -44,7 +45,11 @@ finalize_deploy_state() {
     last_error_json=$(jq -Rn --arg value "deploy_stack exited with code ${exit_code}" '$value')
   fi
 
-  state_finalize_deploy_state "$status" "$L4D2_FRESH_INSTALL" "$last_error_json"
+  local installed_profile="${STACK_PROFILE:-default}"
+  if [[ "$STACK_APPLY_SKIPPED" == true ]]; then
+    installed_profile="$(jq -r .stack.profile "$DEPLOY_STATE_FILE")"
+  fi
+  STACK_PROFILE="$installed_profile" state_finalize_deploy_state "$status" "$L4D2_FRESH_INSTALL" "$last_error_json"
 }
 
 trap finalize_deploy_state EXIT
@@ -239,6 +244,52 @@ stack_requires_reapply() {
   return 1
 }
 
+preserve_installed_stack_metadata() {
+  local previous="$STATE_HISTORY_DIR/$PREVIOUS_DEPLOYMENT_ID"
+  local pending=false publication_receipt
+  if [[ -z "$PREVIOUS_DEPLOYMENT_ID" || ! -f "$previous/deploy-state.json" ]]; then
+    error_exit "Automatic stack installation disabled and no ready deployment is available. Run install_stack.sh install/update explicitly."
+  fi
+  if [[ "$(jq -r .status "$previous/deploy-state.json")" != ready ]]; then
+    # A recovered/committed publication may still need the parent's runtime
+    # phases. Accept only its own receipt; never bless a partial or older copy.
+    publication_receipt="$(stack_transaction_root)/journal.json"
+    if [[ ! -f "$publication_receipt" ]] || ! jq -e \
+        --arg deployment "$PREVIOUS_DEPLOYMENT_ID" \
+        --arg logic "$(jq -r '.stack.materialization_sha256 // ""' "$previous/deploy-state.json")" \
+        '.schema_version == 2 and .phase == "committed" and .deployment_id == $deployment and
+         $logic != "" and .logic_sha256 == $logic' "$publication_receipt" > /dev/null; then
+      error_exit "Automatic stack installation disabled and no ready deployment is available. Complete publication recovery or run install_stack.sh install/update explicitly."
+    fi
+    info "Using confirmed publication; deployment runtime phases still need completion"
+  fi
+  if [[ ! -f "$previous/resolved-components.json" ]] || \
+      [[ "$(state_compute_resolved_components_sha256 "$previous/resolved-components.json")" != "$(jq -r .stack.resolved_components_sha256 "$previous/deploy-state.json")" ]]; then
+    error_exit "Cannot verify installed stack metadata. Run install_stack.sh update explicitly."
+  fi
+  if stack_requires_reapply; then pending=true; fi
+  cp "$previous/resolved-components.json" "$STATE_RESOLVED_COMPONENTS_FILE"
+  jq --slurpfile previous "$previous/deploy-state.json" \
+    --arg file "$STATE_RESOLVED_COMPONENTS_FILE" \
+    --arg profile "${STACK_PROFILE:-default}" \
+    --arg definition "$TARGET_RESOLVED_COMPONENTS_SHA256" \
+    --arg logic "$TARGET_MATERIALIZATION_SHA256" --argjson pending "$pending" '
+      .stack = $previous[0].stack |
+      .components = ($previous[0].components // []) |
+      .stack.resolved_components_file = $file |
+      .stack.automatic_apply_skipped = true |
+      if $pending then
+        .stack.pending = {profile:$profile,resolved_components_sha256:$definition,materialization_sha256:$logic}
+      else del(.stack.pending) end
+    ' "$DEPLOY_STATE_FILE" > "$DEPLOY_STATE_FILE.tmp"
+  mv "$DEPLOY_STATE_FILE.tmp" "$DEPLOY_STATE_FILE"
+  STACK_APPLY_SKIPPED=true
+  info "Skipping stack acquisition, preparation and publication because L4D2_STACK_AUTOUPDATE=false"
+  if [[ "$pending" == true ]]; then
+    warn "Stack changes remain pending; run install_stack.sh update explicitly to apply them."
+  fi
+}
+
 prepare_lgsm_tooling() {
   if [ -f "/app/lgsm/package.json" ]; then
     section "Prepare LGSM tooling"
@@ -361,15 +412,22 @@ apply_stack_if_needed() {
   section "Apply stack"
 
   if [ "$L4D2_FRESH_INSTALL" = "true" ]; then
+    record_target_stack_metadata
     step "Installing stack files"
     STACK_DEFER_RESUME=true bash "$DIR_INSTALLER_BIN/install_stack.sh" install
     STACK_UPDATED_DURING_DEPLOY="true"
     return 0
   fi
 
+  if ! is_stack_autoupdate_enabled; then
+    preserve_installed_stack_metadata
+    return 0
+  fi
+
+  record_target_stack_metadata
   if stack_requires_reapply; then
     step "Applying stack update because the resolved stack definition changed"
-    STACK_DEFER_RESUME=true STACK_REUSE_SOURCES="$(is_stack_autoupdate_enabled && echo false || echo true)" bash "$DIR_INSTALLER_BIN/install_stack.sh" update
+    STACK_DEFER_RESUME=true STACK_REUSE_SOURCES=false bash "$DIR_INSTALLER_BIN/install_stack.sh" update
     STACK_UPDATED_DURING_DEPLOY="true"
     return 0
   fi
@@ -488,7 +546,6 @@ main() {
   initialize_deploy_state
   export STACK_DEPLOY_OWNER_PID=$$
   resolve_target_stack_metadata
-  record_target_stack_metadata
   prepare_lgsm_tooling
   prepare_user_profile
   install_primary_instance
