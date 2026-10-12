@@ -63,11 +63,11 @@ class PreparedCache(unittest.TestCase):
         result=subprocess.run(['bash','-c','''set -euo pipefail
 source "$DIR_INSTALLER_LIB/tools_stack.sh"
 source "$DIR_INSTALLER_LIB/install_stack_runtime.sh"
-save_component_state sourcetv original
-save_component_state lilac_sourcetv other
-save_component_state sourcetv updated
-test "$(get_component_cached_state sourcetv)" = updated
-test "$(get_component_cached_state lilac_sourcetv)" = other
+save_component_state demo original
+save_component_state extra_demo other
+save_component_state demo updated
+test "$(get_component_cached_state demo)" = updated
+test "$(get_component_cached_state extra_demo)" = other
 '''],env=env,capture_output=True,text=True)
         self.assertEqual(result.returncode,0,result.stderr)
 

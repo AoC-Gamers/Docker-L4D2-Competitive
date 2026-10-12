@@ -70,6 +70,20 @@ class Transactions(unittest.TestCase):
         tx.plan(clean_tx,clean,self.stack,self.config,self.base/'clean-state'); tx.publish(clean_tx); tx.commit(clean_tx)
         self.assertEqual({p.name:p.read_bytes() for p in plugins.iterdir()}, {p.name:p.read_bytes() for p in (clean/'addons/sourcemod/plugins').iterdir()})
 
+    def test_retired_component_binary_is_removed_and_live_data_survives_repeated_updates(self):
+        retired='addons/sourcemod/plugins/anticheat/retired.smx'
+        binary=self.write(self.root,retired,'retired component')
+        data=self.write(self.root,'addons/sourcemod/data/sqlite/retired.sq3','live data')
+        self.write(self.state,'managed-files.json',json.dumps({'files':[retired]}))
+        for _ in range(2):
+            self.prepare()
+            tx.publish(self.transaction); tx.commit(self.transaction)
+            self.assertFalse(binary.exists())
+            self.assertEqual(data.read_text(),'live data')
+            self.assertTrue((self.root/'addons/sourcemod/plugins/new.smx').is_file())
+            self.assertNotIn(retired,json.loads((self.state/'managed-files.json').read_text())['files'])
+            tx.cleanup(self.transaction)
+
     def test_sigkill_retains_candidate_for_explicit_retry(self):
         old=self.write(self.root,'addons/sourcemod/plugins/old.smx','old')
         self.prepare()
