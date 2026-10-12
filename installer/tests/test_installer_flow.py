@@ -202,6 +202,240 @@ if [[ "$1" == stop ]]; then rm -f "$RUNNING"; else touch "$RUNNING"; fi
         running.unlink(); self.assertSuccess(self.retry())
         self.assertFalse(running.exists())
 
+    def test_committed_recovery_marks_matching_deployment_ready_after_resume(self):
+        self.assertSuccess(self.run_install())
+        tx=self.publication()
+        journal=json.loads((tx/'journal.json').read_text())
+        journal['resume_pending']=True
+        (tx/'journal.json').write_text(json.dumps(journal))
+        (tx/'running-instances').write_text('l4d2server\n')
+        state_path=self.base/'state/current/deploy-state.json'
+        state=json.loads(state_path.read_text()); state['status']='failed'; state['last_error']='install_stack exited with code 137'
+        state_path.write_text(json.dumps(state))
+        events=self.base/'resume-events'
+        executable=self.app/'l4d2server'
+        executable.write_text(f'#!/bin/bash\nprintf "%s\\n" "$1" >> "{events}"\n'); executable.chmod(0o755)
+        self.env['L4D2_AUTOSTART']='FALSE'
+
+        self.assertSuccess(self.retry())
+
+        state=json.loads(state_path.read_text())
+        self.assertEqual(state['status'],'ready')
+        self.assertEqual(events.read_text() if events.exists() else '', '')
+        self.assertFalse(json.loads((tx/'journal.json').read_text())['resume_pending'])
+        self.assertEqual((tx/'running-instances').read_text(),'')
+
+    def test_committed_recovery_resume_failure_stays_failed(self):
+        self.assertSuccess(self.run_install())
+        tx=self.publication()
+        journal=json.loads((tx/'journal.json').read_text()); journal['resume_pending']=True
+        (tx/'journal.json').write_text(json.dumps(journal))
+        (tx/'running-instances').write_text('l4d2server\n')
+        state_path=self.base/'state/current/deploy-state.json'
+        state=json.loads(state_path.read_text()); state['status']='failed'; state['last_error']='install_stack exited with code 137'
+        state_path.write_text(json.dumps(state))
+        events=self.base/'resume-events'
+        executable=self.app/'l4d2server'
+        executable.write_text(f'#!/bin/bash\nprintf "%s\\n" "$1" >> "{events}"\nexit 23\n'); executable.chmod(0o755)
+        self.env['L4D2_AUTOSTART']='TRUE'
+
+        result=self.retry()
+
+        self.assertNotEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertEqual(json.loads(state_path.read_text())['status'],'failed')
+        self.assertEqual(events.read_text().splitlines(),['start'])
+        self.assertTrue(json.loads((tx/'journal.json').read_text())['resume_pending'])
+
+    def test_committed_recovery_finalizes_matching_deployment_after_resume_ack(self):
+        self.assertSuccess(self.run_install())
+        tx=self.publication()
+        journal=json.loads((tx/'journal.json').read_text()); journal['resume_pending']=False
+        (tx/'journal.json').write_text(json.dumps(journal))
+        (tx/'running-instances').write_text('')
+        state_path=self.base/'state/current/deploy-state.json'
+        state=json.loads(state_path.read_text()); state['status']='failed'; state['last_error']='manual publication retry failed'
+        state_path.write_text(json.dumps(state))
+
+        self.assertSuccess(self.retry())
+
+        state=json.loads(state_path.read_text())
+        self.assertEqual(state['status'],'ready')
+        self.assertEqual(state['deployment_id'],journal['deployment_id'])
+
+    def test_committed_recovery_preserves_deployment_metadata_from_ambient_profile(self):
+        self.assertSuccess(self.run_install())
+        tx=self.publication()
+        journal=json.loads((tx/'journal.json').read_text()); journal['resume_pending']=False
+        (tx/'journal.json').write_text(json.dumps(journal))
+        state_path=self.base/'state/current/deploy-state.json'
+        original=json.loads(state_path.read_text())
+        original['status']='failed'; original['last_error']='interrupted after publication commit'
+        state_path.write_text(json.dumps(original))
+
+        self.assertSuccess(subprocess.run(
+            ['bash',str(self.installer/'bin/recover_stack.sh'),'retry'],
+            env=dict(self.env,STACK_PROFILE='other-profile',GAMESERVER='other-server'),
+            capture_output=True,text=True,timeout=20))
+
+        recovered=json.loads(state_path.read_text())
+        self.assertEqual(recovered['status'],'ready')
+        self.assertEqual(recovered['deployment_id'],original['deployment_id'])
+        self.assertEqual(recovered['stack'],original['stack'])
+        self.assertEqual(recovered['runtime'],original['runtime'])
+
+    def test_recovery_error_preserves_deployment_metadata_from_ambient_profile(self):
+        self.assertSuccess(self.run_install())
+        tx=self.publication()
+        journal=json.loads((tx/'journal.json').read_text()); journal['resume_pending']=True
+        (tx/'journal.json').write_text(json.dumps(journal))
+        (tx/'running-instances').write_text('l4d2server\n')
+        state_path=self.base/'state/current/deploy-state.json'
+        original=json.loads(state_path.read_text())
+        original['status']='failed'; original['last_error']='interrupted after publication commit'
+        state_path.write_text(json.dumps(original))
+        executable=self.app/'l4d2server'
+        executable.write_text('#!/bin/bash\nexit 23\n'); executable.chmod(0o755)
+
+        result=subprocess.run(
+            ['bash',str(self.installer/'bin/recover_stack.sh'),'retry'],
+            env=dict(self.env,STACK_PROFILE='other-profile',GAMESERVER='other-server',L4D2_AUTOSTART='true'),
+            capture_output=True,text=True,timeout=20)
+
+        self.assertNotEqual(result.returncode,0,result.stdout+result.stderr)
+        recovered=json.loads(state_path.read_text())
+        self.assertEqual(recovered['status'],'failed')
+        self.assertEqual(recovered['deployment_id'],original['deployment_id'])
+        self.assertEqual(recovered['stack'],original['stack'])
+        self.assertEqual(recovered['runtime'],original['runtime'])
+
+    def test_rejected_recovery_operations_leave_matching_ready_state_unchanged(self):
+        self.assertSuccess(self.run_install())
+        tx=self.publication()
+        state_path=self.base/'state/current/deploy-state.json'
+        before=json.loads(state_path.read_text())
+        for mode in ('invalid','rebuild'):
+            with self.subTest(mode=mode):
+                command=['bash',str(self.installer/'bin/recover_stack.sh')]
+                if mode == 'invalid':
+                    command.append('not-a-mode')
+                else:
+                    command.append('rebuild')
+                result=subprocess.run(command,env=self.env,capture_output=True,text=True,timeout=20)
+                self.assertNotEqual(result.returncode,0,result.stdout+result.stderr)
+                self.assertEqual(json.loads(state_path.read_text()),before)
+
+    def test_recovery_failure_for_foreign_deployment_does_not_mark_it_failed(self):
+        self.assertSuccess(self.run_install())
+        self.hook.write_text(self.hook.read_text()+'printf version2 > "$DIR_SOURCEMOD/plugins/demo.smx"\n')
+        interrupted=self.run_install(extra={'STACK_TEST_FAIL_PUBLISH_AFTER':'0'})
+        self.assertNotEqual(interrupted.returncode,0)
+        tx=self.publication()
+        state_path=self.base/'state/current/deploy-state.json'
+        foreign=json.loads(state_path.read_text())
+        foreign.update(deployment_id='newer-ready-deployment',status='ready',last_error=None)
+        state_path.write_text(json.dumps(foreign))
+        plugin=self.game/'addons/sourcemod/plugins/demo.smx'
+        plugin.write_text('version3')
+        candidate=tx/'candidate/serverfiles/left4dead2/addons/sourcemod/plugins/demo.smx'
+        before_state=json.loads(state_path.read_text())
+        before_journal=(tx/'journal.json').read_bytes()
+        before_candidate=candidate.read_bytes()
+
+        def tree_snapshot(root):
+            snapshot={}
+            for path in sorted(root.rglob('*')):
+                relative=str(path.relative_to(root))
+                if path.is_symlink():
+                    snapshot[relative]=('symlink',path.readlink().as_posix())
+                elif path.is_file():
+                    snapshot[relative]=('file',path.read_bytes())
+                elif path.is_dir():
+                    snapshot[relative]=('dir',)
+            return snapshot
+
+        before_tree=tree_snapshot(self.game)
+        for mode in ('retry','rebuild'):
+            with self.subTest(mode=mode):
+                result=subprocess.run(
+                    ['bash',str(self.installer/'bin/recover_stack.sh'),mode],
+                    env=self.env,capture_output=True,text=True,timeout=20)
+                self.assertNotEqual(result.returncode,0,result.stdout+result.stderr)
+                self.assertIn('different deployment',result.stdout+result.stderr)
+                self.assertEqual(json.loads(state_path.read_text()),before_state)
+                self.assertEqual(tree_snapshot(self.game),before_tree)
+                self.assertEqual((tx/'journal.json').read_bytes(),before_journal)
+                self.assertEqual(candidate.read_bytes(),before_candidate)
+
+    def test_old_committed_receipt_does_not_mark_new_failed_deployment_ready(self):
+        self.assertSuccess(self.run_install())
+        tx=self.publication()
+        journal=json.loads((tx/'journal.json').read_text()); journal['resume_pending']=True
+        (tx/'journal.json').write_text(json.dumps(journal))
+        (tx/'running-instances').write_text('')
+        state_path=self.base/'state/current/deploy-state.json'
+        state=json.loads(state_path.read_text())
+        state.update(deployment_id='newer-failed-deployment',status='failed',last_error='install_stack exited with code 1')
+        state_path.write_text(json.dumps(state))
+
+        self.assertSuccess(self.retry())
+
+        current=json.loads(state_path.read_text())
+        self.assertEqual(current['status'],'failed')
+        self.assertEqual(current['deployment_id'],'newer-failed-deployment')
+
+    def test_legacy_committed_receipt_without_finalization_owner_stays_unfinalized(self):
+        self.assertSuccess(self.run_install())
+        tx=self.publication()
+        journal=json.loads((tx/'journal.json').read_text())
+        journal.pop('deployment_id',None); journal.pop('finalizes_deploy_state',None)
+        journal['resume_pending']=True
+        (tx/'journal.json').write_text(json.dumps(journal))
+        (tx/'running-instances').write_text('l4d2server\n')
+        state_path=self.base/'state/current/deploy-state.json'
+        state=json.loads(state_path.read_text()); state['status']='failed'; state['last_error']='manual publication retry failed'
+        state_path.write_text(json.dumps(state))
+        events=self.base/'legacy-resume-events'
+        executable=self.app/'l4d2server'
+        executable.write_text(f'#!/bin/bash\nprintf "%s\\n" "$1" >> "{events}"\n'); executable.chmod(0o755)
+        self.env['L4D2_AUTOSTART']='true'
+
+        self.assertSuccess(self.retry())
+
+        self.assertEqual(json.loads(state_path.read_text())['status'],'failed')
+        self.assertTrue(json.loads((tx/'journal.json').read_text())['resume_pending'])
+        self.assertEqual((tx/'running-instances').read_text(),'l4d2server\n')
+        self.assertFalse(events.exists())
+
+    def test_nested_publication_retry_leaves_parent_deploy_to_finalize_and_resume(self):
+        self.assertSuccess(self.run_install())
+        self.hook.write_text(self.hook.read_text().replace('cp "$1/plugin"', 'printf version2 > "$DIR_SOURCEMOD/plugins/demo.smx"\n# cp "$1/plugin"'))
+        state_path=self.base/'state/current/deploy-state.json'
+        state=json.loads(state_path.read_text()); state['status']='installing'
+        state_path.write_text(json.dumps(state))
+        owner_env={'STACK_DEPLOY_OWNER_PID':str(os.getpid()),'STACK_DEFER_RESUME':'true'}
+        failed=self.run_install(extra={**owner_env,'STACK_TEST_FAIL_PUBLISH_AFTER':'0'})
+        self.assertNotEqual(failed.returncode,0)
+        tx=self.publication()
+        journal=json.loads((tx/'journal.json').read_text())
+        self.assertFalse(journal['finalizes_deploy_state'])
+        state=json.loads(state_path.read_text()); state['status']='failed'; state['last_error']='deploy_stack exited with code 1'
+        state_path.write_text(json.dumps(state))
+        (tx/'running-instances').write_text('l4d2server\n')
+        events=self.base/'nested-resume-events'
+        executable=self.app/'l4d2server'
+        executable.write_text(f'#!/bin/bash\nprintf "%s\\n" "$1" >> "{events}"\n'); executable.chmod(0o755)
+
+        result=self.retry()
+
+        self.assertSuccess(result)
+        journal=json.loads((tx/'journal.json').read_text())
+        self.assertEqual(journal['phase'],'committed')
+        self.assertTrue(journal['resume_pending'])
+        self.assertEqual(json.loads(state_path.read_text())['status'],'failed')
+        self.assertEqual((tx/'running-instances').read_text(),'l4d2server\n')
+        self.assertFalse(events.exists())
+        self.assertIn('Complete deploy_stack.sh',result.stdout)
+
     def test_abandon_partial_metadata_keeps_last_committed_sources_for_rebuild(self):
         self.assertSuccess(self.run_install())
         confirmed=json.loads((self.base/'state/source-lock.json').read_text())

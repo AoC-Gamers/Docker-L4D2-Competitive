@@ -44,7 +44,8 @@ stack_quiesce_instances() {
 stack_resume_instances() {
     local name
     [[ -f "$STACK_TRANSACTION/running-instances" ]] || return 0
-    case "${L4D2_AUTOSTART:-true}" in false|0|no|off)
+    case "${L4D2_AUTOSTART:-true}" in
+        [fF][aA][lL][sS][eE]|0|[nN][oO]|[oO][fF][fF])
         stack_finish_resume
         return 0 ;;
     esac
@@ -138,6 +139,7 @@ stack_run_candidate() (
 )
 
 stack_publish_transaction() {
+    export STACK_PUBLICATION_FINALIZES_DEPLOY_STATE="${INSTALLER_MANAGED_DEPLOY_STATE:-false}"
     stack_transaction_command plan "$STACK_TRANSACTION" "$DIR_LEFT4DEAD2" "$DIR_STACK" "$DIR_INSTALLER_CONFIG" "$STATE_ROOT"
     stack_quiesce_instances
     if ! stack_transaction_command publish "$STACK_TRANSACTION"; then

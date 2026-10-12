@@ -169,8 +169,13 @@ def plan(tx, root, stack, config, state):
                 entry['previous_sha256']=hashlib.sha256(active.read_bytes()).hexdigest() if active.is_file() else None
     confirmed={name:json.loads((state/name).read_text()) if (state/name).exists() else None
                for name in ('source-lock.json','hook-assets.json')}
+    deploy_state=state/'current/deploy-state.json'
+    deployment_id=json.loads(deploy_state.read_text()).get('deployment_id') if deploy_state.is_file() else None
+    finalizes_deploy_state=os.environ.get('STACK_PUBLICATION_FINALIZES_DEPLOY_STATE') == 'true'
     journal={'schema_version':2,'phase':'prepared','target':str(root),'state':str(state),'entries':entries,
              'confirmed_sources':confirmed,
+             'deployment_id':deployment_id,
+             'finalizes_deploy_state':finalizes_deploy_state,
              'logic_sha256':os.environ.get('STACK_PREPARATION_LOGIC_SHA','')}
     durable_json(tx/'journal.json',journal)
     return journal

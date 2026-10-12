@@ -23,7 +23,9 @@ case "${1:-}" in
         sync -f "$intent"
         ;;
     resume)
-        case "${L4D2_AUTOSTART:-true}" in false|0|no|off) exit 0 ;; esac
+        case "${L4D2_AUTOSTART:-true}" in
+            [fF][aA][lL][sS][eE]|0|[nN][oO]|[oO][fF][fF]) exit 0 ;;
+        esac
         [[ -f "$intent" ]] || exit 0
         while IFS= read -r name; do
             [[ "$name" == "$GAMESERVER" || "$name" =~ ^${GAMESERVER}-[0-9]+$ ]] || error_exit "Invalid saved runtime intent."
