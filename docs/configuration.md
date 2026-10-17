@@ -34,7 +34,7 @@ REPO_RESOURCES_DIR=/data/resources
 - `L4D2_INSTALL=force`: fuerza la ruta de instalacion o reparacion del servidor base.
 - `L4D2_AUTOSTART=true|false`: controla si el runtime arranca automaticamente despues del deploy.
 - `L4D2_ADDITIONAL_INSTANCES=0..N`: define cuantas instancias adicionales debe materializar y mantener sincronizadas el deploy.
-- `L4D2_STACK_AUTOUPDATE=true|false`: ejecuta `install_stack.sh update` durante el arranque del contenedor, antes de iniciar los gameservers. En instalaciones frescas se omite porque el stack ya fue aplicado por la ruta de `install`.
+- `L4D2_STACK_AUTOUPDATE=true|false`: con `true`, ejecuta `install_stack.sh update` antes de iniciar los gameservers. Con `false`, una instalación existente omite adquisición, preparación y publicación del stack, incluyendo la reutilización de paquetes cacheados y la reaplicación tras cambiar la imagen, hooks o perfil. Esos cambios quedan pendientes hasta una actualización manual. La instalación inicial sigue aplicando el stack; los comandos manuales `install_stack.sh install|update` no dependen de esta variable. Un volumen existente sin un despliegue confirmado requiere instalación o actualización manual. No modifica `L4D2_UPDATER` ni la sincronización y selección de arranque de instancias.
 - `L4D2_UPDATER=true|false`: controla el bootstrap legacy `l4d2_updater.sh` de la base competitiva.
 - `NPM_CONFIG_AUDIT=false`: evita que los comandos de LinuxGSM queden esperando el endpoint de auditoria de npm cuando GameDig ejecuta `npm install` o `npm update`. La auditoria debe realizarse separadamente durante CI o la construccion de la imagen.
 
@@ -113,6 +113,17 @@ Flujo real:
 ```
 
 `github_token_env` es opcional. Si se define, el installer toma el token desde esa variable de entorno solo para ese componente `github_release`. Si no se define, usa `GITHUB_TOKEN` como fallback global.
+
+Configura `GITHUB_TOKEN` en `.env.secrets` para evitar agotar el cupo compartido
+de peticiones anónimas al instalar varios releases. Un token de componente no
+se reutiliza automáticamente para los demás componentes. Si el token declarado
+por `github_token_env` falta, la instalación se detiene sin recurrir al token
+global. La resolución correcta de metadata evita repetir su consulta antes de
+descargar; los errores de autenticación, permisos y rate limit se escriben en
+stderr, también cuando el installer captura stdout.
+
+La regresión del resolver se verifica sin red ni credenciales reales con
+`PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s installer/tests -v`.
 
 ## Rutas relevantes
 

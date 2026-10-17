@@ -42,6 +42,10 @@ section() {
     print_divider
 }
 
+subsection() {
+    printf '\n--- %s ---\n' "$1"
+}
+
 info() {
     log "$(color_text "1;34" "INFO") : $1"
 }
@@ -132,22 +136,7 @@ extract_archive() {
     local archive_path="$1"
     local destination_dir="$2"
 
-    mkdir -p "$destination_dir"
-
-    case "$archive_path" in
-        *.zip)
-            unzip -oq "$archive_path" -d "$destination_dir"
-            ;;
-        *.tar.gz|*.tgz)
-            tar -xzf "$archive_path" -C "$destination_dir"
-            ;;
-        *.tar)
-            tar -xf "$archive_path" -C "$destination_dir"
-            ;;
-        *)
-            error_exit "Unsupported archive format: $archive_path"
-            ;;
-    esac
+    python3 "${DIR_INSTALLER_LIB:-$(dirname "${BASH_SOURCE[0]}")}/safe_extract.py" "$archive_path" "$destination_dir"
 }
 
 dir_has_entries() {
@@ -158,45 +147,8 @@ dir_has_entries() {
 
 validate_archive() {
     local archive_path="$1"
-    local validate_dir=""
-    local validate_root="${DIR_TMP:-/tmp}"
-
-    if [ ! -s "$archive_path" ]; then
-        return 1
-    fi
-
-    if ! mkdir -p "$validate_root" 2> /dev/null; then
-        validate_root="/tmp"
-        mkdir -p "$validate_root" 2> /dev/null || return 1
-    fi
-
-    case "$archive_path" in
-        *.zip)
-            unzip -tq "$archive_path" > /dev/null 2>&1
-            ;;
-        *.tar.gz|*.tgz)
-            gzip -t "$archive_path" > /dev/null 2>&1 || return 1
-            validate_dir="$(mktemp -d "${validate_root%/}/validate-tgz-XXXXXX")" || return 1
-            if tar -xzf "$archive_path" -C "$validate_dir" > /dev/null 2>&1 && dir_has_entries "$validate_dir"; then
-                rm -rf "$validate_dir"
-                return 0
-            fi
-            rm -rf "$validate_dir"
-            return 1
-            ;;
-        *.tar)
-            validate_dir="$(mktemp -d "${validate_root%/}/validate-tar-XXXXXX")" || return 1
-            if tar -xf "$archive_path" -C "$validate_dir" > /dev/null 2>&1 && dir_has_entries "$validate_dir"; then
-                rm -rf "$validate_dir"
-                return 0
-            fi
-            rm -rf "$validate_dir"
-            return 1
-            ;;
-        *)
-            return 1
-            ;;
-    esac
+    [[ -s "$archive_path" ]] || return 1
+    python3 "${DIR_INSTALLER_LIB:-$(dirname "${BASH_SOURCE[0]}")}/safe_extract.py" "$archive_path" /unused --validate > /dev/null 2>&1
 }
 
 debug_archive_validation_failure() {
@@ -235,8 +187,22 @@ debug_archive_validation_failure() {
 }
 
 error_exit() {
-    log "$(color_text "1;31" "ERROR"): $1"
+    # Failures must remain visible when the caller captures a function's stdout.
+    log "$(color_text "1;31" "ERROR"): $1" >&2
     exit 1
+}
+
+stack_log_exclusion() {
+    local target_path="$1"
+    local status="$2"
+    local display_path="$target_path"
+    if [[ -n "${DIR_LEFT4DEAD2:-}" && "$target_path" == "$DIR_LEFT4DEAD2/"* ]]; then
+        display_path="${target_path#"$DIR_LEFT4DEAD2/"}"
+    fi
+    log "Excluded path from deployment: $display_path ($status)"
+    if [[ -n "${STACK_EXCLUSION_RECORD:-}" ]]; then
+        printf '%s (%s)\n' "$display_path" "$status" >> "$STACK_EXCLUSION_RECORD"
+    fi
 }
 
 verify_and_delete_dir() {

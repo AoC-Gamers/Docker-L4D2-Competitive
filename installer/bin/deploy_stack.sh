@@ -14,16 +14,20 @@ set -euo pipefail
 source "$DIR_INSTALLER_LIB/tools_stack.sh"
 source "$DIR_INSTALLER_LIB/state_stack.sh"
 source "$DIR_INSTALLER_LIB/install_stack_runtime.sh"
+source "$DIR_INSTALLER_LIB/deployment_transaction.sh"
+source "$DIR_INSTALLER_LIB/extensions_stack.sh"
 
 state_init_paths
 
-DEPLOYMENT_ID="$(date -u +%Y%m%dT%H%M%SZ)-${STACK_PROFILE:-default}"
+DEPLOYMENT_ID="$(date -u +%Y%m%dT%H%M%S%NZ)-${STACK_PROFILE:-default}"
 DEPLOY_STATE_INITIALIZED=false
 L4D2_FRESH_INSTALL="false"
 PREVIOUS_DEPLOYMENT_ID=""
 TARGET_RESOLVED_COMPONENTS_JSON=""
 TARGET_RESOLVED_COMPONENTS_SHA256=""
+TARGET_MATERIALIZATION_SHA256=""
 STACK_UPDATED_DURING_DEPLOY="false"
+STACK_APPLY_SKIPPED="false"
 
 finalize_deploy_state() {
   local exit_code=$?
@@ -41,7 +45,11 @@ finalize_deploy_state() {
     last_error_json=$(jq -Rn --arg value "deploy_stack exited with code ${exit_code}" '$value')
   fi
 
-  state_finalize_deploy_state "$status" "$L4D2_FRESH_INSTALL" "$last_error_json"
+  local installed_profile="${STACK_PROFILE:-default}"
+  if [[ "$STACK_APPLY_SKIPPED" == true ]]; then
+    installed_profile="$(jq -r .stack.profile "$DEPLOY_STATE_FILE")"
+  fi
+  STACK_PROFILE="$installed_profile" state_finalize_deploy_state "$status" "$L4D2_FRESH_INSTALL" "$last_error_json"
 }
 
 trap finalize_deploy_state EXIT
@@ -167,6 +175,7 @@ resolve_target_stack_metadata() {
   fi
 
   TARGET_RESOLVED_COMPONENTS_JSON="$(build_resolved_components_json "$COMPONENTS_JSON" "$PROFILE_JSON")"
+  TARGET_MATERIALIZATION_SHA256="$(python3 "$DIR_INSTALLER_LIB/materialization.py" "$DIR_STACK" "$DIR_INSTALLER_LIB" "$DIR_INSTALLER_BIN" "$DIR_INSTALLER_CONFIG" "${DIR_APP:-/app}/container")"
   TARGET_RESOLVED_COMPONENTS_SHA256="$(printf '%s\n' "$TARGET_RESOLVED_COMPONENTS_JSON" | sha256sum | awk '{print $1}')"
 }
 
@@ -179,11 +188,13 @@ record_target_stack_metadata() {
   components_summary_json="$(printf '%s\n' "$TARGET_RESOLVED_COMPONENTS_JSON" | jq -c '[.[] | {id, folder, source_type, repo_url: (.repo_url // null), github_repo: (.github_repo // null), branch: (.branch // "default"), release_tag: (.release_tag // null)}]')"
 
   jq \
+    --arg materialization_sha256 "$TARGET_MATERIALIZATION_SHA256" \
     --arg stack_profile "${STACK_PROFILE:-default}" \
     --arg resolved_components_file "$STATE_RESOLVED_COMPONENTS_FILE" \
     --arg resolved_components_sha256 "$TARGET_RESOLVED_COMPONENTS_SHA256" \
     --argjson components "$components_summary_json" \
     '
+      .stack.materialization_sha256 = $materialization_sha256 |
       .stack.profile = $stack_profile |
       .stack.resolved_components_file = $resolved_components_file |
       .stack.resolved_components_sha256 = $resolved_components_sha256 |
@@ -222,11 +233,61 @@ stack_requires_reapply() {
     return 0
   fi
 
+  if [[ "$(jq -r .stack.materialization_sha256 "$previous_state_file")" != "$TARGET_MATERIALIZATION_SHA256" ]]; then
+    return 0
+  fi
+
   if [ "$previous_sha256" != "$TARGET_RESOLVED_COMPONENTS_SHA256" ]; then
     return 0
   fi
 
   return 1
+}
+
+preserve_installed_stack_metadata() {
+  local previous="$STATE_HISTORY_DIR/$PREVIOUS_DEPLOYMENT_ID"
+  local pending=false publication_receipt
+  if [[ -z "$PREVIOUS_DEPLOYMENT_ID" || ! -f "$previous/deploy-state.json" ]]; then
+    error_exit "Automatic stack installation disabled and no ready deployment is available. Run install_stack.sh install/update explicitly."
+  fi
+  if [[ "$(jq -r .status "$previous/deploy-state.json")" != ready ]]; then
+    # A recovered/committed publication may still need the parent's runtime
+    # phases. Accept only its own receipt; never bless a partial or older copy.
+    publication_receipt="$(stack_transaction_root)/journal.json"
+    if [[ ! -f "$publication_receipt" ]] || ! jq -e \
+        --arg deployment "$PREVIOUS_DEPLOYMENT_ID" \
+        --arg logic "$(jq -r '.stack.materialization_sha256 // ""' "$previous/deploy-state.json")" \
+        '.schema_version == 2 and .phase == "committed" and .deployment_id == $deployment and
+         $logic != "" and .logic_sha256 == $logic' "$publication_receipt" > /dev/null; then
+      error_exit "Automatic stack installation disabled and no ready deployment is available. Complete publication recovery or run install_stack.sh install/update explicitly."
+    fi
+    info "Using confirmed publication; deployment runtime phases still need completion"
+  fi
+  if [[ ! -f "$previous/resolved-components.json" ]] || \
+      [[ "$(state_compute_resolved_components_sha256 "$previous/resolved-components.json")" != "$(jq -r .stack.resolved_components_sha256 "$previous/deploy-state.json")" ]]; then
+    error_exit "Cannot verify installed stack metadata. Run install_stack.sh update explicitly."
+  fi
+  if stack_requires_reapply; then pending=true; fi
+  cp "$previous/resolved-components.json" "$STATE_RESOLVED_COMPONENTS_FILE"
+  jq --slurpfile previous "$previous/deploy-state.json" \
+    --arg file "$STATE_RESOLVED_COMPONENTS_FILE" \
+    --arg profile "${STACK_PROFILE:-default}" \
+    --arg definition "$TARGET_RESOLVED_COMPONENTS_SHA256" \
+    --arg logic "$TARGET_MATERIALIZATION_SHA256" --argjson pending "$pending" '
+      .stack = $previous[0].stack |
+      .components = ($previous[0].components // []) |
+      .stack.resolved_components_file = $file |
+      .stack.automatic_apply_skipped = true |
+      if $pending then
+        .stack.pending = {profile:$profile,resolved_components_sha256:$definition,materialization_sha256:$logic}
+      else del(.stack.pending) end
+    ' "$DEPLOY_STATE_FILE" > "$DEPLOY_STATE_FILE.tmp"
+  mv "$DEPLOY_STATE_FILE.tmp" "$DEPLOY_STATE_FILE"
+  STACK_APPLY_SKIPPED=true
+  info "Skipping stack acquisition, preparation and publication because L4D2_STACK_AUTOUPDATE=false"
+  if [[ "$pending" == true ]]; then
+    warn "Stack changes remain pending; run install_stack.sh update explicitly to apply them."
+  fi
 }
 
 prepare_lgsm_tooling() {
@@ -241,7 +302,7 @@ prepare_lgsm_tooling() {
   if [ "${LGSM_GITHUBBRANCH:-master}" != "master" ]; then
     warn "Non-master LGSM branch detected. Refreshing modules."
     rm -rf /app/lgsm/modules/*
-    ./"${GAMESERVER}" update-lgsm
+    ./"${GAMESERVER}" update-lgsm 8>&-
   elif [ -d "/app/lgsm/modules" ]; then
     step "Ensuring LGSM modules are executable"
     chmod +x /app/lgsm/modules/*
@@ -249,7 +310,7 @@ prepare_lgsm_tooling() {
 
   if [ "${LGSM_DEV:-false}" = "true" ]; then
     info "Developer mode enabled"
-    ./"${GAMESERVER}" developer
+    ./"${GAMESERVER}" developer 8>&-
   fi
 }
 
@@ -315,7 +376,7 @@ install_primary_instance() {
 
     if [ "$install_mode" = "force" ] || ! is_gameserver_installed; then
       step "Installing the primary instance using the official Steam method"
-      ./"${GAMESERVER}" auto-install
+      ./"${GAMESERVER}" auto-install 8>&-
       L4D2_FRESH_INSTALL="true"
       clean_steam_password
       success "Primary instance installation completed"
@@ -323,7 +384,7 @@ install_primary_instance() {
     fi
 
     info "Skipping installation because the primary instance is already installed"
-    ./"${GAMESERVER}" sponsor
+    ./"${GAMESERVER}" sponsor 8>&-
     clean_steam_password
     return 0
   fi
@@ -351,15 +412,22 @@ apply_stack_if_needed() {
   section "Apply stack"
 
   if [ "$L4D2_FRESH_INSTALL" = "true" ]; then
+    record_target_stack_metadata
     step "Installing stack files"
-    bash "$DIR_INSTALLER_BIN/install_stack.sh" install
+    STACK_DEFER_RESUME=true bash "$DIR_INSTALLER_BIN/install_stack.sh" install
     STACK_UPDATED_DURING_DEPLOY="true"
     return 0
   fi
 
+  if ! is_stack_autoupdate_enabled; then
+    preserve_installed_stack_metadata
+    return 0
+  fi
+
+  record_target_stack_metadata
   if stack_requires_reapply; then
     step "Applying stack update because the resolved stack definition changed"
-    bash "$DIR_INSTALLER_BIN/install_stack.sh" update
+    STACK_DEFER_RESUME=true STACK_REUSE_SOURCES=false bash "$DIR_INSTALLER_BIN/install_stack.sh" update
     STACK_UPDATED_DURING_DEPLOY="true"
     return 0
   fi
@@ -386,7 +454,8 @@ run_stack_autoupdate_before_start() {
   fi
 
   step "Running install_stack.sh update before server startup"
-  bash "$DIR_INSTALLER_BIN/install_stack.sh" 1
+  STACK_DEFER_RESUME=true bash "$DIR_INSTALLER_BIN/install_stack.sh" 1
+  STACK_UPDATED_DURING_DEPLOY=true
 }
 
 prepare_user_profile() {
@@ -443,32 +512,57 @@ start_runtime() {
 
   additional_instances_target="$(get_target_additional_instances)"
   step "Synchronizing runtime instances (additional: ${additional_instances_target})"
-  "$DIR_INSTALLER_BIN/sync_instances.sh" "$additional_instances_target"
+  if [[ "$STACK_UPDATED_DURING_DEPLOY" != true ]]; then
+    STACK_TRANSACTION="$(stack_transaction_root)"
+    mkdir -p "$STACK_TRANSACTION"
+    stack_quiesce_instances
+    "$DIR_INSTALLER_BIN/sync_instances.sh" "$additional_instances_target"
+    stack_run_extension after-sync
+    stack_resume_instances
+  else
+    STACK_TRANSACTION="$(stack_transaction_root)"
+    stack_resume_instances
+  fi
 
   if ! is_l4d2_autostart_enabled; then
     warn "Skipping start because L4D2_AUTOSTART=false"
     return 0
   fi
 
+  if [[ -n "$PREVIOUS_DEPLOYMENT_ID" && "$L4D2_FRESH_INSTALL" != true ]]; then
+    if [[ "${STACK_CONTAINER_BOOT:-false}" == true ]]; then
+      bash "$DIR_INSTALLER_BIN/runtime_intent.sh" resume
+    fi
+    info "Existing deployment: preserving the instance start/stop selection"
+    return 0
+  fi
   step "Starting runtime through menu_stack.sh"
   bash "$DIR_INSTALLER_BIN/menu_stack.sh" start
 }
 
-initialize_deploy_state
-resolve_target_stack_metadata
-record_target_stack_metadata
-prepare_lgsm_tooling
-prepare_user_profile
-install_primary_instance
-prepare_steam_runtime_libraries
-apply_stack_if_needed
+main() {
+  stack_acquire_target_lock
+  stack_recover_interrupted
+  initialize_deploy_state
+  export STACK_DEPLOY_OWNER_PID=$$
+  resolve_target_stack_metadata
+  prepare_lgsm_tooling
+  prepare_user_profile
+  install_primary_instance
+  prepare_steam_runtime_libraries
+  apply_stack_if_needed
 
-section "Update runtime patches"
-step "Running L4D2 updater bootstrap"
-bash /app/container/bootstrap/l4d2_updater.sh
+  section "Update runtime patches"
+  step "Running L4D2 updater bootstrap"
+  bash /app/container/bootstrap/l4d2_updater.sh
 
-run_stack_autoupdate_before_start
+  run_stack_autoupdate_before_start
 
-start_runtime
+  start_runtime
 
-success "Deployment orchestration completed"
+  success "Deployment orchestration completed"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

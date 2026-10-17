@@ -1,91 +1,110 @@
-name: Construcción y Publicación de Imagen Docker
-
-run-name: >-
-  Docker Competitive (${{
-    github.event_name == 'workflow_dispatch' &&
-    format('{0}/{1}', github.event.inputs.trigger_source || 'manual', github.event.inputs.trigger_channel || github.ref_name) ||
-    format('push/{0}', github.ref_name)
-  }})
-
+name: Build and publish Docker competitive
 on:
   workflow_dispatch:
     inputs:
       trigger_source:
-        description: Repo o flujo que disparo esta ejecucion
+        description: Initiating repository
         required: false
         default: manual
       trigger_channel:
-        description: Canal esperado (develop o latest)
+        description: Convenience channel
         required: false
         default: manual
+      parent_image:
+        description: Exact parent image reference (repository@sha256:digest)
+        required: false
   push:
-    branches:
-      - main
-      - develop
-
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
 permissions:
   contents: read
   packages: write
-
+concurrency:
+  group: docker-competitive-${{ github.ref }}
+  cancel-in-progress: false
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
-
 jobs:
-  build-and-push:
+  validate:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Obtener el repositorio
-        uses: actions/checkout@v6
-
-      - name: Configurar Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Iniciar sesión en GHCR
-        uses: docker/login-action@v3
+      - uses: actions/checkout@v6
+      - name: Validate Bash and offline regressions
+        run: bash scripts/test-stack.sh
+  build-and-push:
+    if: github.event_name != 'pull_request'
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GHCR_PAT }}
+      - name: Resolve exact parent and channel
+        id: parent
+        env:
+          REQUESTED_PARENT: ${{ inputs.parent_image }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          channel=latest
+          [[ "$GITHUB_REF_NAME" != develop ]] || channel=develop
+          parent="gameservermanagers/linuxgsm:ubuntu-24.04"
+          if [[ -n "$REQUESTED_PARENT" ]]; then
+            [[ "$REQUESTED_PARENT" =~ ^gameservermanagers/linuxgsm@sha256:[a-f0-9]{64}$ ]] || { echo 'Invalid parent digest reference' >&2; exit 1; }
+            parent="$REQUESTED_PARENT"
+          fi
+          metadata=$(docker buildx imagetools inspect "$parent" --format '{{json .Manifest}}')
+          digest=$(jq -r .digest <<< "$metadata")
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          reference="gameservermanagers/linuxgsm@$digest"
+          echo "image=$reference" >> "$GITHUB_OUTPUT"
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+          jq -n --arg parent "$reference" --arg revision "$GITHUB_SHA" --arg run "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" '{parent:$parent,revision:$revision,run:$run}' > build-identity.json
 
-      - name: Construir y publicar imagen Docker para develop
-        if: ${{ github.ref == 'refs/heads/develop' }}
+      - name: Build and publish exact construction
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
           push: true
-          provenance: false
-          sbom: false
-          tags: ghcr.io/aoc-gamers/lgsm-l4d2-competitive:develop
-
-      - name: Construir y publicar imagen Docker para main
-        if: ${{ github.ref == 'refs/heads/main' }}
-        uses: docker/build-push-action@v7
+          provenance: mode=max
+          sbom: true
+          build-args: |
+            BASE_IMAGE=${{ steps.parent.outputs.image }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.base.name=${{ steps.parent.outputs.image }}
+          tags: |
+            ghcr.io/aoc-gamers/lgsm-l4d2-competitive:${{ steps.parent.outputs.channel }}
+            ghcr.io/aoc-gamers/lgsm-l4d2-competitive:build-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Record resulting digest
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          jq --arg digest "$IMAGE_DIGEST" '. + {digest:$digest}' build-identity.json > build-identity.tmp
+          mv build-identity.tmp build-identity.json
+          cat build-identity.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v6
         with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          provenance: false
-          sbom: false
-          tags: ghcr.io/aoc-gamers/lgsm-l4d2-competitive:latest
-
-      - name: Activar Workflow AoC para develop
-        if: ${{ github.ref == 'refs/heads/develop' }}
+          name: build-identity
+          path: build-identity.json
+      - name: Dispatch child with the published parent digest
+        if: vars.AOC_PAUSE_CHILD_DISPATCH != 'true'
+        env:
+          DISPATCH_TOKEN: ${{ secrets.TOKEN_WEBHOOK }}
+          PUBLISHED_DIGEST: ${{ steps.build.outputs.digest }}
+          CHANNEL: ${{ steps.parent.outputs.channel }}
+        shell: bash
         run: |
+          set -euo pipefail
+          body=$(jq -n --arg ref "$GITHUB_REF_NAME" --arg channel "$CHANNEL" --arg image "ghcr.io/aoc-gamers/lgsm-l4d2-competitive@$PUBLISHED_DIGEST" '{ref:$ref,inputs:{trigger_source:"Docker-L4D2-Competitive",trigger_channel:$channel,parent_image:$image}}')
           curl --fail --silent --show-error -X POST \
-            https://api.github.com/repos/AoC-Gamers/Docker-L4D2-AoC/actions/workflows/docker-image.yml/dispatches \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.TOKEN_WEBHOOK }}" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            -d '{"ref":"develop","inputs":{"trigger_source":"docker-l4d2-competitive","trigger_channel":"develop"}}'
-
-      - name: Activar Workflow AoC para main
-        if: ${{ github.ref == 'refs/heads/main' }}
-        run: |
-          curl --fail --silent --show-error -X POST \
-            https://api.github.com/repos/AoC-Gamers/Docker-L4D2-AoC/actions/workflows/docker-image.yml/dispatches \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.TOKEN_WEBHOOK }}" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            -d '{"ref":"main","inputs":{"trigger_source":"docker-l4d2-competitive","trigger_channel":"latest"}}'
+            'https://api.github.com/repos/AoC-Gamers/Docker-L4D2-AoC/actions/workflows/docker-image.yml/dispatches' \
+            -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $DISPATCH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" -d "$body"

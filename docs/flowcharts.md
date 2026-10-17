@@ -22,30 +22,20 @@ graph TD
 
 ```mermaid
 graph TD
-    A[stack/manifests/components.json] --> D[install_stack.sh]
-    B[stack/profiles/STACK_PROFILE.json] --> D
-    X[BRANCH_* y RELEASE_TAG_*] --> D
-    D --> E{source_type}
-    E -->|git| F[git clone o cache]
-    E -->|github_release| G[GitHub API, download y extract]
-    F --> H[hook por componente]
-    G --> H
-    H --> I[/data/serverfiles]
+    A[Manifiesto, perfil y overrides] --> B[Validar contratos y tomar bloqueo del destino]
+    B --> C[1. Obtener originales exactos en caché persistente]
+    C --> D[2. Reutilizar preparación o expandir y ejecutar hooks en candidato]
+    D --> E[Políticas finales, conservación y validación]
+    E --> F[3. Publicar con diario y consumidores coordinados]
+    F --> G{Resultado}
+    G -->|éxito| H[Sincronizar, reconciliar, confirmar y limpiar payload]
+    G -->|fallo| I[Restaurar publicación anterior]
+    I --> J[Conservar evidencia y estado failed]
 ```
 
-## Flujo de update
-
-```mermaid
-graph TD
-    A[menu_stack.sh update] --> B[install_stack.sh update]
-    B --> C[preserve-paths.json]
-    C --> D[backup temporal]
-    D --> E[limpieza de sourcemod y cfg]
-    E --> F[descarga o cache por componente]
-    F --> G[ejecucion de hooks]
-    G --> H[restauracion de paths preservados]
-    H --> I[stack actualizado]
-```
+Instalación y actualización comparten este flujo. Una publicación interrumpida
+se recupera bajo el mismo bloqueo antes de preparar otra. No se limpia el stack
+operativo antes de descargar. Véase [el contrato completo](artifact-flow.md).
 
 ## Mapa conceptual
 

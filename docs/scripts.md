@@ -1,3 +1,5 @@
+> Ciclo vigente de preparación, publicación y recuperación: [Fiabilidad](reliability.md). Esta referencia conserva los comandos históricos; las garantías nuevas están descritas en ese documento.
+
 # Documentacion de Scripts
 
 ## Tabla de Contenidos
@@ -26,6 +28,9 @@ Competitive ya no organiza su logica operativa como `docker-scripts/` y `server-
 ### `container/entrypoint.sh`
 
 Punto de entrada del contenedor. Exporta variables, prepara el runtime y ejecuta los scripts de `container/bootstrap/`.
+La normalización de propietario omite enlaces simbólicos y el montaje de
+recursos. Los permisos de ejecución se habilitan solo en entrypoints de runtime;
+no se aplica chmod recursivo sobre `/data`, originales Git, ZIP ni cachés.
 
 ### `container/entrypoint-user.sh`
 
@@ -33,7 +38,7 @@ Orquesta la fase de usuario LinuxGSM. Su flujo principal es:
 
 1. Ejecutar `deploy_stack.sh`.
 2. Preparar o reparar L4D2 cuando corresponde.
-3. Resolver el stack efectivo y reaplicarlo si cambio.
+3. Resolver el stack efectivo. En instalaciones existentes, omitir adquisición, preparación y publicación con `L4D2_STACK_AUTOUPDATE=false`; con `true`, permitir la actualización. La instalación inicial y las actualizaciones manuales siguen disponibles.
 4. Sincronizar instancias con `sync_instances.sh`.
 5. Lanzar `menu_stack.sh` para arranque u operacion del runtime.
 
@@ -67,10 +72,11 @@ Es el comando principal del framework. Resuelve e instala el stack a partir de `
 Capacidades:
 
 - soporta `source_type=git`
-- soporta `source_type=github_release`
+- soporta `source_type=github_release` y archivos directos `source_type=archive` con SHA-256 esperado
 - resuelve assets por nombre exacto o `asset_name_glob`
 - mantiene cache persistente por perfil en `/data/installer/state/cache/`
-- usa un workspace temporal aislado por corrida bajo `/app/tmp/install_stack/`
+- conserva originales, expansiones y salidas preparadas bajo `/data/installer/cache/`; workspace editable por perfil/destino
+- publica sin backups, conserva el candidato si falla para reintento manual y lo elimina al confirmar; ver [flujo de artefactos](artifact-flow.md)
 - puede degradar a reuse de cache local si la fuente remota no responde, siempre que el cache corresponda a la misma fuente efectiva
 - ejecuta hooks desde `stack/hooks/`
 
@@ -97,8 +103,8 @@ Gestiona la sincronizacion de multiples instancias de L4D2 basadas en la instanc
 Comportamiento actual:
 
 - crea instancias faltantes
-- rehace el layout `sourcemodN` aunque ya exista
-- elimina instancias sobrantes cuando baja la topologia objetivo
+- refresca los enlaces de `sourcemodN` en su lugar, conservando datos particulares y logs dentro de cada instancia
+- retira ejecutables de instancias sobrantes y conserva sus configuraciones y datos particulares
 - mezcla enlaces simbolicos y copias reales segun `installer/config/instances_exclude.json`
 - persiste el resultado en `instances-state.json`
 
@@ -113,7 +119,7 @@ Comportamiento actual:
 }
 ```
 
-Con eso, `data/dumps` y `data/sqlite/local-backups` se copian fisicamente a cada instancia, mientras el resto de `data/` puede seguir enlazado.
+Con eso, esas rutas son particulares de cada instancia. Los datos existentes se conservan en su lugar y las rutas nuevas empiezan vacías; no se copian los dumps ni bases de datos vivas de la primaria. El resto de `data/` puede seguir enlazado.
 
 ### `installer/bin/menu_stack.sh`
 
@@ -121,7 +127,7 @@ Menu operativo del entorno LinuxGSM para iniciar, detener, reiniciar y consultar
 
 Notas de flujo:
 
-- el update automatico hace stop/update/start
+- el update automatico conserva la selección de instancias activas y respeta L4D2_AUTOSTART
 - el update manual hace stop/update y deja las instancias detenidas para arranque explicito
 - si detecta drift entre runtime e `instances-state.json`, ejecuta `sync_instances.sh`
 

@@ -69,3 +69,5 @@ graph TD
 
 - repositorio: https://github.com/AoC-Gamers/Docker-L4D2-Competitive
 - issues: https://github.com/AoC-Gamers/Docker-L4D2-Competitive/issues
+
+- [Artefactos persistentes y despliegue en tres fases](artifact-flow.md)

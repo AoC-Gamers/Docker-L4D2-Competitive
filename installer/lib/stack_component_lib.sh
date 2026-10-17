@@ -14,6 +14,8 @@
 #
 # When adding new helpers, keep them in the section that matches their purpose.
 
+source "${DIR_INSTALLER_LIB:-$(dirname "${BASH_SOURCE[0]}")}/artifact_cache.sh"
+
 #######################################
 # Environment helpers
 #######################################
@@ -47,6 +49,7 @@ stack_sync_dir() {
     fi
 
     mkdir -p "$target_root"
+    subsection "Copy artifact tree: $(basename "$source_dir")"
     cp -r "$source_dir" "$target_root"
 }
 
@@ -99,9 +102,11 @@ stack_sync_file() {
         return 0
     fi
 
-    verify_and_delete_file "$target_file"
     mkdir -p "$target_root"
-    cp "$source_file" "$target_file"
+    subsection "Copy artifact file: $(basename "$source_file")"
+    # Replace the directory entry as part of copying; never follow a destination
+    # symlink or report normal replacement as an exclusion/missing file.
+    cp -T --remove-destination -- "$source_file" "$target_file"
 }
 
 stack_install_named_files_if_present() {
@@ -207,17 +212,38 @@ stack_move_plugins_to_custom() {
 
 stack_remove_paths_if_present() {
     local target_path=""
+    local status=0
     for target_path in "$@"; do
-        if [ -d "$target_path" ]; then
-            rm -rf "$target_path"
-            log "Excluded path from deployment: ${target_path#$DIR_LEFT4DEAD2/}"
+        if [[ -L "$target_path" || -f "$target_path" ]]; then
+            status=0
+            rm -f -- "$target_path" || status=$?
+        elif [[ -d "$target_path" ]]; then
+            status=0
+            rm -rf -- "$target_path" || status=$?
+        elif [[ -e "$target_path" ]]; then
+            stack_log_exclusion "$target_path" failed >&2
+            error_exit "Excluded artifact is not a file, directory or symlink: $target_path"
+        else
+            stack_log_exclusion "$target_path" absent
             continue
         fi
-
-        if [ -f "$target_path" ]; then
-            rm -f "$target_path"
-            log "Excluded path from deployment: ${target_path#$DIR_LEFT4DEAD2/}"
+        if (( status != 0 )); then
+            stack_log_exclusion "$target_path" failed >&2
+            return "$status"
         fi
+        stack_log_exclusion "$target_path" removed
+    done
+}
+
+stack_remove_files_if_present() {
+    local target_path=""
+    for target_path in "$@"; do
+        # A declared file exclusion must never recursively remove a directory.
+        if [[ -e "$target_path" && ! -f "$target_path" && ! -L "$target_path" ]]; then
+            stack_log_exclusion "$target_path" failed >&2
+            error_exit "Excluded artifact is not a regular file or symlink: $target_path"
+        fi
+        stack_remove_paths_if_present "$target_path" || return
     done
 }
 
@@ -274,87 +300,30 @@ stack_download_release_tarball_if_changed() {
     local download_url="$2"
     local file_pattern="$3"
 
-    local remote_filename=""
-    local remote_git=""
-    local local_file=""
-    local local_git=""
-    local target_file=""
-    local temp_file=""
-    local invalid_file=""
-    local file_size=""
-    local timeout=60
-
-    remote_filename=$(stack_get_filename_from_url "$download_url")
-    if [ -z "$remote_filename" ]; then
-        log "Error: Could not get the filename for ${package_name} from the URL." >&2
-        return 1
+    local record="${STACK_HOOK_ASSETS_FILE:-${DIR_INSTALLER_STATE:-/data/installer/state}/hook-assets.json}"
+    local filename archive sha resolved_url metadata
+    local -a resolved=()
+    local previous='{}'
+    mkdir -p "$(dirname "$record")"
+    [[ ! -f "$record" ]] || previous="$(cat "$record")"
+    if [[ "${STACK_REUSE_SOURCES:-false}" == true || "${STACK_PREPARED_HOOK_ASSETS:-false}" == true ]] && jq -e --arg name "$package_name" '.[$name]' <<< "$previous" >/dev/null; then
+        archive="$(jq -r --arg name "$package_name" '.[$name].cache_path' <<< "$previous")"
+        sha="$(jq -r --arg name "$package_name" '.[$name].sha256' <<< "$previous")"
+        [[ -f "$archive" && "$(sha256sum "$archive" | cut -d' ' -f1)" == "$sha" ]] || error_exit "Pinned hook asset unavailable: $package_name. Restore its cache or request an explicit update."
+        printf '%s\n' "$archive"
+        return 0
     fi
-    log "The remote filename for ${package_name} is: ${remote_filename}" >&2
-
-    remote_git=$(echo "$remote_filename" | grep -oE 'git[0-9]+' || true)
-    target_file="$DIR_TMP/$remote_filename"
-
-    local_file=$(ls $file_pattern 2>/dev/null | head -n 1 || true)
-    if [ -z "$local_file" ]; then
-        log "No local file found matching the pattern: $file_pattern" >&2
-    else
-        local_git=$(echo "$local_file" | grep -oE 'git[0-9]+' || true)
-        log "Local version of ${package_name}: ${local_git:-unknown}" >&2
-    fi
-
-    if [ -n "$local_file" ] && [ -n "$remote_git" ] && [ "$local_git" = "$remote_git" ]; then
-        if validate_archive "$local_file"; then
-            log "${package_name} is already up to date (version ${local_git})." >&2
-            printf '%s\n' "$local_file"
-            return 0
-        fi
-
-        log "Local archive for ${package_name} is corrupt or incomplete. Re-downloading ${local_file}." >&2
-        verify_and_delete_file "$local_file" >&2
-    fi
-
-    log "${package_name} is outdated or has no local copy. Downloading version ${remote_git:-unknown}." >&2
-    temp_file="${target_file}.part.$$"
-    verify_and_delete_file "$temp_file" >&2
-    mkdir -p "$DIR_TMP"
-
-    if ! wget -O "$temp_file" -q "$download_url"; then
-        verify_and_delete_file "$temp_file" >&2
-        log "Error: The download of ${package_name} failed." >&2
-        return 1
-    fi
-
-    while [ ! -s "$temp_file" ] && [ $timeout -gt 0 ]; do
-        sleep 1
-        timeout=$((timeout-1))
-    done
-
-    if [ ! -s "$temp_file" ]; then
-        verify_and_delete_file "$temp_file" >&2
-        log "Error: The download of ${package_name} did not complete in the expected time." >&2
-        return 1
-    fi
-
-    if ! validate_archive "$temp_file"; then
-        invalid_file="${target_file}.invalid.$$"
-        file_size="$(wc -c < "$temp_file" 2> /dev/null | tr -d '[:space:]' || true)"
-        log "Error: The downloaded archive for ${package_name} failed validation." >&2
-        log "Preserving invalid download for inspection at ${invalid_file} (size: ${file_size:-unknown} bytes)." >&2
-        df -h "$DIR_TMP" >&2 || true
-        mv -f "$temp_file" "$invalid_file"
-        debug_archive_validation_failure "$invalid_file"
-        return 1
-    fi
-
-    mv -f "$temp_file" "$target_file"
-
-    if [ -n "$local_file" ] && [ -n "$remote_git" ] && [ "$local_git" != "$remote_git" ]; then
-        verify_and_delete_file "$local_file" >&2
-        log "The old version of ${package_name} ($local_file) was deleted." >&2
-    fi
-
-    log "${package_name} updated to version ${remote_git:-unknown}." >&2
-    printf '%s\n' "$target_file"
+    metadata="$(stack_resolve_archive_url "$download_url")" || return 1
+    mapfile -t resolved <<< "$metadata"
+    filename="${resolved[0]:-}"
+    resolved_url="${resolved[1]:-}"
+    [[ "$filename" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ && "$filename" != *..* && -n "$resolved_url" ]] || error_exit "Invalid asset filename for $package_name."
+    archive="$(stack_acquire_original_archive "$resolved_url" "" "$filename")" || return 1
+    sha="$(sha256sum "$archive" | cut -d' ' -f1)"
+    jq --arg name "$package_name" --arg sha "$sha" --arg path "$archive" --arg asset "$filename" \
+        '.[$name]={asset:$asset,sha256:$sha,cache_path:$path,verification:"content identity only"}' <<< "$previous" > "$record.tmp"
+    mv "$record.tmp" "$record"
+    printf '%s\n' "$archive"
 }
 
 stack_require_local_archive() {
@@ -384,11 +353,34 @@ stack_extract_cached_archive_by_sha() {
     fi
 
     if [ "$cached_sha256" != "$current_sha256" ]; then
-        verify_and_delete_dir "$extract_root"
+        # stdout is the digest consumed by build-cache keys, not diagnostics.
+        verify_and_delete_dir "$extract_root" >&2
         mkdir -p "$extract_root"
         extract_archive "$archive_path" "$extract_root"
         printf '%s\n' "$current_sha256" > "$stamp_file"
     fi
 
     printf '%s\n' "$current_sha256"
+}
+
+# Optional overlays share one versioned contract across inherited images.
+deploy_optional_archive_tree_if_present() {
+    python3 "$DIR_INSTALLER_LIB/overlay_stack.py" "$1" "$2" "$3" "$4" "$5" \
+        "${OPTIONAL_OVERLAY_STATE_DIR:-${DIR_INSTALLER_STATE:-/data/installer/state}/optional-overlays}"
+}
+
+# Resolve the public hook archive once; download that exact URL rather than
+# resolving a mobile latest.php channel again. Never persist signed URLs.
+stack_resolve_archive_url() {
+    local url="$1" headers effective filename
+    mkdir -p "$DIR_TMP"
+    headers="$(mktemp "$DIR_TMP/archive-headers.XXXXXX")"
+    if ! effective="$(curl -fsSLI -D "$headers" -o /dev/null -w '%{url_effective}' "$url")"; then
+        rm -f "$headers"
+        return 1
+    fi
+    filename="$(sed -nE 's/.*filename="?([^";[:space:]]+).*/\1/p' "$headers" | tail -n 1 | tr -d '\r')"
+    rm -f "$headers"
+    [[ -n "$filename" ]] || filename="$(basename "${effective%%\?*}")"
+    printf '%s\n%s\n' "$filename" "$effective"
 }

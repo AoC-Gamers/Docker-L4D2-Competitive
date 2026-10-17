@@ -85,3 +85,18 @@ instance_for_each_in_range() {
         "$callback" "$index" "$executable"
     done
 }
+
+# LinuxGSM socket contract: session=selfname, socket=selfname-<datadir/selfname.uid>.
+# Legacy sockets are checked too. This is deployment coordination, never healthcheck.
+# Runtime commands close FD 8 only in the child; the orchestrator keeps its lock.
+instance_is_running() {
+    local name="$1" uid_file uid_value
+    uid_file="${LGSM_DATADIR:-${DIR_APP:-/app}/lgsm/data}/$name.uid"
+    command -v tmux >/dev/null || error_exit "tmux is required to coordinate publication."
+    if [[ -f "$uid_file" ]]; then
+        uid_value="$(tr -d '\r\n' < "$uid_file")"
+        [[ "$uid_value" =~ ^[a-f0-9]{8}$ ]] || error_exit "Invalid LinuxGSM instance UID: $name"
+        if tmux -L "$name-$uid_value" has-session -t "=$name" 8>&- 2>/dev/null; then return 0; fi
+    fi
+    tmux -L "$name" has-session -t "=$name" 8>&- 2>/dev/null || tmux has-session -t "=$name" 8>&- 2>/dev/null
+}

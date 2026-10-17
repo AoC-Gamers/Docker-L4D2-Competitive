@@ -29,6 +29,7 @@ GIT_DOWNLOAD="${3:-false}"
 # Auxiliary functions:
 ##############################
 CopyFiles() {
+    :
 }
 
 ##############################

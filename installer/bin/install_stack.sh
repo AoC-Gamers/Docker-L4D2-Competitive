@@ -18,6 +18,8 @@ set -euo pipefail
 source "$DIR_INSTALLER_LIB/tools_stack.sh"
 source "$DIR_INSTALLER_LIB/state_stack.sh"
 source "$DIR_INSTALLER_LIB/install_stack_runtime.sh"
+source "$DIR_INSTALLER_LIB/deployment_transaction.sh"
+source "$DIR_INSTALLER_LIB/extensions_stack.sh"
 
 state_init_paths
 
@@ -29,7 +31,7 @@ LEGACY_LOG_FILE="$DIR_INSTALLER_BIN/install_stack.log"
 INSTALLER_MANAGED_DEPLOY_STATE=false
 DEPLOYMENT_ID=""
 RESOLVED_COMPONENTS_JSON=""
-DIR_TMP_ROOT="${DIR_TMP}"
+DIR_TMP_ROOT="${STACK_WORK_ROOT:-${DIR_INSTALLER}/cache/work}"
 INSTALL_TMP_DIR=""
 CACHE_FILE=""
 CACHE_LOCK_FILE=""
@@ -52,13 +54,13 @@ ensure_deploy_state_context() {
     state_ensure_directories
     current_status="$(state_get_current_deployment_status)"
 
-    if [[ "$current_status" == "preparing" || "$current_status" == "installing" ]]; then
+    if [[ "${STACK_DEPLOY_OWNER_PID:-}" == "$PPID" && ( "$current_status" == preparing || "$current_status" == installing ) ]]; then
         return 0
     fi
 
     previous_deployment_id="$(state_archive_current_deployment)"
 
-    DEPLOYMENT_ID="$(date -u +%Y%m%dT%H%M%SZ)-${STACK_PROFILE:-default}"
+    DEPLOYMENT_ID="$(date -u +%Y%m%dT%H%M%S%NZ)-${STACK_PROFILE:-default}"
     state_create_deploy_state "$DEPLOYMENT_ID" "$previous_deployment_id" "installing" "${STACK_PROFILE:-default}" "$STATE_RESOLVED_COMPONENTS_FILE" "" "${GAMESERVER:-}"
     INSTALLER_MANAGED_DEPLOY_STATE=true
 }
@@ -87,12 +89,13 @@ initialize_install_workspace() {
     local stack_profile_slug=""
     local cache_namespace=""
 
-    stack_profile_slug="$(printf '%s\n' "${STACK_PROFILE:-default}" | tr -c '[:alnum:]_.-' '_')"
+    stack_profile_slug="$(printf '%s' "${STACK_PROFILE:-default}" | tr -c '[:alnum:]_.-' '_')"
     cache_namespace="${stack_profile_slug:-default}"
 
-    # Keep a stable temp root per profile so downloaded artifacts can be reused
-    # across install/update runs until the container itself is removed.
-    INSTALL_TMP_DIR="${DIR_TMP_ROOT}/install_stack/${cache_namespace}"
+    # Persistent, editable workspace; pristine sources and prepared effects are separate.
+    local target_key
+    target_key="$(realpath -m "$DIR_LEFT4DEAD2" | sha256sum | cut -d' ' -f1)"
+    INSTALL_TMP_DIR="${DIR_TMP_ROOT}/install_stack/${cache_namespace}/${target_key}"
     DIR_TMP="$INSTALL_TMP_DIR"
     SOURCES_CACHE_DIR="${STATE_ROOT}/sources/${cache_namespace}"
 
@@ -108,53 +111,16 @@ initialize_install_workspace() {
         touch "$CACHE_FILE"
     fi
 
-    info "Temporary workspace root: $DIR_TMP"
+    export STACK_ARTIFACT_CACHE="${STACK_ARTIFACT_CACHE:-${DIR_INSTALLER}/cache/artifacts}"
+    export STACK_PREPARED_CACHE="${STACK_PREPARED_CACHE:-${DIR_INSTALLER}/cache/prepared}"
+    export DIR_TMP
+    info "Persistent editable workspace: $DIR_TMP"
     info "Component cache: $CACHE_FILE"
     info "Component sources: $SOURCES_CACHE_DIR"
 }
 
-acquire_install_lock() {
-    local stack_profile_slug=""
-    local cache_namespace=""
-
-    stack_profile_slug="$(printf '%s\n' "${STACK_PROFILE:-default}" | tr -c '[:alnum:]_.-' '_')"
-    cache_namespace="${stack_profile_slug:-default}"
-
-    mkdir -p "${STATE_ROOT}/locks"
-    INSTALL_LOCK_FILE="${STATE_ROOT}/locks/${cache_namespace}.lock"
-    INSTALL_LOCK_DIR="${INSTALL_LOCK_FILE}.d"
-
-    if command -v flock > /dev/null 2>&1; then
-        exec 8>"$INSTALL_LOCK_FILE"
-        step "Waiting for install_stack lock: $INSTALL_LOCK_FILE"
-        flock 8
-        INSTALL_LOCK_MODE="flock"
-        info "Acquired install_stack lock for profile ${cache_namespace}"
-        return 0
-    fi
-
-    step "Waiting for install_stack lock directory: $INSTALL_LOCK_DIR"
-    until mkdir "$INSTALL_LOCK_DIR" 2> /dev/null; do
-        sleep 1
-    done
-
-    INSTALL_LOCK_MODE="mkdir"
-    info "Acquired install_stack lock for profile ${cache_namespace}"
-}
-
-release_install_lock() {
-    case "$INSTALL_LOCK_MODE" in
-        flock)
-            flock -u 8 || true
-            exec 8>&-
-            ;;
-        mkdir)
-            if [[ -n "$INSTALL_LOCK_DIR" && -d "$INSTALL_LOCK_DIR" ]]; then
-                rmdir "$INSTALL_LOCK_DIR" || true
-            fi
-            ;;
-    esac
-}
+acquire_install_lock() { stack_acquire_target_lock; }
+release_install_lock() { :; } # Closing this process releases its inherited descriptor.
 
 cleanup_install_workspace() {
     :
@@ -162,6 +128,9 @@ cleanup_install_workspace() {
 
 handle_install_stack_exit() {
     local exit_code=$?
+    if [[ "$exit_code" -ne 0 && -n "${STACK_TRANSACTION:-}" && -f "$STACK_TRANSACTION/journal.json" ]]; then
+        stack_handle_transaction_failure || true
+    fi
     finalize_installer_deploy_state "$exit_code"
     release_install_lock
     cleanup_install_workspace
@@ -182,6 +151,11 @@ update_deploy_state_installer_metadata() {
     fi
 
     state_update_deploy_install_metadata "$INSTALL_TYPE" "$STATE_RESOLVED_COMPONENTS_FILE" "$resolved_components_sha256" "$resolved_components_summary_json"
+    local logic_sha
+    logic_sha="$(python3 "$DIR_INSTALLER_LIB/materialization.py" "$DIR_STACK" "$DIR_INSTALLER_LIB" "$DIR_INSTALLER_BIN" "$DIR_INSTALLER_CONFIG" "${DIR_APP:-/app}/container")"
+    export STACK_PREPARATION_LOGIC_SHA="$logic_sha"
+    jq --arg sha "$logic_sha" '.stack.materialization_sha256=$sha' "$DEPLOY_STATE_FILE" > "$DEPLOY_STATE_FILE.tmp"
+    mv "$DEPLOY_STATE_FILE.tmp" "$DEPLOY_STATE_FILE"
 }
 
 #####################################################
@@ -233,8 +207,9 @@ else
     esac
 fi
 
-ensure_deploy_state_context
 acquire_install_lock
+stack_recover_interrupted
+ensure_deploy_state_context
 initialize_install_logging
 update_deploy_state_installer_metadata
 
@@ -249,20 +224,17 @@ info "Profile file: $PROFILE_JSON"
 initialize_install_workspace
 
 #####################################################
-# Process cleaning in case of update
-if [ "$INSTALL_TYPE" == "update" ]; then
-    prepare_update_cleanup
-fi
-
-#####################################################
-# Source installation
-apply_stack_sources
-
-#####################################################
-# Shared post-install maintenance
-section "Post-install maintenance"
-step "Running shared GeoIP updater"
-bash "$DIR_INSTALLER_BIN/geoip_update.sh"
+# Preparation never cleans the active server. Failed publication requires manual retry.
+validate_stack_hooks
+stack_validate_extensions
+stack_prepare_transaction
+section "Phase 1/3: acquire exact original sources"
+prepare_stack_sources
+export STACK_PREPARED_SOURCES_FILE="$STACK_TRANSACTION/prepared-sources.json"
+section "Phase 2/3: prepare and validate candidate"
+stack_run_candidate
+section "Phase 3/3: publish prepared files (manual retry on failure)"
+stack_publish_transaction
 
 section "Stack ${INSTALL_TYPE} completed"
 success "L4D2 competitive stack finished successfully"

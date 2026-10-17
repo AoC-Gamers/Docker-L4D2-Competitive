@@ -16,6 +16,8 @@ source "$DIR_INSTALLER_LIB/instance_stack.sh"
 : "${GAMESERVER:?GAMESERVER no esta definido.}"
 
 state_init_paths
+source "$DIR_INSTALLER_LIB/target_lock.sh"
+stack_acquire_target_lock
 
 render_kv() {
     printf '%-28s %s\n' "$1" "$2"
@@ -83,17 +85,20 @@ menu() {
 start_servers() {
     local start_range=$1 end_range=$2
     instance_for_each_in_range "$start_range" "$end_range" start_instance_callback
+    bash "$DIR_INSTALLER_BIN/runtime_intent.sh" capture
 }
 
 stop_servers() {
     local start_range=$1 end_range=$2
     instance_for_each_in_range "$start_range" "$end_range" stop_instance_callback
+    bash "$DIR_INSTALLER_BIN/runtime_intent.sh" capture
     success "Stop operation completed"
 }
 
 restart_servers() {
     local start_range=$1 end_range=$2
     instance_for_each_in_range "$start_range" "$end_range" restart_instance_callback
+    bash "$DIR_INSTALLER_BIN/runtime_intent.sh" capture
     success "Restart operation completed"
 }
 
@@ -103,7 +108,7 @@ start_instance_callback() {
 
     if [[ -x "$executable" ]]; then
         step "Starting $executable"
-        "$executable" start || warn "Could not start $executable. Continuing."
+        "$executable" start 8>&- || warn "Could not start $executable. Continuing."
     else
         error_exit "The executable $executable does not exist or is not executable."
     fi
@@ -115,7 +120,7 @@ stop_instance_callback() {
 
     if [[ -x "$executable" ]]; then
         step "Stopping $executable"
-        "$executable" stop || warn "Could not stop $executable. Continuing."
+        "$executable" stop 8>&- || warn "Could not stop $executable. Continuing."
     else
         error_exit "The executable $executable does not exist or is not executable."
     fi
@@ -127,7 +132,7 @@ restart_instance_callback() {
 
     if [[ -x "$executable" ]]; then
         step "Restarting $executable"
-        "$executable" restart || warn "Could not restart $executable. Continuing."
+        "$executable" restart 8>&- || warn "Could not restart $executable. Continuing."
     else
         error_exit "The executable $executable does not exist or is not executable."
     fi
@@ -137,15 +142,14 @@ update_servers() {
     local update_type=${1:-manual}
     section "Stack update"
     info "Update mode: ${update_type}"
-    stop_servers 1 "$TOTAL_SERVERS"
-    step "Running install_stack.sh update"
-    "$DIR_INSTALLER_BIN/install_stack.sh" 1
-    if [[ $update_type == "automatic" ]]; then
-        start_servers 1 "$TOTAL_SERVERS"
-    else
-        info "Manual update completed. Instances remain stopped until an explicit start."
+    if [[ "$update_type" == manual ]]; then
+        stop_servers 1 "$TOTAL_SERVERS"
     fi
-    success "Update operation completed"
+    step "Running install_stack.sh update"
+    bash "$DIR_INSTALLER_BIN/install_stack.sh" update
+    bash "$DIR_INSTALLER_BIN/runtime_intent.sh" capture
+    info "Update completed; automatic mode preserves the prior selection, manual mode leaves instances stopped."
+
 }
 
 if [[ $# -eq 0 ]]; then

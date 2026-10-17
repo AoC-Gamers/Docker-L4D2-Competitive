@@ -21,6 +21,7 @@ exit_handler() {
   # Execute the shutdown commands
   section "Stopping primary instance"
   info "Instance: ${GAMESERVER}"
+  gosu "${USER}" bash "$DIR_INSTALLER_BIN/runtime_intent.sh" capture
   exec gosu "${USER}" ./"${GAMESERVER}" stop
   exitcode=$?
   exit ${exitcode}
@@ -64,11 +65,11 @@ apply_data_tree_action() {
   local resources_dir="${REPO_RESOURCES_DIR:-/data/resources}"
 
   if [ -d "$resources_dir" ] && [[ "$resources_dir" == /data/* ]]; then
-    find /data -path "$resources_dir" -prune -o -exec "$action" "$@" {} +
+    find /data -path "$resources_dir" -prune -o ! -type l -exec "$action" "$@" {} +
     return 0
   fi
 
-  "$action" "$@" /data
+  find /data ! -type l -exec "$action" "$@" {} +
 }
 
 persist_runtime_environment() {
@@ -172,11 +173,11 @@ source /etc/environment
 set +o allexport
 
 # Change owner and permissions
-step "Setting executable permissions on /app and /data"
+step "Setting executable permissions on runtime entry points"
 chown -R linuxgsm:linuxgsm /app
 apply_data_tree_action chown linuxgsm:linuxgsm
-chmod -R +x /app
-apply_data_tree_action chmod +x
+source /app/container/runtime-permissions.sh
+stack_set_runtime_executables /app
 
 section "Hand-off to user runtime"
 info "Switching to user ${USER}"
@@ -184,5 +185,7 @@ exec gosu "${USER}" /app/container/entrypoint-user.sh &
 wait
 
 section "Container idle"
+source "$DIR_INSTALLER_LIB/extensions_stack.sh"
+stack_run_extension idle
 info "Keeping the container running"
 tail -f /dev/null

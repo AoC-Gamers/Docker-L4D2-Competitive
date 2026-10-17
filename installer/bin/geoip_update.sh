@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-if [ -f /etc/environment ]; then
+if [[ "${STACK_PREPARING:-false}" != true && -f /etc/environment ]]; then
   set -o allexport
   source /etc/environment
   set +o allexport
