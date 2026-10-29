@@ -4,6 +4,34 @@ La base es `gameservermanagers/linuxgsm:ubuntu-26.04`, para `linux/amd64`.
 L4D2 y SteamCMD requieren tambien bibliotecas i386; el build conserva ambas
 arquitecturas. Ubuntu 26.04 usa `7zip` y `7zip-rar`, que mantienen el comando `7z`.
 
+## Compatibilidad y toolchain
+
+El destino comprobado es Ubuntu 26.04 amd64, con L4D2 y extensiones ELF32/i386.
+El entorno de validacion usa GCC/G++ 15.2.0, Clang 21.1.8, Python 3.14.4 y
+glibc 2.43. Los paquetes libstdc++6/libgcc-s1 son de GCC 16; son bibliotecas
+de runtime y no indican que los candidatos se compilaran con GCC 16.
+
+| Componente | Version observada o contrato | Arquitectura |
+| --- | --- | --- |
+| libc6/glibc | 2.43 | amd64 e i386 |
+| libstdc++6 y libgcc-s1 | 16-20260322-1ubuntu1 | amd64 e i386 |
+| libcurl4t64 | 8.18.0 | amd64 e i386 |
+| libssl3t64/OpenSSL | 3.5.5 | amd64 e i386 |
+| zlib1g | 1.3.1 | amd64 e i386 |
+| libtinfo6 | 6.6 | amd64 e i386 |
+| SourceMod y Metamod | ramas SDK 1.12 | extension L4D2 de 32 bits |
+
+Son versiones observadas, no requisitos minimos ni un bloqueo de actualizaciones
+de seguridad. El manifiesto runtime-packages.txt declara los paquetes exigidos;
+las versiones exactas de una imagen se verifican con dpkg-query. Clang 21.1.8
+compila SteamWorks en el ensayo local; SourceTV usa Python/AMBuild y los SDK
+fijados por sus hooks. El motor no necesita los SDK para cargar un ZIP ya compilado.
+
+Los releases develop de Custom-Fakelag y Autocomplete se construyen en Ubuntu
+22.04 con GCC 11.4; Journal en Ubuntu 24.04 con GCC 13.3. Son distintos de los
+candidatos locales compilados con GCC 15.2. Conservar el ZIP, SHA256, commit de
+fuente/SDK e identidad de imagen al registrar una comprobacion de compatibilidad.
+
 ## Dependencias de la imagen
 
 `container/runtime-packages.txt` es el inventario comun del Dockerfile y del
