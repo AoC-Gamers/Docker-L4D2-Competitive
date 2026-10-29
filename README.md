@@ -19,6 +19,10 @@ docker-compose up -d
 
 El volumen `data:/data` sigue siendo obligatorio para persistir serverfiles, configuraciones, logs y estado del installer.
 
+La imagen usa Ubuntu 26.04 e instala sus dependencias durante el build. El
+bootstrap verifica paquetes y archivos de bibliotecas sin instalar ni actualizar
+nada. Consulta [Ubuntu 26.04 y artefacto local para AoC](docs/ubuntu-26.04.md).
+
 ## Modelo de Arquitectura
 
 ### Arbol principal

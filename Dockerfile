@@ -5,7 +5,7 @@
 # https://github.com/GameServerManagers/docker-gameserver
 #
 
-ARG BASE_IMAGE=gameservermanagers/linuxgsm:ubuntu-24.04
+ARG BASE_IMAGE=gameservermanagers/linuxgsm:ubuntu-26.04
 FROM ${BASE_IMAGE}
 ARG BASE_IMAGE
 LABEL org.opencontainers.image.base.name="${BASE_IMAGE}"
@@ -17,51 +17,26 @@ ENV GAMESERVER=l4d2server \
     NPM_CONFIG_AUDIT=false
 
 WORKDIR /app
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+COPY container/runtime-packages.txt /app/container/runtime-packages.txt
+COPY container/bootstrap/dependencies_check.sh /app/container/bootstrap/dependencies_check.sh
 
 # Agregar arquitectura i386 e instalar paquetes adicionales
 RUN dpkg --add-architecture i386 && \
-    apt-get update && apt-get install -y \
-    apt-utils \
-    openssh-server \
-    curl \
-    wget \
-    file \
-    tar \
-    bzip2 \
-    gzip \
-    unzip \
-    bsdmainutils \
-    util-linux \
-    ca-certificates \
-    binutils \
-    bc \
-    jq \
-    python3 \
-    tmux \
-    netcat-openbsd \
-    lib32gcc-s1 \
-    lib32stdc++6 \
-    libsdl2-2.0-0:i386 \
-    steamcmd \
-    gdb \
-    lib32z1 \
-    rsync \
-    libcurl4t64 \
-    libcurl4t64:i386 \
-    htop \
-    git \
-    p7zip-full \
-    p7zip-rar \
-    gettext && \
-    apt-get -y autoremove && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+    apt-get update && \
+    mapfile -t packages < /app/container/runtime-packages.txt && \
+    apt-get install -y "${packages[@]}" && \
+    bash /app/container/bootstrap/dependencies_check.sh --strict && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Auto-install primary runtime requirements and gdb
-RUN depshortname=$(curl --connect-timeout 10 -s https://raw.githubusercontent.com/GameServerManagers/LinuxGSM/master/lgsm/data/ubuntu-24.04.csv | \
+RUN depshortname=$(curl --fail --show-error --location --connect-timeout 10 -s https://raw.githubusercontent.com/GameServerManagers/LinuxGSM/master/lgsm/data/ubuntu-26.04.csv | \
     awk -v shortname="l4d2" -F, '$1==shortname {$1=""; print $0}') && \
     if [ -n "${depshortname}" ]; then \
     echo "**** Install ${depshortname} ****" && \
     apt-get update && apt-get install -y ${depshortname} && \
-    apt-get -y autoremove && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*; \
+    apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*; \
     fi
 
 # Cambiar el shell predeterminado del usuario linuxgsm a bash y crear directorios necesarios

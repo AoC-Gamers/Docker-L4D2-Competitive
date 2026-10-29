@@ -53,7 +53,7 @@ jobs:
           set -euo pipefail
           channel=latest
           [[ "$GITHUB_REF_NAME" != develop ]] || channel=develop
-          parent="gameservermanagers/linuxgsm:ubuntu-24.04"
+          parent="gameservermanagers/linuxgsm:ubuntu-26.04"
           if [[ -n "$REQUESTED_PARENT" ]]; then
             [[ "$REQUESTED_PARENT" =~ ^gameservermanagers/linuxgsm@sha256:[a-f0-9]{64}$ ]] || { echo 'Invalid parent digest reference' >&2; exit 1; }
             parent="$REQUESTED_PARENT"
