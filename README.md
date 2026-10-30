@@ -125,6 +125,12 @@ Credenciales sensibles, como `STEAM_PASSWD`, deben ir en `.env.secrets`. `GEOIPU
 
 Los dos archivos Compose del repo consumen la misma base de variables de entorno. La diferencia entre `docker-compose.yml` y `docker-compose.dev.yml` queda en el origen de la imagen o el build local, no en un segundo juego de variables `DEV_*`.
 
+`BASE_IMAGE` en `.env` selecciona la imagen padre al construir con
+`docker-compose.dev.yml`. Su valor por defecto es
+`gameservermanagers/linuxgsm:ubuntu-26.04`; admite etiquetas o un digest
+(`imagen@sha256:...`). Compose lo pasa al argumento `BASE_IMAGE` del Dockerfile.
+La imagen hija publicada se selecciona con `IMAGE_TAG`.
+
 ## Documentacion
 
 - `docs/quick-start.md`: instalacion basica.
@@ -137,3 +143,9 @@ Los dos archivos Compose del repo consumen la misma base de variables de entorno
 ## Licencia
 
 Distribuido bajo la licencia MIT. Consulta `LICENSE`.
+
+## Contexto y privilegios
+
+Leer [CONTEXT.md](CONTEXT.md) y [AGENTS.md](AGENTS.md) al trabajar con asistentes.
+La [guía de bootstrap API 2](docs/bootstrap-security.md) describe los privilegios,
+las imágenes padre, la migración SSH y la conservación de datos/instancias.

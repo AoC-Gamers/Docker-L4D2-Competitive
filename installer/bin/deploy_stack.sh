@@ -295,7 +295,7 @@ prepare_lgsm_tooling() {
     section "Prepare LGSM tooling"
     step "Running npm install in /app/lgsm"
     cd /app/lgsm || exit
-    npm install
+    if [[ ! -f /app/lgsm/node_modules/gamedig/bin/gamedig.js ]]; then npm install; fi
     cd /app || exit
   fi
 

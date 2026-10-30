@@ -15,6 +15,9 @@ Esta carpeta documenta el modelo actual del proyecto base. La referencia vigente
 
 ### Operacion y runtime
 
+- [bootstrap-security.md](bootstrap-security.md): privilegios, SSH, volúmenes y padres.
+- [root-bootstrap-plan.md](root-bootstrap-plan.md): implementación y aceptación de API 2.
+
 - [l4d2-updater.md](l4d2-updater.md): actualizacion automatica del binario del juego.
 - [scripts.md](scripts.md): mapa del bootstrap, installer y stack.
 - [flowcharts.md](flowcharts.md): diagramas del flujo vigente.

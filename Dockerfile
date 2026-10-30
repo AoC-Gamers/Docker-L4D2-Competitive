@@ -1,8 +1,9 @@
-# Auto-install runtime dependencies and gdb
+# Build-time dependencies; runtime package installation is intentionally disabled.
 #
 # LinuxGSM Left 4 Dead 2 Dockerfile with SFTP Support
 #
-# https://github.com/GameServerManagers/docker-gameserver
+# Parent: https://github.com/GameServerManagers/docker-linuxgsm
+# Ancestor: https://github.com/GameServerManagers/docker-steamcmd
 #
 
 ARG BASE_IMAGE=gameservermanagers/linuxgsm:ubuntu-26.04
@@ -48,13 +49,25 @@ RUN date > /build-time.txt
 COPY container/ /app/container/
 
 # Copiar todos los archivos de /config-lgsm/l4d2server/ a /data/config-lgsm/l4d2server/
-COPY config-lgsm/l4d2server/* /data/config-lgsm/l4d2server/
+COPY --chown=linuxgsm:linuxgsm config-lgsm/l4d2server/* /data/config-lgsm/l4d2server/
 
 # Copiar el framework del instalador y el stack base
 COPY installer/ /app/installer/
 COPY stack/ /app/stack/
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD /app/container/entrypoint-healthcheck.sh healthcheck || exit 1
+# Trusted bootstrap is never handed to the runtime user. Keep this after COPY.
+COPY container/root/ /usr/local/libexec/l4d2/
+RUN rm -f /etc/sudoers.d/linuxgsm && \
+    chown -R linuxgsm:linuxgsm /data/installer /data/stack /data/config-lgsm && \
+    chown -R root:root /usr/local/libexec/l4d2 && \
+    chmod -R go-w /usr/local/libexec/l4d2 && \
+    chmod 0755 /usr/local/libexec/l4d2/login-shell && \
+    mkdir -p /var/lib/l4d2/ssh && \
+    chmod 0700 /var/lib/l4d2/ssh && \
+    find /app/container /app/installer /app/stack/hooks -type f -name '*.sh' -exec chmod 0755 {} +
+LABEL com.aoc.l4d2.bootstrap-api="2"
 
-ENTRYPOINT ["/bin/bash", "./container/entrypoint.sh"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD /usr/bin/python3 -I /usr/local/libexec/l4d2/health.py || exit 1
+
+ENTRYPOINT ["/usr/bin/python3", "-I", "/usr/local/libexec/l4d2/bootstrap.py"]

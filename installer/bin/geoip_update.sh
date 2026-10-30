@@ -1,10 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-if [[ "${STACK_PREPARING:-false}" != true && -f /etc/environment ]]; then
-  set -o allexport
-  source /etc/environment
-  set +o allexport
+if [[ "${STACK_PREPARING:-false}" != true && -f /usr/local/libexec/l4d2/environment.sh ]]; then
+  source /usr/local/libexec/l4d2/environment.sh
 fi
 
 : "${DIR_SOURCEMOD:?The DIR_SOURCEMOD variable is not defined.}"

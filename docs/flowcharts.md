@@ -4,9 +4,11 @@
 
 ```mermaid
 graph TD
-    A[Inicio del contenedor] --> B[container/entrypoint.sh]
-    B --> C[bootstrap: dependencies, ssh, symlink]
-    C --> D[container/entrypoint-user.sh]
+    A[Inicio del contenedor] --> B[Bootstrap protegido root]
+    B --> C[Supervisor mínimo]
+    C --> SSH[OpenSSH root]
+    C --> R[Runtime linuxgsm sin capacidades y con NNP]
+    R --> D[container/entrypoint-user.sh]
     D --> E{L4D2 ya existe}
     E -->|No| F[l4d2_fix_install.sh o auto-install]
     E -->|Si| G[Continuar]
@@ -29,7 +31,7 @@ graph TD
     E --> F[3. Publicar con diario y consumidores coordinados]
     F --> G{Resultado}
     G -->|éxito| H[Sincronizar, reconciliar, confirmar y limpiar payload]
-    G -->|fallo| I[Restaurar publicación anterior]
+    G -->|fallo| I[Conservar candidato para recuperación manual]
     I --> J[Conservar evidencia y estado failed]
 ```
 
