@@ -1,0 +1,2 @@
+# Host-only quality dependency; never installed in gameserver images.
+coverage==7.17.0

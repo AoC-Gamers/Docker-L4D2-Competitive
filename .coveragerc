@@ -1,0 +1,20 @@
+[run]
+branch = True
+parallel = True
+relative_files = True
+sigterm = True
+source = ${COVERAGE_SOURCE_ROOT?}
+data_file = ${COVERAGE_DATA_FILE?}
+omit =
+    ${COVERAGE_SOURCE_ROOT?}/installer/tests/*
+    ${COVERAGE_SOURCE_ROOT?}/scripts/tests/*
+    ${COVERAGE_SOURCE_ROOT?}/scripts/sonar_tests/*
+    ${COVERAGE_SOURCE_ROOT?}/container/tests/*
+    ${COVERAGE_SOURCE_ROOT?}/tmp/*
+    ${COVERAGE_SOURCE_ROOT?}/reports/*
+    ${COVERAGE_SOURCE_ROOT?}/resources/*
+    ${COVERAGE_SOURCE_ROOT?}/.venv/*
+[report]
+include_namespace_packages = True
+exclude_lines =
+partial_branches =

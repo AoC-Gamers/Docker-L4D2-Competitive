@@ -33,6 +33,11 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: ShellCheck (errors and warnings)
         run: bash scripts/shellcheck.sh
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install offline quality test dependency
+        run: python -m pip install -r requirements-quality.txt
       - name: Validate Bash and offline regressions
         run: bash scripts/test-stack.sh
   image-test:

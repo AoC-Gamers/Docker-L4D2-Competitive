@@ -1,6 +1,7 @@
 """Sonar evidence helpers adapted from BanSystem-Backend; no runtime dependencies."""
 from __future__ import annotations
 import hashlib,json,os,re,subprocess,tempfile
+import fnmatch
 from pathlib import Path
 from typing import Any,Callable
 from urllib.parse import urlsplit
@@ -124,3 +125,43 @@ def verify_latest(request: Callable, base: str, token: str, project: str, analys
     analyses = payload.get("analyses")
     if not isinstance(analyses, list) or not analyses or not isinstance(analyses[0], dict) or analyses[0].get("key") != analysis:
         raise SonarToolError("Sonar: el ultimo analisis no coincide con el recibo; reporte rechazado.")
+
+
+def python_sources(root: Path) -> set[str]:
+    """Inventory the existing Sonar source scope, including never-executed files."""
+    patterns = ('installer/tests/*', 'scripts/tests/*', 'scripts/sonar_tests/*', 'container/tests/*')
+    return {name for name in source_identity(root)['files']
+            if name.endswith('.py') and not any(fnmatch.fnmatchcase(name, pattern) for pattern in patterns)}
+
+
+def validate_python_xml(root: Path, path: Path) -> None:
+    import xml.etree.ElementTree as ET
+    try:
+        if path.is_symlink():
+            raise ValueError()
+        tree = ET.parse(path)
+        names = [item.attrib['filename'] for item in tree.findall('.//class')]
+        if len(names) != len(set(names)) or set(names) != python_sources(root):
+            raise ValueError()
+        for name in names:
+            target = root/name
+            if Path(name).is_absolute() or not target.resolve().is_relative_to(root.resolve()) or target.is_symlink():
+                raise ValueError()
+        for line in tree.findall('.//class/lines/line'):
+            if int(line.attrib['number']) < 1 or int(line.attrib['hits']) < 0:
+                raise ValueError()
+        if not tree.findall('.//class/lines/line'):
+            raise ValueError()
+    except (OSError, ValueError, KeyError, ET.ParseError):
+        raise SonarToolError('Cobertura XML ausente, invalida o con inventario ajeno/incompleto.') from None
+
+
+def coverage_binding(root: Path, reports: Path, receipt: dict) -> Path:
+    try:
+        path = root/receipt['coveragePath']
+        if not path.resolve().is_relative_to(reports.resolve()) or file_hash(path) != receipt['coverageSha256']:
+            raise ValueError()
+        validate_python_xml(root, path)
+        return path
+    except (OSError, ValueError, KeyError, TypeError):
+        raise SonarToolError('Cobertura ausente, ajena o modificada; regenerar con make python-coverage.') from None

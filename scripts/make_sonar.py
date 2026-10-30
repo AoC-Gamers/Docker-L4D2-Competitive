@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import sys
 import subprocess
 import time
 import uuid
@@ -14,10 +15,12 @@ from urllib.parse import urlencode
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 
 from sonar_support import (SonarToolError, atomic_json, paginate, read_task,
-                          source_identity, validate_origin, verify_latest, verify_task)
+                          source_identity, validate_origin, verify_latest, verify_task,
+                          file_hash, validate_python_xml, coverage_binding)
 
 ROOT = Path(__file__).resolve().parent.parent
 REPORTS = ROOT / 'reports'
+COVERAGE_XML = 'coverage.xml'
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -59,17 +62,58 @@ def require_develop():
         raise SonarToolError('Community: analizar solamente el checkout develop; no mezclar ramas.')
 
 
+def collect_coverage():
+    """Run real offline suites once, including Python children spawned by Bash."""
+    try:
+        import coverage
+    except ImportError:
+        raise SonarToolError('Ejecutar make quality-setup y usar QUALITY_PYTHON para medir cobertura.') from None
+    before = source_identity(ROOT)['sha256']
+    run = REPORTS/'python-coverage'/uuid.uuid4().hex
+    bootstrap = run/'bootstrap'
+    bootstrap.mkdir(parents=True)
+    (bootstrap/'sitecustomize.py').write_text('import coverage; coverage.process_startup()\n')
+    env = {k: v for k, v in os.environ.items() if not k.startswith(('SONAR_', 'COVERAGE_'))}
+    env.update(COVERAGE_SOURCE_ROOT=str(ROOT), COVERAGE_DATA_FILE=str(run/'.coverage'),
+               COVERAGE_RCFILE=str(ROOT/'.coveragerc'))
+    test_env = dict(env, COVERAGE_PROCESS_START=str(ROOT/'.coveragerc'), PYTHONDONTWRITEBYTECODE='1',
+                    PATH=str(Path(sys.executable).parent)+os.pathsep+env.get('PATH', ''),
+                    PYTHONPATH=os.pathsep.join([str(bootstrap), str(Path(coverage.__file__).parent.parent), env.get('PYTHONPATH', '')]))
+    result = subprocess.run(['bash', 'scripts/test-stack.sh'], cwd=ROOT, env=test_env, capture_output=True, text=True)
+    log = run/'tests.log'
+    log.write_text((result.stdout or '')+(result.stderr or ''))
+    log.chmod(0o600)
+    if result.returncode:
+        raise SonarToolError('Pruebas fallaron; no se publica cobertura. Revisar '+str(log.relative_to(ROOT)))
+    for command in (['combine', str(run)], ['xml', '-o', str(run/COVERAGE_XML)], ['json', '-o', str(run/'coverage.json')]):
+        subprocess.run([sys.executable, '-m', 'coverage', *command], cwd=ROOT, env=env, check=True)
+    xml = run/COVERAGE_XML
+    validate_python_xml(ROOT, xml)
+    if source_identity(ROOT)['sha256'] != before:
+        raise SonarToolError('Fuentes cambiaron durante las pruebas; no se confirma cobertura.')
+    receipt = {'sourceSha256': before, 'coveragePath': str(xml.relative_to(ROOT)), 'coverageSha256': file_hash(xml)}
+    temporary = REPORTS/'coverage.xml.tmp'
+    temporary.write_bytes(xml.read_bytes())
+    os.replace(temporary, REPORTS/COVERAGE_XML)
+    atomic_json(REPORTS/'python-coverage.json', receipt)
+    print('Cobertura Python medida: '+str(xml.relative_to(ROOT)))
+    return receipt
+
+
 def analyze(base, token, project):
     require_develop()
     scanner = shutil.which('sonar-scanner')
     if not scanner:
         raise SonarToolError('Instalar SonarScanner CLI en el host.')
-    before = source_identity(ROOT)['sha256']
+    measured = collect_coverage()
+    before = measured['sourceSha256']
+    xml = coverage_binding(ROOT, REPORTS, measured)
     run = REPORTS / 'sonar-runs' / uuid.uuid4().hex
     run.mkdir(parents=True)
     task_path = run / 'report-task.txt'
     env = dict(os.environ, SONAR_TOKEN=token, SONAR_HOST_URL=base)
-    result = subprocess.run([scanner, '-Dsonar.scanner.metadataFilePath=' + str(task_path)],
+    result = subprocess.run([scanner, '-Dsonar.scanner.metadataFilePath=' + str(task_path),
+                             '-Dsonar.python.coverage.reportPaths=' + str(xml)],
                             cwd=ROOT, env=env, capture_output=True, text=True)
     output = (result.stdout or '') + (result.stderr or '')
     for secret in (token, base64.b64encode((token + ':').encode()).decode()):
@@ -93,8 +137,9 @@ def analyze(base, token, project):
     verify_latest(request, base, token, project, task['analysisId'])
     if source_identity(ROOT)['sha256'] != before:
         raise SonarToolError('Fuentes cambiaron durante el analisis; repetir make sonar.')
+    coverage_binding(ROOT, REPORTS, measured)
     record = {'schema': 1, 'hostUrl': base, 'projectKey': project, 'sourceSha256': before,
-              'analysisId': task['analysisId'], 'ceTaskId': task['id'], 'runId': run.name}
+              'analysisId': task['analysisId'], 'ceTaskId': task['id'], 'runId': run.name, **measured}
     atomic_json(run/'source.json', record)
     atomic_json(REPORTS/'sonar-run.json', record)
     atomic_json(REPORTS/'sonar-quality-gate.json', {**record, **gate})
@@ -111,6 +156,7 @@ def binding(base, token, project):
             raise ValueError()
         if receipt['sourceSha256'] != source_identity(ROOT)['sha256']:
             raise ValueError()
+        coverage_binding(ROOT, REPORTS, receipt)
         task = request(base, token, '/api/ce/task', {'id': receipt['ceTaskId']})['task']
         verify_task(task, receipt['ceTaskId'], project)
         if task['status'] != 'SUCCESS' or task['analysisId'] != receipt['analysisId']:
@@ -147,9 +193,12 @@ def report(command, base, token, project):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['analyze', 'issues', 'coverage', 'duplications', 'hotspots'])
+    parser.add_argument('command', choices=['analyze', 'coverage-run', 'issues', 'coverage', 'duplications', 'hotspots'])
     args = parser.parse_args()
     try:
+        if args.command == 'coverage-run':
+            collect_coverage()
+            return 0
         values = context()
         if args.command == 'analyze':
             analyze(*values)
