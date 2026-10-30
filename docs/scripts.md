@@ -221,9 +221,11 @@ En este stack, los hooks deben preferir `stack_install_*` para no borrar archivo
 
 ```mermaid
 graph TD
-    A[container/entrypoint.sh] --> B[bootstrap/*]
-    B --> C[entrypoint-user.sh]
-    C --> D[install_stack.sh]
+    A[Bootstrap protegido root] --> SSH[OpenSSH root]
+    A --> R[Runtime linuxgsm sin capacidades y con NNP]
+    R --> B[entrypoint-user.sh y bootstrap operativo]
+    B --> C[deploy_stack.sh]
+    C --> D[install_stack.sh si corresponde]
     D --> E[stack/hooks/*.sh]
     E --> F[sync_instances.sh]
     F --> G[menu_stack.sh]

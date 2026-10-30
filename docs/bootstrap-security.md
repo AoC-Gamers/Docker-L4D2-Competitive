@@ -45,3 +45,9 @@ AoC copia un `groups.json` protegido que declara BANSYSTEM_ARTIFACT_GID y fija s
 La aceptación exige SSH por clave y contraseña (si está configurada), comandos no interactivos y SFTP, persistencia de huellas tras recreación, grupos y acceso a volúmenes, bloqueo de sudo/NNP, bibliotecas y extensiones y conservación de selección tras parada/reinicio. La aceptación de esta versión incluyó seis instancias reales antes del límite posterior del usuario: no repetir esa carga en el notebook, donde el máximo actual es DOS gameservers reales en total. Los fixtures cubren doce instancias sin crear doce instalaciones Valve. Ver el plan de Competitive para resultados concretos.
 
 Optimizaciones posteriores independientes: coordinar el actualizador Valve compartido (riesgo de concurrencia aún sin fallo reproducido), fijar revisiones de módulos LinuxGSM, separar toolchains de compilación y evaluar extracción de SSH a otro servicio. No cambiar esos contratos incidentalmente durante esta migración.
+
+## CI y publicación
+
+Los jobs son `validate` (sintaxis/regresiones), `image-test` (padre exacto, build sin push y SSH/SFTP) y `build-and-push` (solo tras los anteriores, usando el mismo padre probado). AoC y Vanilla añaden fixtures del instalador heredado. Se comparte caché BuildKit; la escritura de paquetes corresponde solo al publicador. Cada publicación conserva revisión, padre y digest resultante en el artefacto `build-identity`, además de provenance/SBOM, y transmite el digest a la siguiente imagen de la cadena.
+
+Las PR de Competitive pueden probar su padre público. Las PR de AoC/Vanilla desde forks no reciben credenciales para los padres privados y omiten el gate de imagen; requieren validación desde una rama confiable antes de publicar. El smoke de CI usa SSH y `sleep`, sin arrancar SRCDS. Publicar cambios de workflows mediante GitHub CLI requiere una credencial con scope `workflow`; las credenciales nunca se incorporan a las imágenes ni al repositorio.

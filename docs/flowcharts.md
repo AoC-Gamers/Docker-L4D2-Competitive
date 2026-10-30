@@ -43,7 +43,9 @@ operativo antes de descargar. Véase [el contrato completo](artifact-flow.md).
 
 ### Bootstrap
 
-- `container/entrypoint.sh`
+- `container/root/bootstrap.py` (entrypoint protegido de la imagen)
+- `container/runtime.py` (supervisor sin privilegios)
+- `container/entrypoint.sh` (wrapper de compatibilidad)
 - `container/bootstrap/dependencies_check.sh`
 - `container/bootstrap/ssh.sh`
 - `container/bootstrap/symlink.sh`

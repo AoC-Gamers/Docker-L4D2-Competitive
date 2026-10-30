@@ -32,6 +32,8 @@ Docker-L4D2-Competitive/
 ├── container/
 │   ├── entrypoint.sh
 │   ├── entrypoint-user.sh
+│   ├── runtime.py
+│   ├── root/
 │   └── bootstrap/
 ├── installer/
 │   ├── bin/
@@ -50,10 +52,11 @@ Docker-L4D2-Competitive/
 
 ```mermaid
 graph LR
-    A[Docker Compose] --> B[container/entrypoint.sh]
-    B --> C[container/bootstrap/*]
-    C --> D[container/entrypoint-user.sh]
-    D --> E[installer/bin/install_stack.sh]
+    A[Docker Compose] --> B[Bootstrap protegido root]
+    B --> SSH[OpenSSH root]
+    B --> C[Runtime linuxgsm sin capacidades y con NNP]
+    C --> D[entrypoint-user.sh y bootstrap operativo]
+    D --> E[installer/bin/deploy_stack.sh]
     E --> F[installer/bin/menu_stack.sh]
     F --> G[Servidores listos]
 ```
@@ -149,3 +152,5 @@ Distribuido bajo la licencia MIT. Consulta `LICENSE`.
 Leer [CONTEXT.md](CONTEXT.md) y [AGENTS.md](AGENTS.md) al trabajar con asistentes.
 La [guía de bootstrap API 2](docs/bootstrap-security.md) describe los privilegios,
 las imágenes padre, la migración SSH y la conservación de datos/instancias.
+El [plan de aceptación](docs/root-bootstrap-plan.md) registra las pruebas y la
+cadena publicada por digest.
