@@ -154,3 +154,7 @@ La [guía de bootstrap API 2](docs/bootstrap-security.md) describe los privilegi
 las imágenes padre, la migración SSH y la conservación de datos/instancias.
 El [plan de aceptación](docs/root-bootstrap-plan.md) registra las pruebas y la
 cadena publicada por digest.
+
+## Calidad de código
+
+[Sonar manual con Makefile y scripts; ShellCheck en CI](docs/sonar.md).

@@ -3,3 +3,9 @@
 resources/*
 !resources/.gitkeep
 /tmp
+
+# Host-only quality tooling
+.env.sonar
+.scannerwork/
+reports/
+**/__pycache__/

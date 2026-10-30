@@ -162,6 +162,7 @@ initialize_deploy_state() {
 resolve_target_stack_metadata() {
   if [[ -f "$DIR_STACK/.env" ]]; then
     set -o allexport
+    # shellcheck source=/dev/null
     source <(grep -E '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=' "$DIR_STACK/.env" | sed 's/\r$//')
     set +o allexport
   fi

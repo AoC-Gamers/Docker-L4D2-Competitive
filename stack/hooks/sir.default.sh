@@ -19,6 +19,7 @@ source "$DIR_INSTALLER_LIB/tools_stack.sh"
 source "$DIR_INSTALLER_LIB/stack_component_lib.sh"
 
 REPO_DIR="$1"
+# shellcheck disable=SC2034 # Shared hook/library contract; may be consumed by sourced helpers.
 INSTALL_TYPE="${2:-install}"
 GIT_DOWNLOAD="${3:-false}"
 
@@ -27,7 +28,9 @@ GIT_DOWNLOAD="${3:-false}"
 ##############################
 DIR_SIR="$REPO_DIR"
 DIR_SIR_ADDONS="$DIR_SIR/addons"
+# shellcheck disable=SC2034 # Shared hook/library contract; may be consumed by sourced helpers.
 DIR_SIR_SOURCEMOD="$DIR_SIR_ADDONS/sourcemod"
+# shellcheck disable=SC2034 # Shared hook/library contract; may be consumed by sourced helpers.
 DIR_SIR_METAMOD="$DIR_SIR_ADDONS/metamod"
 
 ##############################

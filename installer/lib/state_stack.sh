@@ -18,6 +18,7 @@ state_init_paths() {
     DEPLOY_STATE_FILE="$STATE_CURRENT_DIR/deploy-state.json"
     INSTANCES_STATE_FILE="$STATE_CURRENT_DIR/instances-state.json"
     STATE_RESOLVED_COMPONENTS_FILE="$STATE_CURRENT_DIR/resolved-components.json"
+    # shellcheck disable=SC2034 # Shared hook/library contract; may be consumed by sourced helpers.
     STATE_INSTALL_LOG_FILE="$STATE_CURRENT_DIR/install_stack.log"
 }
 

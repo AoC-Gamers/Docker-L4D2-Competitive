@@ -96,7 +96,8 @@ stack_replace_dir() {
 stack_sync_file() {
     local source_file="$1"
     local target_root="$2"
-    local target_file="$target_root/$(basename "$source_file")"
+    local target_file
+    target_file="$target_root/$(basename "$source_file")"
 
     if [ ! -f "$source_file" ]; then
         return 0
@@ -321,6 +322,7 @@ stack_get_filename_from_url() {
 stack_download_release_tarball_if_changed() {
     local package_name="$1"
     local download_url="$2"
+    # shellcheck disable=SC2034 # Shared hook/library contract; may be consumed by sourced helpers.
     local file_pattern="$3"
 
     local record="${STACK_HOOK_ASSETS_FILE:-${DIR_INSTALLER_STATE:-/data/installer/state}/hook-assets.json}"

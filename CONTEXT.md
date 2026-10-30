@@ -25,3 +25,7 @@ El contenedor inicia una preparación administrativa como root y mantiene OpenSS
 ## Recursos del entorno local
 
 El usuario limitó las pruebas del notebook a dos gameservers reales en total. La evidencia anterior de seis instancias se conserva, pero no debe repetirse. Contar también los servidores locales existentes antes de iniciar cualquier laboratorio.
+
+## Herramientas de calidad
+
+Ver [Sonar manual y ShellCheck](docs/sonar.md). Sonar se ejecuta desde el host mediante Makefile/scripts, exclusivamente contra develop; no integrarlo en CI sin solicitud del usuario. No iniciar juegos para validar estas herramientas.

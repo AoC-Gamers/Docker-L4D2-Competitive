@@ -29,6 +29,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: ShellCheck (errors and warnings)
+        run: bash scripts/shellcheck.sh
       - name: Validate Bash and offline regressions
         run: bash scripts/test-stack.sh
   image-test:

@@ -36,8 +36,11 @@ INSTALL_TMP_DIR=""
 CACHE_FILE=""
 CACHE_LOCK_FILE=""
 SOURCES_CACHE_DIR=""
+# shellcheck disable=SC2034 # Shared hook/library contract; may be consumed by sourced helpers.
 INSTALL_LOCK_FILE=""
+# shellcheck disable=SC2034 # Shared hook/library contract; may be consumed by sourced helpers.
 INSTALL_LOCK_DIR=""
+# shellcheck disable=SC2034 # Shared hook/library contract; may be consumed by sourced helpers.
 INSTALL_LOCK_MODE=""
 
 initialize_install_logging() {
@@ -105,6 +108,7 @@ initialize_install_workspace() {
 
     mkdir -p "${STATE_ROOT}/cache"
     CACHE_FILE="${STATE_ROOT}/cache/${cache_namespace}.log"
+    # shellcheck disable=SC2034 # Shared hook/library contract; may be consumed by sourced helpers.
     CACHE_LOCK_FILE="${CACHE_FILE}.lock"
 
     if [[ ! -f "$CACHE_FILE" ]]; then
@@ -163,6 +167,7 @@ update_deploy_state_installer_metadata() {
 if [[ -f "$DIR_STACK/.env" ]]; then
     # Load variables preserving full values (tokens/URLs) and tolerating CRLF.
     set -o allexport
+    # shellcheck source=/dev/null
     source <(grep -E '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=' "$DIR_STACK/.env" | sed 's/\r$//')
     set +o allexport
 else
@@ -188,6 +193,7 @@ fi
 RESOLVED_COMPONENTS_JSON="$(build_resolved_components_json "$COMPONENTS_JSON" "$PROFILE_JSON")"
 
 # JSON file with the list of paths to be backuped
+# shellcheck disable=SC2034 # Shared hook/library contract; may be consumed by sourced helpers.
 BACKUP_JSON="$DIR_STACK/preserve-paths.json"
 
 #####################################################
