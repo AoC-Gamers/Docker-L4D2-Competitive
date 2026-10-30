@@ -33,3 +33,6 @@ Primero se preparan los commits de las derivadas en develop con `[skip ci]` para
 
 
 La credencial de publicación no incluye permiso workflow. El cambio de workflow inicialmente propuesto no se publicó: se mantuvo el YAML original y se incorporó el gate de construcción/SSH/SFTP al script de validación que ese workflow ya ejecuta. No se amplían permisos ni se omite la validación.
+
+
+El usuario autorizó ampliar la credencial y habilitó el scope workflow. Se reemplaza el gate temporal dentro del script por tres jobs explícitos: validate (offline), image-test (build sin publicación + SSH/SFTP, también en PR) y build-and-push (solo tras ambos). El padre exacto probado se transmite como output al publicador, con caché de BuildKit compartida. La ejecución provisional anterior se canceló antes de publicar; no se repite carga SRCDS en el notebook.
