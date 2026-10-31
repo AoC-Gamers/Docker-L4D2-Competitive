@@ -204,6 +204,7 @@ resolve_github_release_asset() {
         while IFS=$'\t' read -r candidate_name candidate_url candidate_api_url candidate_updated_at; do
             [[ -n "$candidate_name" ]] || continue
 
+            # shellcheck disable=SC2053 # asset_name_glob is intentionally a glob pattern.
             if [[ "$candidate_name" == $asset_name_glob ]]; then
                 if [[ -z "$asset_updated_at" || "$candidate_updated_at" > "$asset_updated_at" ]]; then
                     matched_asset_name="$candidate_name"
@@ -303,6 +304,7 @@ preflight_github_release_access() {
     else
         while IFS=$'\t' read -r candidate_name candidate_url candidate_api_url candidate_updated_at; do
             [[ -n "$candidate_name" ]] || continue
+            # shellcheck disable=SC2053 # asset_name_glob is intentionally a glob pattern.
             if [[ "$candidate_name" == $asset_name_glob ]]; then
                 if [[ -z "$asset_updated_at" || "$candidate_updated_at" > "$asset_updated_at" ]]; then
                     matched_asset_name="$candidate_name"
@@ -486,6 +488,7 @@ download_github_release_source() {
     resolved_asset_name="${asset_metadata[0]}"
     asset_download_url="${asset_metadata[1]}"
     asset_api_url="${asset_metadata[2]}"
+    # shellcheck disable=SC2034 # Shared hook/library contract; may be consumed by sourced helpers.
     sanitized_asset_download_url="$(sanitize_url_for_log "$asset_download_url")"
     remote_state="github_release:${github_repo}@${release_tag}:${resolved_asset_name}@${asset_metadata[3]}:${asset_metadata[4]:-}:${asset_metadata[5]:-}"
 
@@ -594,6 +597,7 @@ apply_stack_sources() {
         fi
         source_download=false
         component_cache_dir=""
+        # shellcheck disable=SC2034 # Shared hook/library contract; may be consumed by sourced helpers.
         component_work_dir=""
 
         if [[ -n "$pinned_row" && "$source_type" != hook_only ]]; then

@@ -162,6 +162,7 @@ initialize_deploy_state() {
 resolve_target_stack_metadata() {
   if [[ -f "$DIR_STACK/.env" ]]; then
     set -o allexport
+    # shellcheck source=/dev/null
     source <(grep -E '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=' "$DIR_STACK/.env" | sed 's/\r$//')
     set +o allexport
   fi
@@ -295,7 +296,7 @@ prepare_lgsm_tooling() {
     section "Prepare LGSM tooling"
     step "Running npm install in /app/lgsm"
     cd /app/lgsm || exit
-    npm install
+    if [[ ! -f /app/lgsm/node_modules/gamedig/bin/gamedig.js ]]; then npm install; fi
     cd /app || exit
   fi
 

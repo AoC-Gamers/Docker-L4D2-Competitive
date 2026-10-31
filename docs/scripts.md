@@ -27,16 +27,15 @@ Competitive ya no organiza su logica operativa como `docker-scripts/` y `server-
 
 ### `container/entrypoint.sh`
 
-Punto de entrada del contenedor. Exporta variables, prepara el runtime y ejecuta los scripts de `container/bootstrap/`.
-La normalización de propietario omite enlaces simbólicos y el montaje de
-recursos. Los permisos de ejecución se habilitan solo en entrypoints de runtime;
-no se aplica chmod recursivo sobre `/data`, originales Git, ZIP ni cachés.
+Wrapper de compatibilidad hacia `/usr/local/libexec/l4d2/bootstrap.py`. El entrypoint real usa Python aislado y código protegido, prepara identidad/permisos/SSH y supervisa SSH y runtime por separado. Véase [bootstrap API 2](bootstrap-security.md).
+
+La fase de usuario aplica enlaces y hooks operativos sin privilegios. La normalización de propietarios se limita a inicialización/migración explícita; no hay recorridos recursivos en cada inicio. SSH usa un volumen protegido distinto de `/data`.
 
 ### `container/entrypoint-user.sh`
 
 Orquesta la fase de usuario LinuxGSM. Su flujo principal es:
 
-1. Ejecutar `deploy_stack.sh`.
+1. Crear enlaces y ejecutar bootstrap operativo como linuxgsm; después invocar `deploy_stack.sh`.
 2. Preparar o reparar L4D2 cuando corresponde.
 3. Resolver el stack efectivo. En instalaciones existentes, omitir adquisición, preparación y publicación con `L4D2_STACK_AUTOUPDATE=false`; con `true`, permitir la actualización. La instalación inicial y las actualizaciones manuales siguen disponibles.
 4. Sincronizar instancias con `sync_instances.sh`.
@@ -61,7 +60,7 @@ Estructura enlazada:
 
 - `dependencies_check.sh`: valida dependencias de runtime.
 - `l4d2_updater.sh`: instala o actualiza el binario base del juego.
-- `ssh.sh`: prepara acceso SSH y permisos.
+- `ssh.sh`: compatibilidad; SSH ya está preparado por el código protegido de API 2.
 
 ## Comandos del Installer
 
@@ -222,9 +221,11 @@ En este stack, los hooks deben preferir `stack_install_*` para no borrar archivo
 
 ```mermaid
 graph TD
-    A[container/entrypoint.sh] --> B[bootstrap/*]
-    B --> C[entrypoint-user.sh]
-    C --> D[install_stack.sh]
+    A[Bootstrap protegido root] --> SSH[OpenSSH root]
+    A --> R[Runtime linuxgsm sin capacidades y con NNP]
+    R --> B[entrypoint-user.sh y bootstrap operativo]
+    B --> C[deploy_stack.sh]
+    C --> D[install_stack.sh si corresponde]
     D --> E[stack/hooks/*.sh]
     E --> F[sync_instances.sh]
     F --> G[menu_stack.sh]

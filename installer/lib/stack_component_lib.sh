@@ -96,7 +96,8 @@ stack_replace_dir() {
 stack_sync_file() {
     local source_file="$1"
     local target_root="$2"
-    local target_file="$target_root/$(basename "$source_file")"
+    local target_file
+    target_file="$target_root/$(basename "$source_file")"
 
     if [ ! -f "$source_file" ]; then
         return 0
@@ -259,6 +260,29 @@ stack_run_sed_on_named_files() {
     find "$base_dir" -type f -name "$file_name" -exec sed -ri "$sed_expression" {} \;
 }
 
+stack_normalize_accelerator_execstack() {
+    local library="$1" headers hash
+    [[ -f "$library" ]] || return 0
+    [[ ! -L "$library" ]] || error_exit "Accelerator build copy must not be a symlink: $library"
+    headers="$(LC_ALL=C readelf -W -l "$library")" || return 1
+    grep -q GNU_STACK <<< "$headers" \
+        || error_exit "Accelerator artifact has no GNU_STACK header; obtain a reviewed binary."
+    if ! grep -Eq 'GNU_STACK.*RWE' <<< "$headers"; then return 0; fi
+
+    hash="$(sha256sum "$library" | cut -d ' ' -f 1)"
+    # Rework's legacy x86 build requests execstack. Upstream now links with
+    # -z noexecstack. Only normalize this known artifact in the hook workspace.
+    [[ "$hash" == e74fdebd0f0eafb721caf4f8fe96e1f5763d73e1cbb2f94a470017bffdc62b76 ]] \
+        || error_exit "Unknown Accelerator artifact requests an executable stack: $hash"
+    stack_require_command patchelf "Rebuild the Competitive image with its required packages."
+    patchelf --clear-execstack "$library"
+    headers="$(LC_ALL=C readelf -W -l "$library")" || return 1
+    if grep -Eq 'GNU_STACK.*RWE' <<< "$headers"; then
+        error_exit "Accelerator still requests an executable stack after normalization."
+    fi
+    log "Normalized legacy Accelerator GNU_STACK to non-executable in the build copy."
+}
+
 #######################################
 # Validation helpers
 #######################################
@@ -298,6 +322,7 @@ stack_get_filename_from_url() {
 stack_download_release_tarball_if_changed() {
     local package_name="$1"
     local download_url="$2"
+    # shellcheck disable=SC2034 # Shared hook/library contract; may be consumed by sourced helpers.
     local file_pattern="$3"
 
     local record="${STACK_HOOK_ASSETS_FILE:-${DIR_INSTALLER_STATE:-/data/installer/state}/hook-assets.json}"

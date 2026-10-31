@@ -17,7 +17,9 @@ fi
 # Resources
 source "$DIR_INSTALLER_LIB/tools_stack.sh"
 
+# shellcheck disable=SC2034 # Shared hook/library contract; may be consumed by sourced helpers.
 REPO_DIR="$1"
+# shellcheck disable=SC2034 # Shared hook/library contract; may be consumed by sourced helpers.
 INSTALL_TYPE="${2:-install}"
 GIT_DOWNLOAD="${3:-false}"
 

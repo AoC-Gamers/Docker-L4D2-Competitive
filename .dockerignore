@@ -1,0 +1,9 @@
+.git
+.env
+.env.*
+tmp/
+resources/
+**/__pycache__/
+**/*.pyc
+reports/
+.scannerwork/

@@ -5,10 +5,10 @@ stack_set_runtime_executables() {
     local app="$1" directory entry
     for directory in "$app/container" "$app/installer/bin" "$app/stack/hooks" "$app/lgsm/modules"; do
         [[ -d "$directory" ]] || continue
-        find "$directory" -type f -name '*.sh' -exec chmod a+x -- {} +
+        find "$directory" -type f -name '*.sh' ! -perm /111 -exec chmod a+x -- {} +
     done
     for entry in "$app/linuxgsm.sh" "$app"/l4d2server "$app"/l4d2server-*; do
         [[ -f "$entry" && ! -L "$entry" ]] || continue
-        chmod a+x -- "$entry"
+        [[ -x "$entry" ]] || chmod a+x -- "$entry"
     done
 }

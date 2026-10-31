@@ -19,6 +19,10 @@ docker-compose up -d
 
 El volumen `data:/data` sigue siendo obligatorio para persistir serverfiles, configuraciones, logs y estado del installer.
 
+La imagen usa Ubuntu 26.04 e instala sus dependencias durante el build. El
+bootstrap verifica paquetes y archivos de bibliotecas sin instalar ni actualizar
+nada. Consulta [Ubuntu 26.04 y artefacto local para AoC](docs/ubuntu-26.04.md).
+
 ## Modelo de Arquitectura
 
 ### Arbol principal
@@ -28,6 +32,8 @@ Docker-L4D2-Competitive/
 ├── container/
 │   ├── entrypoint.sh
 │   ├── entrypoint-user.sh
+│   ├── runtime.py
+│   ├── root/
 │   └── bootstrap/
 ├── installer/
 │   ├── bin/
@@ -46,10 +52,11 @@ Docker-L4D2-Competitive/
 
 ```mermaid
 graph LR
-    A[Docker Compose] --> B[container/entrypoint.sh]
-    B --> C[container/bootstrap/*]
-    C --> D[container/entrypoint-user.sh]
-    D --> E[installer/bin/install_stack.sh]
+    A[Docker Compose] --> B[Bootstrap protegido root]
+    B --> SSH[OpenSSH root]
+    B --> C[Runtime linuxgsm sin capacidades y con NNP]
+    C --> D[entrypoint-user.sh y bootstrap operativo]
+    D --> E[installer/bin/deploy_stack.sh]
     E --> F[installer/bin/menu_stack.sh]
     F --> G[Servidores listos]
 ```
@@ -121,6 +128,12 @@ Credenciales sensibles, como `STEAM_PASSWD`, deben ir en `.env.secrets`. `GEOIPU
 
 Los dos archivos Compose del repo consumen la misma base de variables de entorno. La diferencia entre `docker-compose.yml` y `docker-compose.dev.yml` queda en el origen de la imagen o el build local, no en un segundo juego de variables `DEV_*`.
 
+`BASE_IMAGE` en `.env` selecciona la imagen padre al construir con
+`docker-compose.dev.yml`. Su valor por defecto es
+`gameservermanagers/linuxgsm:ubuntu-26.04`; admite etiquetas o un digest
+(`imagen@sha256:...`). Compose lo pasa al argumento `BASE_IMAGE` del Dockerfile.
+La imagen hija publicada se selecciona con `IMAGE_TAG`.
+
 ## Documentacion
 
 - `docs/quick-start.md`: instalacion basica.
@@ -133,3 +146,15 @@ Los dos archivos Compose del repo consumen la misma base de variables de entorno
 ## Licencia
 
 Distribuido bajo la licencia MIT. Consulta `LICENSE`.
+
+## Contexto y privilegios
+
+Leer [CONTEXT.md](CONTEXT.md) y [AGENTS.md](AGENTS.md) al trabajar con asistentes.
+La [guía de bootstrap API 2](docs/bootstrap-security.md) describe los privilegios,
+las imágenes padre, la migración SSH y la conservación de datos/instancias.
+El [plan de aceptación](docs/root-bootstrap-plan.md) registra las pruebas y la
+cadena publicada por digest.
+
+## Calidad de código
+
+[Sonar manual con Makefile y scripts; ShellCheck en CI](docs/sonar.md).

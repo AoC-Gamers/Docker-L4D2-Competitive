@@ -1,20 +1,14 @@
 #!/bin/bash
-
-source "$DIR_INSTALLER_LIB/tools_stack.sh"
-
-exit_handler_user() {
-  # Execute the shutdown commands
-  section "Stopping primary instance"
-  info "Instance: ${GAMESERVER}"
-  bash "$DIR_INSTALLER_BIN/runtime_intent.sh" capture
-  ./"${GAMESERVER}" stop
-  exitcode=$?
-  exit ${exitcode}
-}
-
-# Exit trap
-info "Loading exit handler"
-trap exit_handler_user SIGQUIT SIGINT SIGTERM
+set -euo pipefail
+source /app/installer/lib/tools_stack.sh
+source /app/container/runtime-permissions.sh
+stack_set_runtime_executables /app
+# Links and all operational hooks run only after dropping privileges.
+bash /app/container/bootstrap/symlink.sh
+for script in /app/container/bootstrap/*.sh; do
+    [[ "$script" == */symlink.sh ]] && continue
+    bash "$script"
+done
 
 # Setup game server
 if [ ! -f "${GAMESERVER}" ]; then

@@ -53,16 +53,16 @@ docker-compose up -d
 ```bash
 docker-compose ps
 docker-compose logs -f l4d2
-docker-compose exec l4d2 gosu linuxgsm ./l4d2server details
+docker-compose exec --user linuxgsm --workdir /data l4d2 /usr/local/libexec/l4d2/login-shell -c './l4d2server details'
 ```
 
 ## Que ocurre al arrancar
 
 El flujo actual es:
 
-1. `container/entrypoint.sh` prepara el runtime.
-2. `container/bootstrap/` valida dependencias y crea symlinks.
-3. `container/entrypoint-user.sh` ejecuta `deploy_stack.sh`.
+1. El bootstrap protegido prepara identidad, permisos y SSH como root.
+2. Un supervisor separado inicia el runtime como linuxgsm, sin capacidades y con `no_new_privs`.
+3. `container/entrypoint-user.sh` valida dependencias, crea symlinks y ejecuta `deploy_stack.sh` sin privilegios.
 4. `deploy_stack.sh` instala o repara L4D2 si hace falta.
 5. en una instalación fresca, `deploy_stack.sh` aplica `install_stack.sh install`. En una instalación existente, `L4D2_STACK_AUTOUPDATE=false` omite el instalador, incluso si cambió la imagen o el perfil; con `true`, permite aplicar esos cambios.
 6. se sincronizan instancias segun `L4D2_ADDITIONAL_INSTANCES`.
@@ -74,7 +74,7 @@ El flujo actual es:
 ### Acceso al contenedor
 
 ```bash
-docker-compose exec l4d2 bash
+docker-compose exec --user linuxgsm --workdir /data l4d2 /usr/local/libexec/l4d2/login-shell
 ```
 
 ### Acceso SSH
@@ -103,7 +103,7 @@ El framework ya no parte de un archivo unico de fuentes como modelo canonico. El
 ### Reinstalar o actualizar el stack
 
 ```bash
-docker-compose exec l4d2 bash /data/installer/bin/install_stack.sh update
+docker-compose exec --user linuxgsm --workdir /data l4d2 /usr/local/libexec/l4d2/login-shell -c '/data/installer/bin/install_stack.sh update'
 ```
 
 ## Workshop
@@ -113,7 +113,7 @@ Si usas el downloader del Workshop, la configuracion ya debe vivir en el arbol o
 Ejemplo rapido:
 
 ```bash
-docker-compose exec l4d2 bash
+docker-compose exec --user linuxgsm --workdir /data l4d2 /usr/local/libexec/l4d2/login-shell
 cd /data/installer/bin
 ./workshop_downloader.sh
 ```

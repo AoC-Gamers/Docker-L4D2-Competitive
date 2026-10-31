@@ -97,6 +97,7 @@ actual="$(python3 "$DIR_INSTALLER_LIB/materialization.py" "$DIR_STACK" "$DIR_INS
 [[ -z "$expected" || "$actual" == "$expected" ]] || error_exit 'Preparation logic changed. Use recover_stack.sh rebuild, then install_stack.sh.'
 stack_validate_extensions
 python3 "$DIR_INSTALLER_LIB/validate_candidate.py" "$STACK_TRANSACTION/candidate/serverfiles/left4dead2"
+# shellcheck disable=SC2034 # Shared hook/library contract; may be consumed by sourced helpers.
 STACK_RECOVERED_RUNNING_FILE="$STACK_TRANSACTION/running-instances"
 stack_quiesce_instances
 stack_transaction_command publish "$STACK_TRANSACTION"

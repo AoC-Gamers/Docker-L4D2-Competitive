@@ -127,6 +127,7 @@ stop_instance_callback() {
 }
 
 restart_instance_callback() {
+    # shellcheck disable=SC2034 # Shared hook/library contract; may be consumed by sourced helpers.
     local index="$1"
     local executable="$2"
 

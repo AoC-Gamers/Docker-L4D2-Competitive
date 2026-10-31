@@ -9,8 +9,11 @@ services:
     env_file:
       - .env
       - .env.secrets
+    init: true
+    stop_grace_period: 2m
     volumes:
       - data:/data
+      - ssh:/var/lib/l4d2/ssh
       - ${HOST_REPO_RESOURCES_DIR:-./resources}:${REPO_RESOURCES_DIR:-/data/resources}:ro
     environment:
       - SSH_PORT=${SSH_PORT:-422}
@@ -20,5 +23,7 @@ services:
     network_mode: host
 
 volumes:
+  ssh:
+    name: ${SSH_VOLUME_NAME:-${DATA_VOLUME_NAME:-l4d2_data}_ssh}
   data:
     name: ${DATA_VOLUME_NAME:-l4d2_data}

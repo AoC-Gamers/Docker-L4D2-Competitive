@@ -8,8 +8,7 @@ state_init_paths
 stack_acquire_target_lock
 mkdir -p "$STATE_ROOT"
 intent="$STATE_ROOT/runtime-intent.json"
-case "${1:-}" in
-    capture)
+capture_intent() {
         rows="$(mktemp "$STATE_ROOT/runtime-intent.XXXXXX")"
         trap 'rm -f "$rows"' EXIT
         for executable in "$DIR_APP/$GAMESERVER" "$DIR_APP/$GAMESERVER"-*; do
@@ -21,6 +20,16 @@ case "${1:-}" in
         jq -Rn '[inputs | select(length>0)]' < "$rows" > "$intent.tmp"
         mv "$intent.tmp" "$intent"
         sync -f "$intent"
+}
+case "${1:-}" in
+    capture) capture_intent ;;
+    shutdown)
+        capture_intent
+        while IFS= read -r name; do
+            [[ "$name" == "$GAMESERVER" || "$name" =~ ^${GAMESERVER}-[0-9]+$ ]] || error_exit "Invalid saved runtime intent."
+            if instance_is_running "$name"; then "$DIR_APP/$name" stop 8>&-; fi
+            if instance_is_running "$name"; then error_exit "Instance failed to stop: $name"; fi
+        done < <(jq -r '.[]' "$intent")
         ;;
     resume)
         case "${L4D2_AUTOSTART:-true}" in
@@ -33,5 +42,5 @@ case "${1:-}" in
             if ! instance_is_running "$name"; then "$DIR_APP/$name" start 8>&-; fi
         done < <(jq -r '.[]' "$intent")
         ;;
-    *) error_exit "Use capture or resume." ;;
+    *) error_exit "Use capture, resume or shutdown." ;;
 esac
