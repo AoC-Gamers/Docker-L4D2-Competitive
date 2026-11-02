@@ -1,260 +1,122 @@
 #!/bin/bash
 set -euo pipefail
 
-#####################################################
-# Variables and environment validations
 : "${DIR_INSTALLER_LIB:?The DIR_INSTALLER_LIB variable is not defined.}"
 : "${DIR_ADDONS:?The DIR_ADDONS variable is not defined.}"
-
-#####################################################
-# Function library
 source "$DIR_INSTALLER_LIB/tools_stack.sh"
 
-#####################################################
-# Verify if the script is run as the user ${USER}
-check_user "${USER}"
-
-#####################################################
-# Variables and constants
-SCRIPT_NAME=$(basename "$0")
-LOG_FILE="$DIR_TMP/${SCRIPT_NAME%.sh}.log"
-DIR_MAPS="$DIR_TMP/maps"
-URL_CENTER="https://l4d2center.com/maps/servers/index.json"
-CACHE_INDEX="$DIR_TMP/cache_maps_l4d2center.json"
-
-# Force download of all maps (false by default)
+# This command must inherit the unprivileged runtime identity.
+[[ "$EUID" != 0 ]] || error_exit "Run map synchronization as linuxgsm, never as root."
 L4D2_MAPS_FORCE_DOWNLOAD=${L4D2_MAPS_FORCE_DOWNLOAD:-false}
-
-# If specified, only the map whose name (without extension) matches will be processed
-L4D2_MAP=${L4D2_MAP:-}
-
-# Variable to skip MD5 verification (false by default)
 L4D2_MAPS_NO_MD5=${L4D2_MAPS_NO_MD5:-false}
+L4D2_MAP=${L4D2_MAP:-}
+for flag in "$L4D2_MAPS_FORCE_DOWNLOAD" "$L4D2_MAPS_NO_MD5"; do
+    [[ "$flag" == true || "$flag" == false ]] || error_exit "Map flags must be true or false."
+done
+for cmd in curl jq md5sum 7z stat flock mktemp realpath; do
+    command -v "$cmd" >/dev/null || error_exit "Required command '$cmd' is not installed."
+done
 
-#####################################################
-# Create necessary directories
-mkdir -p "$DIR_MAPS"
-mkdir -p "$DIR_ADDONS"
+mkdir -p "$DIR_TMP/maps" "$DIR_ADDONS"
+# Resolve shared addons links so instances serialize on the same destination.
+DIR_ADDONS=$(realpath -e "$DIR_ADDONS")
+LOG_FILE="$DIR_TMP/maps_l4d2center.log"
+CACHE_INDEX="$DIR_TMP/cache_maps_l4d2center.json"
+URL_CENTER="https://l4d2center.com/maps/servers/index.json"
+exec 9>"$DIR_ADDONS/.maps_l4d2center.lock"
+flock 9
+WORK_DIR=$(mktemp -d "$DIR_TMP/maps/sync.XXXXXXXX")
+STAGE_DIR=""
+cleanup() {
+    rm -rf -- "$WORK_DIR"
+    if [[ -n "$STAGE_DIR" ]]; then rm -rf -- "$STAGE_DIR"; fi
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
-#####################################################
-# Function: log_message
 log_message() {
-    local message="$1"
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $message" | tee -a "$LOG_FILE"
+    printf '%s - %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" | tee -a "$LOG_FILE"
 }
 
-#####################################################
-# Function: verify_vpk_md5
-# Extracts a compressed file and verifies the MD5 of the first .vpk file.
-# Parameters:
-#   $1: Compressed file (.7z or .zip)
-#   $2: Expected MD5 for the extracted .vpk.
-verify_vpk_md5() {
-    local archive="$1"
-    local expected_md5="$2"
-    local temp_dir
-    temp_dir=$(mktemp -d)
-    
-    if [[ "$archive" == *.7z ]]; then
-        7z x "$archive" -o"$temp_dir" -bsp1
-    elif [[ "$archive" == *.zip ]]; then
-        unzip -qq -d "$temp_dir" "$archive"
-    else
-        rm -rf "$temp_dir"
-        return 1
-    fi
+log_message "Downloading map list from $URL_CENTER..."
+curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+    --connect-timeout 20 --max-time 120 --retry 2 \
+    --output "$WORK_DIR/index.json" "$URL_CENTER"
 
-    local vpk_file
-    vpk_file=$(find "$temp_dir" -maxdepth 1 -type f -name "*.vpk" | head -n 1)
-    if [ -z "$vpk_file" ]; then
-        log_message "Error: No .vpk file found in $(basename "$archive")."
-        rm -rf "$temp_dir"
-        return 1
-    fi
+# Validate the whole index before writing maps. Names are plain VPK basenames,
+# never paths or archive wildcard patterns. Official download URLs contain spaces.
+jq -e '
+    type == "array" and length > 0 and
+    all(.[];
+        (.name | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9 ._()-]*\\.vpk$")) and
+        (.md5 | type == "string" and test("^[a-fA-F0-9]{32}$")) and
+        (.size | type == "number" and . > 0 and . == floor) and
+        (.download_link | type == "string" and test("^https://[^/\\s]+/[^\\r\\n\\t]*$"))) and
+    ([.[].name] | length == (unique | length))
+' "$WORK_DIR/index.json" >/dev/null || error_exit "Invalid L4D2Center map index; existing maps preserved."
+jq --arg map "$L4D2_MAP" '[.[] | select($map == "" or (.name | rtrimstr(".vpk")) == $map)]' \
+    "$WORK_DIR/index.json" > "$WORK_DIR/selected.json"
+[[ "$(jq length "$WORK_DIR/selected.json")" != 0 ]] || error_exit "L4D2_MAP did not match a catalog entry."
+# Stage beside the destination, so replacement by rename stays on one filesystem.
+STAGE_DIR=$(mktemp -d "$DIR_ADDONS/.maps_l4d2center.XXXXXXXX")
 
-    if [[ "$L4D2_MAPS_NO_MD5" == "false" ]]; then
-        local actual_md5
-        actual_md5=$(md5sum "$vpk_file" | awk '{print $1}')
-        rm -rf "$temp_dir"
-        [[ "$actual_md5" == "$expected_md5" ]]
-    else
-        rm -rf "$temp_dir"
-        return 0
+verify_vpk() {
+    local file="$1" size="$2" expected_md5="$3" actual_md5
+    [[ -f "$file" && ! -L "$file" ]] || return 1
+    [[ "$(stat -c %s -- "$file")" == "$size" ]] || return 1
+    if [[ "$L4D2_MAPS_NO_MD5" != true ]]; then
+        actual_md5=$(md5sum -- "$file") || return 1
+        [[ "${actual_md5%% *}" == "${expected_md5,,}" ]] || return 1
     fi
-}
-
-#####################################################
-# Function: process_map
-# Extracts the compressed file, verifies (if applicable), and moves the .vpk to DIR_ADDONS.
-# Then, deletes the compressed file.
-# Parameters:
-#   $1: Compressed file
-#   $2: Expected MD5 for the extracted .vpk.
-process_map() {
-    local archive="$1"
-    local expected_md5="$2"
-    local temp_dir
-    temp_dir=$(mktemp -d)
-    
-    log_message "Extracting $(basename "$archive") in $temp_dir..."
-    if [[ "$archive" == *.7z ]]; then
-        7z x "$archive" -o"$temp_dir" -bsp1
-    elif [[ "$archive" == *.zip ]]; then
-        unzip -qq -d "$temp_dir" "$archive"
-    else
-        log_message "Error: Unsupported format for $(basename "$archive")."
-        rm -rf "$temp_dir"
-        return 1
-    fi
-
-    local vpk_file
-    vpk_file=$(find "$temp_dir" -maxdepth 1 -type f -name "*.vpk" | head -n 1)
-    if [ -z "$vpk_file" ]; then
-        log_message "Error: No .vpk file found in $(basename "$archive")."
-        rm -rf "$temp_dir"
-        return 1
-    fi
-
-    if [[ "$L4D2_MAPS_NO_MD5" == "false" ]]; then
-        local actual_md5
-        actual_md5=$(md5sum "$vpk_file" | awk '{print $1}')
-        if [[ "$actual_md5" != "$expected_md5" ]]; then
-            log_message "Error: MD5 verification failed for $(basename "$archive"). Expected: $expected_md5, got: $actual_md5."
-            rm -rf "$temp_dir"
-            return 1
-        else
-            log_message "MD5 verification successful for $(basename "$archive")."
-        fi
-    else
-        log_message "L4D2_MAPS_NO_MD5 enabled: skipping MD5 verification for $(basename "$archive")."
-    fi
-
-    log_message "Moving $(basename "$vpk_file") to $DIR_ADDONS..."
-    mv "$vpk_file" "$DIR_ADDONS/"
-    rm -rf "$temp_dir"
-    rm -f "$archive"  # Delete the compressed file after processing
     return 0
 }
 
-#####################################################
-# Function: download_and_process_map
-# Downloads the compressed file, processes it, and retries up to 3 times.
-# Parameters:
-#   $1: Download URL
-#   $2: Destination file for the compressed file
-#   $3: Expected MD5 for the extracted .vpk.
-download_and_process_map() {
-    local url="$1"
-    local file="$2"
-    local md5_expected="$3"
-    local attempts=3
-    local attempt=1
-
-    while [ $attempt -le $attempts ]; do
-        log_message "Attempt $attempt: Downloading $(basename "$file") from $url..."
-        curl -L -o "$file" -# "$url"
-        if [[ -f "$file" ]]; then
-            if process_map "$file" "$md5_expected"; then
-                log_message "$(basename "$file") processed successfully."
-                return 0
-            else
-                log_message "Error: Processing $(basename "$file") failed (attempt $attempt of $attempts)."
-                rm -f "$file"
-            fi
+download_map() {
+    local name="$1" size="$2" expected_md5="$3" url="$4" attempt
+    for attempt in 1 2 3; do
+        log_message "Downloading $name (attempt $attempt/3)..."
+        if curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+            --connect-timeout 20 --max-time 1800 --output "$WORK_DIR/map.archive" "${url// /%20}" &&
+            # Stream the exact member; no archive paths, links or other addons
+            # are extracted onto disk. 7z detects both ZIP and 7z archives.
+            7z e -so -spd "$WORK_DIR/map.archive" "$name" > "$STAGE_DIR/map.vpk" &&
+            verify_vpk "$STAGE_DIR/map.vpk" "$size" "$expected_md5"; then
+            chmod 0644 "$STAGE_DIR/map.vpk" &&
+                mv -fT -- "$STAGE_DIR/map.vpk" "$DIR_ADDONS/$name" || return 1
+            rm -f -- "$WORK_DIR/map.archive"
+            log_message "Verified and installed: $name"
+            return 0
         fi
-        attempt=$((attempt + 1))
+        log_message "Download, extraction or verification failed for $name; existing VPK preserved."
+        rm -f -- "$WORK_DIR/map.archive" "$STAGE_DIR/map.vpk"
     done
     return 1
 }
 
-#####################################################
-# Download the new index.json to a temporary file
-NEW_INDEX="$DIR_MAPS/index_new.json"
-log_message "Downloading map list from $URL_CENTER..."
-curl -L -o "$NEW_INDEX" -# "$URL_CENTER"
-
-#####################################################
-# Compare the new index with the previous cache
-if [[ -f "$CACHE_INDEX" ]]; then
-    if diff -q "$NEW_INDEX" "$CACHE_INDEX" > /dev/null && [[ "$L4D2_MAPS_FORCE_DOWNLOAD" != "true" ]]; then
-        log_message "The index.json has not changed and download was not forced. Maps will be copied from the cache."
-        log_message "Process completed (no changes)."
-        exit 0
-    else
-        log_message "Changes detected in index.json or download was forced."
-    fi
-else
-    log_message "No previous cache found. A full download will be performed."
+if [[ "$L4D2_MAPS_NO_MD5" == true ]]; then
+    log_message "Warning: L4D2_MAPS_NO_MD5=true; only file name and size will be verified."
 fi
-
-#####################################################
-# Compare each map in the new index with the previous cache to determine which ones to update.
-declare -A old_cache
-if [[ -f "$CACHE_INDEX" ]]; then
-    while IFS="=" read -r key value; do
-        old_cache["$key"]="$value"
-    done < <(jq -r 'to_entries[] | "\(.key)=\(.value)"' "$CACHE_INDEX")
-fi
-
-MAPS_TO_UPDATE=()
-while IFS= read -r map_entry; do
-    map_name=$(echo "$map_entry" | jq -r '.name')
-    # If L4D2_MAP is specified, compare the name without extension
-    if [[ -n "$L4D2_MAP" ]]; then
-        map_base="${map_name%.vpk}"
-        if [[ "$map_base" != "$L4D2_MAP" ]]; then
-            log_message "Map \"$map_name\" does not match L4D2_MAP ($L4D2_MAP), skipping."
-            continue
-        fi
+failed=0
+while IFS= read -r entry; do
+    name=$(jq -r .name <<< "$entry")
+    size=$(jq -r .size <<< "$entry")
+    md5=$(jq -r .md5 <<< "$entry")
+    url=$(jq -r .download_link <<< "$entry")
+    if [[ -L "$DIR_ADDONS/$name" || ( -e "$DIR_ADDONS/$name" && ! -f "$DIR_ADDONS/$name" ) ]]; then
+        log_message "Refusing to replace symlink or non-regular destination: $name"
+        failed=1
+    elif [[ "$L4D2_MAPS_FORCE_DOWNLOAD" != true ]] && verify_vpk "$DIR_ADDONS/$name" "$size" "$md5"; then
+        log_message "Verified: $name is up to date."
+    elif ! download_map "$name" "$size" "$md5" "$url"; then
+        failed=1
     fi
-    map_md5=$(echo "$map_entry" | jq -r '.md5')
-    if [[ "$L4D2_MAPS_FORCE_DOWNLOAD" == "true" ]] || [[ "${old_cache[$map_name]:-}" != "$map_md5" ]]; then
-        log_message "Map \"$map_name\" has changed or download will be forced (cache: \"${old_cache[$map_name]:-none}\", new: \"$map_md5\")."
-        MAPS_TO_UPDATE+=("$map_entry")
-    else
-        log_message "Map \"$map_name\" has not changed."
-    fi
-done < <(jq -c '.[]' "$NEW_INDEX")
+done < <(jq -c '.[]' "$WORK_DIR/selected.json")
 
-#####################################################
-# Process only the maps that have changed or need to be updated
-if [ ${#MAPS_TO_UPDATE[@]} -eq 0 ]; then
-    log_message "No changes detected in maps (or L4D2_MAP was not specified). Files will be copied from the cache."
-else
-    log_message "Updating ${#MAPS_TO_UPDATE[@]} map(s)."
-    for map_entry in "${MAPS_TO_UPDATE[@]}"; do
-        NAME=$(echo "$map_entry" | jq -r '.name')
-        URL=$(echo "$map_entry" | jq -r '.download_link' | sed 's/ /%20/g')
-        MD5_EXPECTED=$(echo "$map_entry" | jq -r '.md5')
-        FILE_NAME="${NAME%.vpk}.7z"
-        FILE_PATH="$DIR_MAPS/$FILE_NAME"
-        
-        if [[ -f "$FILE_PATH" ]]; then
-            log_message "$FILE_NAME already exists but will be updated (did not pass cache verification)."
-            rm -f "$FILE_PATH"
-        fi
-        
-        if ! download_and_process_map "$URL" "$FILE_PATH" "$MD5_EXPECTED"; then
-            log_message "Final error: Could not update $FILE_NAME after several attempts."
-        fi
-    done
-fi
-
-#####################################################
-# Update the cache with the new index.
-NEW_CACHE=$(jq 'reduce .[] as $map ({}; .[$map.name] = $map.md5)' "$NEW_INDEX")
-echo "$NEW_CACHE" > "$CACHE_INDEX"
-log_message "Cache updated: $CACHE_INDEX"
-
-#####################################################
-# Extract and move .vpk files from the remaining compressed files
-# Only process files that still exist in DIR_MAPS (updated ones have been deleted)
-log_message "Extracting files and moving .vpk to $DIR_ADDONS..."
-find "$DIR_MAPS" -type f \( -iname "*.7z" -o -iname "*.zip" \) | while IFS= read -r file; do
-    base=$(basename "$file")
-    map_name="${base%.7z}.vpk"
-    expected_md5=$(jq -r --arg name "$map_name" '.[$name]' "$CACHE_INDEX")
-    process_map "$file" "$expected_md5" || true
-done
-
-log_message "Process completed."
+[[ "$failed" == 0 ]] || error_exit "Map synchronization failed; cache receipt unchanged. See $LOG_FILE"
+# The receipt is informational: every invocation checks actual files. Filtered
+# runs record only selected entries, never claim the entire catalog was checked.
+jq 'reduce .[] as $map ({}; .[$map.name] = $map.md5)' \
+    "$WORK_DIR/selected.json" > "$WORK_DIR/cache.json"
+mv -fT -- "$WORK_DIR/cache.json" "$CACHE_INDEX"
+log_message "Map synchronization complete; custom VPKs outside the catalog were preserved."

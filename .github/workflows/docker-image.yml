@@ -29,8 +29,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Install ShellCheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Install validation dependencies
+        run: sudo apt-get update && sudo apt-get install -y shellcheck jq 7zip
       - name: ShellCheck (errors and warnings)
         run: bash scripts/shellcheck.sh
       - uses: actions/setup-python@v6

@@ -136,7 +136,33 @@ Aplica correcciones posteriores a la instalacion base del juego cuando el runtim
 
 ### `installer/bin/maps_l4d2center.sh`
 
-Descarga mapas desde L4D2Center y los integra en el serverfiles.
+Sincroniza los mapas del [catálogo oficial L4D2Center](https://l4d2center.com/maps/servers/index.json)
+en `DIR_ADDONS`, como usuario linuxgsm. El índice JSON y el
+[CSV del script de referencia](https://l4d2center.com/maps/servers/index.csv)
+contienen el mismo catálogo al revisar esta adaptación; se conserva JSON para
+mantener la integración con jq.
+
+Cada ejecución verifica tamaño y MD5 de los VPK reales, aunque el índice no haya
+cambiado. Descarga únicamente archivos faltantes o distintos; conserva los VPK
+propios que no figuren en el catálogo. No ejecutar simultáneamente otros
+actualizadores de mapas que no respeten su bloqueo.
+
+Los ZIP/7z se procesan transmitiendo solo el miembro con el nombre esperado a un
+archivo temporal junto a `addons`. Tras verificarlo, un rename sustituye el VPK.
+Los fallos de HTTP, extracción o checksum se reintentan hasta tres veces y conservan
+el VPK anterior; el comando termina con error si algún mapa falla. No hay rollback
+global: los mapas ya actualizados correctamente permanecen instalados.
+El temporal comprimido se elimina en cada intento y al finalizar. Un bloqueo por
+destino serializa este comando entre instancias con `addons` compartido.
+
+`cache_maps_l4d2center.json` es un recibo informativo, no permite omitir la
+verificación del disco. Solo se reemplaza cuando todos los mapas seleccionados
+terminan correctamente. Los temporales y el log están bajo `DIR_TMP`.
+
+Opciones: ver [contrato de mapas](api-reference.md#installerbinmaps_l4d2centersh).
+Es un comando manual: no reinicia gameservers ni se añade al bootstrap. Programar
+su ejecución en mantenimiento; el reemplazo del archivo no demuestra que un
+servidor en ejecución haya cargado la nueva versión del mapa.
 
 ### `installer/bin/workshop_downloader.sh`
 
