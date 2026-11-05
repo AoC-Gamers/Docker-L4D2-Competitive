@@ -129,3 +129,14 @@ sigue comprobando SSH y estado administrativo; no mide disponibilidad SRCDS.
 Integrar primero todos los commits de la base, luego construir AoC contra su
 digest y finalmente Vanilla contra el digest de AoC. Las hijas solo actualizan
 fixtures/documentación en este cambio; su comportamiento hereda la base.
+
+## Configuraciones de la distribución y de la instancia
+
+`left4dead2/cfg/` se publica desde el artefacto remoto, incluso si sus archivos
+fueron modificados localmente. Esto incluye `autoexec.override.cfg` y los CFG por
+modo. En `addons/sourcemod/configs/` solo se conservan archivos o directorios
+existentes declarados en `stack/preserve-paths.json` o
+`installer/config/instances_exclude.json` (grupo `configs`). Declara allí las
+credenciales e identidades particulares que deban sobrevivir a una actualización.
+No se decide preservación por hashes ni se importan automáticamente CFG locales
+al candidato, tampoco durante la primera migración.

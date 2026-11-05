@@ -137,8 +137,6 @@ printf default > "$DIR_SOURCEMOD/data/sqlite/local.sq3"
             self.assertIn('cfg/sharedplugins.cfg:2: addons/sourcemod/plugins/external/missing.smx', result.stdout)
             blocks = ['Acquire stack sources', 'Compose prepared stack artifacts',
                       'Apply final exclusions to composed artifacts',
-                      'Preserve local configuration in candidate',
-                      'Apply final exclusions after preserving local configuration',
                       'Inspect shared plugin loads in composed candidate',
                       'Plan managed-file publication', 'Stop affected running instances',
                       'Publish managed files', 'Synchronize instance links and private paths',
@@ -511,18 +509,33 @@ if [[ "$1" == stop ]]; then rm -f "$RUNNING"; else touch "$RUNNING"; fi
         self.assertSuccess(self.run_install(extra={'STACK_REUSE_SOURCES':'true'}))
         self.assertEqual((self.game/'addons/sourcemod/plugins/demo.smx').read_text(),'version1')
 
-    def test_local_configs_survive_defaults_and_repeated_updates(self):
-        self.hook.write_text(self.hook.read_text()+'''mkdir -p "$DIR_SOURCEMOD/configs" "$DIR_CFG"
+    def test_only_explicit_configs_survive_repeated_updates(self):
+        self.hook.write_text(self.hook.read_text()+'''mkdir -p "$DIR_SOURCEMOD/configs" "$DIR_CFG/gamemode"
 printf default > "$DIR_SOURCEMOD/configs/databases.cfg"
-printf default > "$DIR_CFG/local.cfg"
+printf default > "$DIR_SOURCEMOD/configs/hostname.cfg"
+printf default > "$DIR_SOURCEMOD/configs/private.cfg"
+printf default > "$DIR_CFG/autoexec.override.cfg"
+printf default > "$DIR_CFG/gamemode/versus.cfg"
 ''')
+        (self.installer/'config/instances_exclude.json').write_text(
+            json.dumps({'configs':['private.cfg'],'data':['dumps']}))
+        sm=self.game/'addons/sourcemod/configs'
+        # Existing configs without an old manifest follow the same explicit policy.
+        sm.mkdir(parents=True)
+        (sm/'databases.cfg').write_text('old unregistered config')
+        (sm/'hostname.cfg').write_text('gameserver identity')
+        (sm/'private.cfg').write_text('private instance config')
         self.assertSuccess(self.run_install('install'))
-        dbcfg=self.game/'addons/sourcemod/configs/databases.cfg'; dbcfg.write_text('local credentials fixture')
-        local=self.game/'cfg/local.cfg'; local.write_text('custom local config')
         for _ in range(2):
+            (sm/'databases.cfg').write_text('local credentials fixture')
+            (self.game/'cfg/autoexec.override.cfg').write_text('old override')
+            (self.game/'cfg/gamemode/versus.cfg').write_text('old mode config')
             self.assertSuccess(self.run_install(extra={'STACK_REUSE_SOURCES':'true'}))
-            self.assertEqual(dbcfg.read_text(),'local credentials fixture')
-            self.assertEqual(local.read_text(),'custom local config')
+            self.assertEqual((sm/'databases.cfg').read_text(),'default')
+            self.assertEqual((sm/'hostname.cfg').read_text(),'gameserver identity')
+            self.assertEqual((sm/'private.cfg').read_text(),'private instance config')
+            self.assertEqual((self.game/'cfg/autoexec.override.cfg').read_text(),'default')
+            self.assertEqual((self.game/'cfg/gamemode/versus.cfg').read_text(),'default')
 
     def test_prepared_cache_survives_ephemeral_directory_and_skips_hook(self):
         calls=self.base/'hook-calls'

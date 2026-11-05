@@ -148,9 +148,7 @@ def plan(tx, root, stack, config, state):
         if active.is_file(): entries.append({'area':'serverfiles','path':rel,'install':False})
     # Metadata is installed last; deployment ready is written only after commit.
     new_state=tx/'candidate/state'
-    baseline_file=tx/'config-default-hashes.json'
-    baseline=json.loads(baseline_file.read_text()) if baseline_file.exists() else {}
-    hashes={rel:baseline.get(rel) if rel.startswith(('cfg/','addons/sourcemod/configs/')) else hashlib.sha256(path.read_bytes()).hexdigest() for rel,path in incoming.items()}
+    hashes={rel:hashlib.sha256(path.read_bytes()).hexdigest() for rel,path in incoming.items()}
     durable_json(new_state/'managed-files.json',{'schema_version':2,'files':sorted(incoming),'hashes':hashes})
     state_files=files(new_state)
     prior_state=set()

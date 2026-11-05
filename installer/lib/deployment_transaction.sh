@@ -133,10 +133,6 @@ stack_run_candidate() (
     apply_stack_sources
     subsection "Apply final exclusions to composed artifacts"
     python3 "$DIR_INSTALLER_LIB/final_policy.py" "$DIR_LEFT4DEAD2" "$DIR_STACK/final-policy.json"
-    subsection "Preserve local configuration in candidate"
-    python3 "$DIR_INSTALLER_LIB/merge_local_configs.py" "$DIR_LEFT4DEAD2" "$STACK_ACTIVE_GAME_ROOT" "$STATE_ROOT" "$STACK_TRANSACTION/config-default-hashes.json"
-    subsection "Apply final exclusions after preserving local configuration"
-    python3 "$DIR_INSTALLER_LIB/final_policy.py" "$DIR_LEFT4DEAD2" "$DIR_STACK/final-policy.json"
     subsection "Normalize reviewed Accelerator stack requirement"
     source "$DIR_INSTALLER_LIB/stack_component_lib.sh"
     stack_normalize_accelerator_execstack "$DIR_SOURCEMOD/extensions/accelerator.ext.so"
