@@ -62,10 +62,6 @@ destino, con `nocopy`, sin descargas ni archivos del juego. Este pequeño volume
 anónimo permite usar un único archivo Compose sin inventar condiciones YAML.
 Compose elimina del modelo la declaración externa que no tiene consumidores.
 
-El archivo anterior `docker-compose.valve-cache.yml` queda como compatibilidad
-vacía para comandos existentes; ya no aporta montajes. Puedes retirarlo de tus
-comandos o de `COMPOSE_FILE`.
-
 Si el nombre está configurado, Compose exige ese volumen incluso cuando el juego
 ya está instalado. El skip del instalador no puede omitir esa comprobación previa
 de Docker. Para retirar la dependencia compartida, deja la variable vacía y
