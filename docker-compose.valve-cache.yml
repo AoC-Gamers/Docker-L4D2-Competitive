@@ -1,4 +1,0 @@
-# Compatibility shim for existing two-file commands.
-# Both main Compose files now select the cache directly from L4D2_VALVE_CACHE_VOLUME.
-# This file is no longer needed; it adds no mounts or services.
-services: {}
