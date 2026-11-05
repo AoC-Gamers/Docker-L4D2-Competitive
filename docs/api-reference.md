@@ -236,7 +236,31 @@ Descarga y procesa contenido del Workshop.
 
 ### `installer/bin/maps_l4d2center.sh`
 
-Descarga mapas desde L4D2Center.
+Sincroniza mapas usando `https://l4d2center.com/maps/servers/index.json`.
+
+| Variable | Contrato |
+|----------|----------|
+| `DIR_INSTALLER_LIB` | Obligatoria; directorio con `tools_stack.sh` |
+| `DIR_ADDONS` | Obligatoria; destino compartido de VPK |
+| `DIR_TMP` | Temporales, log y recibo; default `/app/tmp` |
+| `L4D2_MAP` | Opcional; nombre exacto sin `.vpk`, conserva espacios y mayúsculas. Sin coincidencia retorna error |
+| `L4D2_MAPS_FORCE_DOWNLOAD` | `false` por defecto; `true` descarga incluso archivos ya verificados |
+| `L4D2_MAPS_NO_MD5` | `false` por defecto; `true` omite MD5, pero exige nombre y tamaño del catálogo; emite advertencia |
+
+Dependencias: Bash, curl, jq, md5sum, 7z, stat, flock, mktemp y realpath.
+Se rechaza root. No instala paquetes, elimina VPK ajenos al catálogo, sigue
+symlinks de archivos VPK ni modifica CFG, SQLite o identidades SSH. Se permiten
+directorios `addons` compartidos mediante symlink. Retorna cero solo si todos los
+mapas seleccionados se verificaron o instalaron correctamente. El recibo registra
+únicamente la selección verificada, sin afirmar que el catálogo entero esté instalado.
+
+Ejemplo en una sesión linuxgsm con el entorno del instalador cargado:
+
+```bash
+L4D2_MAP='dark carnival remix' bash "$DIR_INSTALLER_BIN/maps_l4d2center.sh"
+```
+
+Ver [flujo y límites operativos](scripts.md#installerbinmaps_l4d2centersh).
 
 ## Logs
 

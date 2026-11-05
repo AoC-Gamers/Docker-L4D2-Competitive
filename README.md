@@ -158,3 +158,9 @@ cadena publicada por digest.
 ## Calidad de código
 
 [Sonar manual con Makefile y scripts; ShellCheck en CI](docs/sonar.md).
+
+## Caché opcional de la descarga de Valve
+
+Desactivada por defecto. Permite reutilizar una copia limpia entre instalaciones
+nuevas de Competitive, AoC y Vanilla del mismo host. No modifica juegos existentes
+ni sus actualizaciones. Ver [configuración, Make y ciclo de vida](docs/valve-cache.md).
