@@ -344,6 +344,16 @@ install_primary_instance() {
   install_mode="$(get_l4d2_install_mode)"
   info "Install mode: ${install_mode}"
 
+  # Optional seed only for a new installation. Existing repairs and updates keep
+  # their original path, and skip never touches or waits for the shared cache.
+  if [[ -n "${L4D2_VALVE_CACHE_VOLUME:-}" && "$install_mode" != skip ]] && ! is_gameserver_installed; then
+    step "Installing Valve files from the optional shared cache"
+    bash "$DIR_INSTALLER_BIN/valve_cache.sh" seed "$LGSM_SERVERFILES"
+    L4D2_FRESH_INSTALL="true"
+    clean_steam_password
+    return 0
+  fi
+
   if [ -n "${STEAM_USER:-}" ] && [ -n "${STEAM_PASSWD:-}" ]; then
     local secrets_config
 

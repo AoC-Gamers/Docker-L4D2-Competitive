@@ -1,0 +1,17 @@
+# Optional overlay: use together with docker-compose.yml or docker-compose.dev.yml.
+# No cache volume is created or required by the normal Compose files.
+services:
+  l4d2:
+    environment:
+      - L4D2_VALVE_CACHE_VOLUME=${L4D2_VALVE_CACHE_VOLUME:?Set the existing shared Valve cache volume}
+    volumes:
+      - type: volume
+        source: valve_cache
+        target: /var/cache/l4d2-valve
+        volume:
+          nocopy: true
+
+volumes:
+  valve_cache:
+    external: true
+    name: ${L4D2_VALVE_CACHE_VOLUME:?Set the existing shared Valve cache volume}
