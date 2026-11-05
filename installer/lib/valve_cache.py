@@ -112,7 +112,7 @@ class Cache:
             mounts = {re.sub(r'\\([0-7]{3})', lambda m: chr(int(m[1], 8)), line.split()[4])
                       for line in Path('/proc/self/mountinfo').read_text().splitlines()}
             if str(self.root) not in mounts:
-                raise ValueError('Cache volume is not mounted at /var/cache/l4d2-valve; use the cache Compose override')
+                raise ValueError('Cache volume is not mounted at /var/cache/l4d2-valve; update Compose and recreate the container')
         if not self.root.is_dir() or not os.access(self.root, os.R_OK | os.W_OK | os.X_OK):
             raise ValueError('Cache volume must exist and be writable by linuxgsm; prepare its UID/GID permissions')
         self.metadata = self.root / 'metadata.json'
