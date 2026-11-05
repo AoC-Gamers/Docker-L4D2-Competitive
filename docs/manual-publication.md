@@ -140,3 +140,10 @@ existentes declarados en `stack/preserve-paths.json` o
 credenciales e identidades particulares que deban sobrevivir a una actualización.
 No se decide preservación por hashes ni se importan automáticamente CFG locales
 al candidato, tampoco durante la primera migración.
+
+Publicar `cfg/` superpone los archivos remotos: no vacía el directorio ni elimina
+archivos ausentes del artefacto nuevo, aunque aparecieran en manifiestos anteriores.
+La limpieza automática solo abarca los directorios SourceMod `extensions`,
+`gamedata`, `configs`, `plugins`, `scripting` y `translations` dentro de `addons/`.
+Las exclusiones puntuales de `final-policy.json` siguen aplicándose a sus rutas
+exactas, incluidas las de cargadores competitivos retirados de Vanilla.

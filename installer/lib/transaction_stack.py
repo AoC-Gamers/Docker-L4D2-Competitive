@@ -103,8 +103,10 @@ def plan(tx, root, stack, config, state):
     previous=set()
     retained=set()
     manifest=state/'managed-files.json'
-    if manifest.exists(): previous.update(json.loads(manifest.read_text())['files'])
-    # First upgrade removes only the previously documented reset subtrees.
+    if manifest.exists():
+        previous.update(rel for rel in json.loads(manifest.read_text())['files'] if under(rel,RESET))
+    # Only the explicitly listed addon subtrees are cleaned automatically.
+    # Files outside them are overlaid, even if an old manifest recorded them.
     for rel in RESET:
         directory=root/rel
         if directory.exists():

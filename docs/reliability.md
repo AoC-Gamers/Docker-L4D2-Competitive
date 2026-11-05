@@ -108,9 +108,12 @@ Los archivos de `cfg/`, incluidos `autoexec.cfg`, `autoexec.override.cfg` y
 recibir su default inicial. No se deduce conservación comparando hashes ni por
 la ausencia de un manifiesto anterior. Los hashes del manifiesto y del journal
 verifican integridad de publicación, no deciden qué configuración conservar.
-Un archivo local no administrado y ausente del artefacto no se elimina por esta
-regla; la retirada de archivos administrados sigue el manifiesto y la política
-final. Un enlace simbólico en un árbol estático cuya procedencia no pueda
+En `cfg/` se reemplazan los archivos recibidos sin retirar los ausentes del
+artefacto, incluso si figuraban en un manifiesto anterior. La limpieza automática
+se limita a `addons/sourcemod/{extensions,gamedata,configs,plugins,scripting,translations}`.
+Las eliminaciones puntuales fuera de esos directorios requieren una ruta
+expresamente declarada en la política final. Los recursos opcionales conservan
+su ciclo de retirada por registro de propiedad. Un enlace simbólico en un árbol estático cuya procedencia no pueda
 comprobarse provoca un fallo previo a publicar.
 
 La sincronización mantiene `sourcemod` como origen compartido y actualiza los enlaces de `sourcemodN` en su lugar. `logs` y el contenedor `data` son físicos dentro de cada instancia; las exclusiones de `instances_exclude.json` definen las rutas particulares. Los datos privados nuevos empiezan vacíos; los recursos compartidos siguen enlazados y las copias iniciales de configuraciones/plugins excluidos conservan el contrato previo. No se duplican ni restauran datos vivos.
