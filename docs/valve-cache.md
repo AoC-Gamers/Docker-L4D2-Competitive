@@ -40,26 +40,37 @@ El helper también admite UID/GID explícitos en `.env`. Una raíz existente sin
 acceso requiere revisión del operador; no se repara recursivamente. No reutilices
 un volumen de datos, recursos o BanSystem para esta función.
 
-Agrega el overlay opcional al Compose elegido:
+El Compose principal monta automáticamente el volumen indicado por la variable.
+No necesitas indicar un segundo archivo:
 
 ```bash
 # Imagen publicada
-docker compose -f docker-compose.yml -f docker-compose.valve-cache.yml up -d
+docker compose up -d
 
 # Desarrollo
-docker compose -f docker-compose.dev.yml -f docker-compose.valve-cache.yml up -d
+docker compose -f docker-compose.dev.yml up -d
 ```
 
-También puedes seleccionar esos archivos mediante `COMPOSE_FILE` en `.env`.
-Configurar el nombre del volumen no lo monta automáticamente: Compose comprueba
-que el volumen externo exista y el gestor comprueba el montaje físico en
+Con la variable configurada, Compose comprueba que el volumen externo exista
+antes de crear el contenedor. El gestor comprueba también el montaje físico en
 `/var/cache/l4d2-valve`. Si falta durante una instalación nueva, falla con un
 diagnóstico; no descarga cuatro copias silenciosamente ni usa el socket Docker.
-Los Compose normales no crean ni requieren este volumen.
-Mientras se seleccione el overlay, Compose seguirá exigiendo el volumen externo
-antes de arrancar el contenedor, aunque el juego ya esté instalado. El skip del
-instalador no puede omitir esa comprobación previa de Docker; para retirar la
-caché de un despliegue existente, quita también el overlay.
+
+Con la variable vacía o ausente, el gestor queda desactivado y Compose no exige
+ni crea un volumen compartido. Docker reserva un volumen anónimo vacío en ese
+destino, con `nocopy`, sin descargas ni archivos del juego. Este pequeño volumen
+anónimo permite usar un único archivo Compose sin inventar condiciones YAML.
+Compose elimina del modelo la declaración externa que no tiene consumidores.
+
+El archivo anterior `docker-compose.valve-cache.yml` queda como compatibilidad
+vacía para comandos existentes; ya no aporta montajes. Puedes retirarlo de tus
+comandos o de `COMPOSE_FILE`.
+
+Si el nombre está configurado, Compose exige ese volumen incluso cuando el juego
+ya está instalado. El skip del instalador no puede omitir esa comprobación previa
+de Docker. Para retirar la dependencia compartida, deja la variable vacía y
+recrea el contenedor conservando sus volúmenes de datos y SSH. El volumen externo
+mantiene su propio ciclo de vida; Compose no lo elimina con `down -v`.
 
 ## Instalación y concurrencia
 
@@ -131,7 +142,7 @@ los consumidores que comparten UID/escritura no están aislados entre sí. No se
 guardan CFG locales, SQLite, logs de juego, demos, SSH ni artefactos BanSystem.
 Los enlaces externos o archivos especiales en el payload se rechazan.
 
-Para desactivar, deja `L4D2_VALVE_CACHE_VOLUME=` y vuelve a los Compose normales.
+Para desactivar, deja `L4D2_VALVE_CACHE_VOLUME=` y recrea con el mismo Compose.
 No es necesario eliminar el volumen ni cambiar una instalación ya preparada.
 
 ## Validación

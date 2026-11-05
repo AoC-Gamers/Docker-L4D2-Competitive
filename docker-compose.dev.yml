@@ -19,7 +19,14 @@ services:
       - data:/data
       - ssh:/var/lib/l4d2/ssh
       - ${HOST_REPO_RESOURCES_DIR:-./resources}:${REPO_RESOURCES_DIR:-/data/resources}:ro
+      # Named external cache when enabled; unused anonymous storage when disabled.
+      - type: volume
+        source: ${L4D2_VALVE_CACHE_VOLUME:+valve_cache}
+        target: /var/cache/l4d2-valve
+        volume:
+          nocopy: true
     environment:
+      - L4D2_VALVE_CACHE_VOLUME=${L4D2_VALVE_CACHE_VOLUME:-}
       - SSH_PORT=${SSH_PORT:-422}
       - L4D2_INSTALL=${L4D2_INSTALL:-normal}
       - L4D2_AUTOSTART=${L4D2_AUTOSTART:-true}
@@ -33,3 +40,7 @@ volumes:
     name: ${SSH_VOLUME_NAME:-${DATA_VOLUME_NAME:-l4d2_data}_ssh}
   data:
     name: ${DATA_VOLUME_NAME:-l4d2_data}
+  valve_cache:
+    external: true
+    # Unused declarations are pruned by Compose when the source above is empty.
+    name: ${L4D2_VALVE_CACHE_VOLUME:-l4d2-valve-cache-disabled}
