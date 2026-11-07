@@ -17,7 +17,6 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT/'installer/lib'))
 import git_original
-import merge_local_configs
 import safe_extract
 
 spec = importlib.util.spec_from_file_location('workshop_contract', ROOT/'installer/bin/workshop.py')
@@ -62,26 +61,6 @@ class InstallerFilesystem(unittest.TestCase):
                 tar.addfile(item)
             with self.assertRaises(ValueError):
                 safe_extract.extract(archive, dest)
-
-    def test_merge_keeps_local_edits_and_new_managed_loader(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            candidate, active, state = [root/n for n in ('candidate', 'active', 'state')]
-            for base in (candidate, active):
-                (base/'cfg').mkdir(parents=True)
-                (base/'cfg/sharedplugins.cfg').write_text('new loader' if base == candidate else 'old loader')
-                (base/'cfg/local.cfg').write_text('default' if base == candidate else 'local edit')
-            state.mkdir()
-            baseline = root/'baseline.json'
-            subprocess.run([sys.executable, str(ROOT/'installer/lib/merge_local_configs.py'), str(candidate), str(active), str(state), str(baseline)], check=True)
-            self.assertEqual((candidate/'cfg/local.cfg').read_text(), 'local edit')
-            self.assertEqual((candidate/'cfg/sharedplugins.cfg').read_text(), 'new loader')
-            self.assertIn('cfg/local.cfg', json.loads(baseline.read_text()))
-            import hashlib
-            (state/'managed-files.json').write_text(json.dumps({'hashes': {'cfg/local.cfg': hashlib.sha256(b'local edit').hexdigest()}}))
-            (candidate/'cfg/local.cfg').write_text('updated default')
-            merge_local_configs.merge(candidate, active, state, baseline)
-            self.assertEqual((candidate/'cfg/local.cfg').read_text(), 'updated default')
 
     def test_git_mode_repair_rejects_content_changes_and_untracked_sources(self):
         with tempfile.TemporaryDirectory() as directory:

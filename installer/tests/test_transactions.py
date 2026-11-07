@@ -84,6 +84,36 @@ class Transactions(unittest.TestCase):
             self.assertNotIn(retired,json.loads((self.state/'managed-files.json').read_text())['files'])
             tx.cleanup(self.transaction)
 
+    def test_cfg_overlay_keeps_absent_files_even_with_previous_manifest(self):
+        override=self.write(self.root,'cfg/autoexec.override.cfg','old override')
+        mode=self.write(self.root,'cfg/gamemode/versus.cfg','old mode')
+        local=self.write(self.root,'cfg/server-private.cfg','instance settings')
+        retired=self.write(self.root,'cfg/gamemode/old-profile.cfg','old remote profile')
+        script=self.write(self.root,'scripts/old-script.txt','old script')
+        self.write(self.state,'managed-files.json',json.dumps({'files':[
+            'cfg/autoexec.override.cfg','cfg/gamemode/versus.cfg',
+            'cfg/gamemode/old-profile.cfg','scripts/old-script.txt']}))
+        for iteration in range(2):
+            tx.seed(self.transaction,self.root,self.state)
+            candidate=self.transaction/'candidate/serverfiles/left4dead2'
+            self.write(candidate,'cfg/autoexec.override.cfg',f'remote override {iteration}')
+            self.write(candidate,'cfg/gamemode/versus.cfg',f'remote mode {iteration}')
+            tx.plan(self.transaction,self.root,self.stack,self.config,self.state)
+            tx.publish(self.transaction); tx.commit(self.transaction)
+            self.assertEqual(override.read_text(),f'remote override {iteration}')
+            self.assertEqual(mode.read_text(),f'remote mode {iteration}')
+            self.assertEqual(local.read_text(),'instance settings')
+            self.assertEqual(retired.read_text(),'old remote profile')
+            self.assertEqual(script.read_text(),'old script')
+            tx.cleanup(self.transaction)
+
+    def test_explicit_cfg_removal_still_applies_outside_cleanup_subtrees(self):
+        retired=self.write(self.root,'cfg/protectedplugins.cfg','retired loader')
+        self.write(self.stack,'final-policy.json',json.dumps({'remove':{
+            'cfg/protectedplugins.cfg':'explicit retired loader'}}))
+        self.prepare(); tx.publish(self.transaction); tx.commit(self.transaction)
+        self.assertFalse(retired.exists())
+
     def test_sigkill_retains_candidate_for_explicit_retry(self):
         old=self.write(self.root,'addons/sourcemod/plugins/old.smx','old')
         self.prepare()
