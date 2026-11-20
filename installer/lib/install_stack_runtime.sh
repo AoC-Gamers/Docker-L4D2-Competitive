@@ -9,6 +9,7 @@ build_resolved_components_json() {
     local component_id
     local component_json
     local folder
+    local env_suffix
     local branch_var_name
     local branch_value
     local release_tag_var_name
@@ -36,9 +37,10 @@ build_resolved_components_json() {
         [[ -n "$component_id" ]] || continue
 
         [[ "$folder" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ && "$folder" != *..* ]] || error_exit "Invalid component folder."
-        branch_var_name="BRANCH_$(echo "$folder" | tr '[:lower:]' '[:upper:]')"
+        env_suffix="$(printf '%s' "$folder" | tr 'abcdefghijklmnopqrstuvwxyz.-' 'ABCDEFGHIJKLMNOPQRSTUVWXYZ__')"
+        branch_var_name="BRANCH_$env_suffix"
         branch_value=${!branch_var_name:-default}
-        release_tag_var_name="RELEASE_TAG_$(echo "$folder" | tr '[:lower:]' '[:upper:]')"
+        release_tag_var_name="RELEASE_TAG_$env_suffix"
         release_tag_value=${!release_tag_var_name:-default}
 
         if [ "$branch_value" != "default" ]; then
@@ -51,7 +53,7 @@ build_resolved_components_json() {
 
         component_json="$(printf '%s\n' "$component_json" | envsubst | jq -c '.')"
         local variant_var variant_override
-        variant_var="HOOK_VARIANT_$(echo "$folder" | tr '[:lower:]' '[:upper:]')"
+        variant_var="HOOK_VARIANT_$env_suffix"
         variant_override="${!variant_var:-}"
         if [[ -n "$variant_override" ]]; then
             component_json="$(jq -c --arg value "$variant_override" '.hook_variant=$value' <<< "$component_json")"

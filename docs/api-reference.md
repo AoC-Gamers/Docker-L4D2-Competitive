@@ -51,6 +51,11 @@ Define que componentes se activan por entorno y que overrides aplicar.
 |----------|---------|-----|
 | `BRANCH_*` | `BRANCH_{FOLDER}` | Override de rama Git |
 | `RELEASE_TAG_*` | `RELEASE_TAG_{FOLDER}` | Override de canal o tag |
+| `HOOK_VARIANT_*` | `HOOK_VARIANT_{FOLDER}` | Variante del hook |
+
+Para estas variables, escribe la carpeta en mayúsculas y reemplaza sus guiones
+y puntos por guiones bajos. Por ejemplo, `sourcetv-support` usa
+`RELEASE_TAG_SOURCETV_SUPPORT`.
 
 ### Formato de una fuente
 
