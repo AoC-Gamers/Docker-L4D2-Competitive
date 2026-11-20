@@ -49,6 +49,25 @@ printf default > "$DIR_SOURCEMOD/data/sqlite/local.sq3"
     def assertSuccess(self,result):
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
+    def test_hyphenated_component_folder_resolves_environment_overrides(self):
+        folder = 'demo-extension'
+        manifest = self.stack / 'manifests/components.json'
+        manifest.write_text(json.dumps({'demo': {'folder': folder}}))
+        profile = self.stack / 'profiles/test.json'
+        result = subprocess.run(
+            ['bash', '-euc',
+             'source "$DIR_INSTALLER_LIB/install_stack_runtime.sh"; '
+             'build_resolved_components_json "$1" "$2"',
+             'resolver', str(manifest), str(profile)],
+            env=dict(self.env, BRANCH_DEMO_EXTENSION='custom-ref',
+                     RELEASE_TAG_DEMO_EXTENSION='channel/develop',
+                     HOOK_VARIANT_DEMO_EXTENSION='custom-hook'),
+            capture_output=True, text=True, timeout=10, check=True)
+        self.assertEqual(json.loads(result.stdout), [{
+            'id': 'demo', 'folder': folder, 'branch': 'custom-ref',
+            'release_tag': 'channel/develop', 'hook_variant': 'custom-hook',
+        }])
+
     def test_explicit_update_refreshes_sources_when_automatic_update_is_disabled(self):
         extra = {'L4D2_STACK_AUTOUPDATE': 'false'}
         self.assertSuccess(self.run_install('install', extra))
