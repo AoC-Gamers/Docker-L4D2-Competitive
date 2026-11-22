@@ -97,7 +97,7 @@ printf default > "$DIR_SOURCEMOD/data/sqlite/local.sq3"
                 (self.stack/'profiles'/f'{profile}.json').write_text('{"components":["demo"]}')
                 result=self.run_install('install',extra={'STACK_PROFILE':profile})
                 self.assertSuccess(result)
-                self.assertTrue((self.installer/'cache/work/install_stack'/profile).is_dir())
+                self.assertTrue((self.installer/'cache/work/install_stack'/profile/'demo/plugin').is_file())
                 self.assertTrue((self.base/'state/sources'/profile/'demo').is_dir())
                 self.assertTrue((self.base/'state/cache'/f'{profile}.log').is_file())
                 self.assertFalse((self.base/'state/sources'/(profile+'_')).exists())
@@ -558,9 +558,20 @@ printf default > "$DIR_CFG/gamemode/versus.cfg"
 
     def test_prepared_cache_survives_ephemeral_directory_and_skips_hook(self):
         calls=self.base/'hook-calls'
-        self.hook.write_text(self.hook.read_text()+f'printf call >> "{calls}"\n')
+        workspace=self.installer/'cache/work/install_stack/test'
+        prepared=self.installer/'cache/prepared/test'
+        entry=prepared/'demo'
+        self.hook.write_text(self.hook.read_text()+f'printf call >> "{calls}"\n'+'''
+source "$DIR_INSTALLER_LIB/tools_stack.sh"
+source "$DIR_INSTALLER_LIB/stack_component_lib.sh"
+mkdir -p "$1/cfg"
+touch "$1/cfg/server.cfg"
+stack_remove_files_if_present "$1/cfg/server.cfg"
+''')
         self.assertSuccess(self.run_install())
         self.assertEqual(calls.read_text(),'call')
+        self.assertTrue((workspace/'demo/plugin').is_file())
+        first_manifest=json.loads((entry/'manifest.json').read_text())
         shutil.rmtree(self.base/'tmp',ignore_errors=True)
         self.assertSuccess(self.run_install(extra={'STACK_REUSE_SOURCES':'true'}))
         self.assertEqual(calls.read_text(),'call')
@@ -572,12 +583,16 @@ printf default > "$DIR_CFG/gamemode/versus.cfg"
         plugin.unlink()
         result=self.run_install(extra={'STACK_REUSE_SOURCES':'true'})
         self.assertSuccess(result)
+        self.assertIn(f'Excluded path from deployment: {workspace}/demo/cfg/server.cfg (removed) [prepared cache]',result.stdout)
         self.assertIn('Prepared cache reused: demo',result.stdout)
         self.assertEqual(plugin.read_text(),'version1')
         self.assertEqual(calls.read_text(),'call')
         self.hook.write_text(self.hook.read_text()+'# changed hook\n')
         self.assertSuccess(self.run_install(extra={'STACK_REUSE_SOURCES':'true'}))
         self.assertEqual(calls.read_text(),'callcall')
+        self.assertNotEqual(json.loads((entry/'manifest.json').read_text())['fingerprint'],
+                            first_manifest['fingerprint'])
+        self.assertEqual([path for path in prepared.iterdir() if path.is_dir()], [entry])
 
     def test_snapshot_hash_describes_copied_bytes_when_git_metadata_changes(self):
         identity=self.installer/'lib/source_identity.py'

@@ -263,8 +263,7 @@ preflight_github_release_access() {
 
     encoded_tag=$(jq -rn --arg value "$release_tag" '$value|@uri')
     api_url="https://api.github.com/repos/${github_repo}/releases/tags/${encoded_tag}"
-    body_file="$DIR_TMP/github-release-preflight-$$.json"
-    rm -f "$body_file"
+    body_file="$(mktemp "$DIR_TMP/github-release-preflight.XXXXXXXX")" || error_exit "Could not create GitHub preflight response file."
 
     http_status="$(github_http_status "$api_url" "$body_file")" || http_status="000"
 
@@ -274,6 +273,7 @@ preflight_github_release_access() {
     else
         release_json=""
     fi
+    rm -f -- "$body_file"
 
     case "$http_status" in
         200)
@@ -789,12 +789,12 @@ stack_prepare_component_hook() (
             source="$(jq --arg payload "$(python3 "$DIR_INSTALLER_LIB/source_identity.py" "$cache_dir" --git-payload)" 'del(.snapshot_sha256) + {payload_sha256:$payload}' <<< "$source")"
         fi
         key="$(python3 "$DIR_INSTALLER_LIB/prepared_cache.py" key "$STACK_TRANSACTION/candidate" "$component_json" "$source" "$STACK_PREPARATION_LOGIC_SHA" "$INSTALL_TYPE")"
-        entry="$STACK_PREPARED_CACHE/$name/$key"
+        entry="$STACK_PREPARED_CACHE/$CACHE_NAMESPACE/$name"
         mkdir -p "$(dirname "$entry")"
         exec 6>"$entry.lock"; flock 6
         subsection "Check prepared artifact cache: $name"
-        if python3 "$DIR_INSTALLER_LIB/prepared_cache.py" replay "$STACK_TRANSACTION/candidate" "$entry"; then
-            info "Prepared cache reused: $name ($key)"
+        if python3 "$DIR_INSTALLER_LIB/prepared_cache.py" replay "$STACK_TRANSACTION/candidate" "$entry" "$key"; then
+            info "Prepared cache reused: $name"
             return 0
         else
             local cache_status=$?
@@ -816,7 +816,7 @@ stack_prepare_component_hook() (
     bash "$hook" "$workspace" "$INSTALL_TYPE" "$downloaded" "$kind" || exit $?
     if [[ -n "$entry" ]]; then
         subsection "Store prepared artifact: $name"
-        python3 "$DIR_INSTALLER_LIB/prepared_cache.py" store "$STACK_TRANSACTION/candidate" "$before" "$entry" "$exclusions"
+        python3 "$DIR_INSTALLER_LIB/prepared_cache.py" store "$STACK_TRANSACTION/candidate" "$before" "$entry" "$exclusions" "$key"
     fi
 )
 

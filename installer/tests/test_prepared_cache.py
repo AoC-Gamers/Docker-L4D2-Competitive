@@ -27,19 +27,22 @@ class PreparedCache(unittest.TestCase):
         before=cache.inventory(self.candidate); old.unlink()
         payload=self.write('serverfiles/left4dead2/plugins/final.smx','normalized')
         record=self.root/'exclusions'; record.write_text('plugins/excluded.smx (removed)\n')
-        entry=self.root/'cache'; cache.store(self.candidate,before,entry,record)
+        entry=self.root/'cache'; cache.store(self.candidate,before,entry,record,'source-a')
         self.assertFalse((entry/'files'/keep.relative_to(self.candidate)).exists())
         old.write_text('previous layer'); payload.unlink()
-        self.assertTrue(cache.replay(self.candidate,entry))
+        self.assertFalse(cache.replay(self.candidate,entry,'source-b'))
+        self.assertTrue(old.exists())
+        self.assertFalse(payload.exists())
+        self.assertTrue(cache.replay(self.candidate,entry,'source-a'))
         self.assertFalse(old.exists()); self.assertEqual(payload.read_text(),'normalized')
         self.assertEqual(keep.read_text(),'community')
 
     def test_corruption_validates_all_files_before_any_candidate_mutation(self):
         old=self.write('plugins/excluded.smx','old'); before=cache.inventory(self.candidate); old.unlink()
         payload=self.write('plugins/new.smx','new')
-        entry=self.root/'cache'; cache.store(self.candidate,before,entry,self.root/'absent')
+        entry=self.root/'cache'; cache.store(self.candidate,before,entry,self.root/'absent','source-a')
         (entry/'files/plugins/new.smx').write_text('bad bytes'); old.write_text('old'); payload.unlink()
-        self.assertFalse(cache.replay(self.candidate,entry)); self.assertEqual(old.read_text(),'old')
+        self.assertFalse(cache.replay(self.candidate,entry,'source-a')); self.assertEqual(old.read_text(),'old')
         self.assertFalse(payload.exists())
 
     def test_candidate_input_mode_and_content_are_keyed_but_not_mtime(self):
@@ -82,9 +85,9 @@ test "$(get_component_cached_state extra_demo)" = other
         from unittest.mock import patch
         before=cache.inventory(self.candidate)
         self.write('plugins/new.smx','new')
-        entry=self.root/'cache'; cache.store(self.candidate,before,entry,self.root/'absent')
+        entry=self.root/'cache'; cache.store(self.candidate,before,entry,self.root/'absent','source-a')
         with patch.object(cache.shutil,'copy2',side_effect=OSError('simulated storage failure')):
-            with self.assertRaises(OSError): cache.replay(self.candidate,entry)
+            with self.assertRaises(OSError): cache.replay(self.candidate,entry,'source-a')
 
     def test_commit_retains_pending_resume_until_it_is_acknowledged(self):
         txdir=self.root/'transaction'; txdir.mkdir()

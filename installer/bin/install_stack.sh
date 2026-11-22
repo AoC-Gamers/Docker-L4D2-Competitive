@@ -90,24 +90,21 @@ finalize_installer_deploy_state() {
 
 initialize_install_workspace() {
     local stack_profile_slug=""
-    local cache_namespace=""
 
     stack_profile_slug="$(printf '%s' "${STACK_PROFILE:-default}" | tr -c '[:alnum:]_.-' '_')"
-    cache_namespace="${stack_profile_slug:-default}"
+    CACHE_NAMESPACE="${stack_profile_slug:-default}"
 
     # Persistent, editable workspace; pristine sources and prepared effects are separate.
-    local target_key
-    target_key="$(realpath -m "$DIR_LEFT4DEAD2" | sha256sum | cut -d' ' -f1)"
-    INSTALL_TMP_DIR="${DIR_TMP_ROOT}/install_stack/${cache_namespace}/${target_key}"
+    INSTALL_TMP_DIR="${DIR_TMP_ROOT}/install_stack/${CACHE_NAMESPACE}"
     DIR_TMP="$INSTALL_TMP_DIR"
-    SOURCES_CACHE_DIR="${STATE_ROOT}/sources/${cache_namespace}"
+    SOURCES_CACHE_DIR="${STATE_ROOT}/sources/${CACHE_NAMESPACE}"
 
     mkdir -p "$DIR_TMP"
     mkdir -p "$SOURCES_CACHE_DIR"
     cd "$SOURCES_CACHE_DIR" || error_exit "Could not access the sources cache directory $SOURCES_CACHE_DIR."
 
     mkdir -p "${STATE_ROOT}/cache"
-    CACHE_FILE="${STATE_ROOT}/cache/${cache_namespace}.log"
+    CACHE_FILE="${STATE_ROOT}/cache/${CACHE_NAMESPACE}.log"
     # shellcheck disable=SC2034 # Shared hook/library contract; may be consumed by sourced helpers.
     CACHE_LOCK_FILE="${CACHE_FILE}.lock"
 

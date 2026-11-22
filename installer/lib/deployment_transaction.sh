@@ -113,6 +113,9 @@ stack_prepare_transaction() {
 }
 
 stack_run_candidate() (
+    # Installations sharing a profile workspace serialize hook preparation.
+    exec 7>"$DIR_TMP/.workspace.lock"
+    flock 7
     export STACK_ACTIVE_GAME_ROOT="$DIR_LEFT4DEAD2"
     # All destination aliases, including parent-of-left4dead2 runtime libraries,
     # point inside the candidate. Caches and source workspaces remain separate.

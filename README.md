@@ -102,7 +102,7 @@ El deploy ya no se limita a "instalar y arrancar". El comportamiento actual es:
 
 - cache persistente de estado por perfil en `/data/installer/state/cache/`
 - cache persistente de fuentes y artifacts materializados en `/data/installer/state/sources/`
-- temporales persistentes por perfil bajo `/app/tmp/install_stack/`
+- copias de trabajo por perfil y componente bajo `/data/installer/cache/work/install_stack/`
 
 ## Variables Importantes
 
