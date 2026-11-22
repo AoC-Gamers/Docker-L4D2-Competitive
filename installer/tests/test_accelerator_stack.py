@@ -132,8 +132,7 @@ p.write_text('normalized')
             result = flow.run_install(extra={'STACK_REUSE_SOURCES': 'true'} if iteration else {})
             flow.assertSuccess(result)
             self.assertEqual((flow.game / 'addons/sourcemod/extensions/accelerator.ext.so').read_text(), 'normalized')
-            cached = list((flow.installer / 'cache/prepared/late').glob('*/files/serverfiles/left4dead2/addons/sourcemod/extensions/accelerator.ext.so'))
-            self.assertTrue(cached)
-            self.assertTrue(all(path.read_text() == 'legacy' for path in cached))
+            cached = flow.installer / 'cache/prepared/test/late/files/serverfiles/left4dead2/addons/sourcemod/extensions/accelerator.ext.so'
+            self.assertEqual(cached.read_text(), 'legacy')
             if iteration:
                 self.assertIn('Prepared cache reused: late', result.stdout)

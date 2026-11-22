@@ -36,7 +36,7 @@ def key(root, component, source, logic, mode):
                    'env': {name: os.environ.get(name, '') for name in component.get('prepare_env', [])}})
 
 
-def store(root, before, destination, exclusions):
+def store(root, before, destination, exclusions, fingerprint):
     after = inventory(root)
     changed = {p: info for p, info in after.items() if before.get(p) != info}
     removed = sorted(before.keys() - after.keys())
@@ -46,7 +46,7 @@ def store(root, before, destination, exclusions):
         for rel in changed:
             dst = safe_path(temp/'files', rel); dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(safe_path(root, rel), dst)
-        manifest = {'schema': 1, 'changed': changed, 'removed': removed,
+        manifest = {'schema': 2, 'fingerprint': fingerprint, 'changed': changed, 'removed': removed,
                     'exclusions': exclusions.read_text().splitlines() if exclusions.exists() else []}
         # Manifest written last; incomplete directories can never be cache hits.
         durable_json(temp/'manifest.json', manifest)
@@ -56,10 +56,11 @@ def store(root, before, destination, exclusions):
         if temp.exists(): shutil.rmtree(temp)
 
 
-def replay(root, entry):
+def replay(root, entry, fingerprint):
     try:
         data = json.loads((entry/'manifest.json').read_text())
-        if data['schema'] != 1: return False
+        if data['schema'] != 2 or data['fingerprint'] != fingerprint:
+            return False
         # Validate everything before applying any effect.
         for rel in data['removed']:
             safe_path(root, rel)
@@ -90,10 +91,10 @@ if __name__ == '__main__':
     elif action == 'inventory':
         Path(sys.argv[3]).write_text(json.dumps(inventory(root), sort_keys=True))
     elif action == 'store':
-        store(root, json.loads(Path(sys.argv[3]).read_text()), Path(sys.argv[4]), Path(sys.argv[5]))
+        store(root, json.loads(Path(sys.argv[3]).read_text()), Path(sys.argv[4]), Path(sys.argv[5]), sys.argv[6])
     elif action == 'replay':
         try:
-            sys.exit(0 if replay(root, Path(sys.argv[3])) else 1)
+            sys.exit(0 if replay(root, Path(sys.argv[3]), sys.argv[4]) else 1)
         except Exception as error:
             print(f'Prepared cache replay failed: {error}', file=sys.stderr)
             sys.exit(2)

@@ -88,8 +88,9 @@ explícitamente, independientemente de la referencia de descarga.
 El archivo original se valida antes de extraerse. Su expansión sin modificaciones
 se conserva bajo `cache/artifacts/expanded/`, identificada por hash del archivo y
 del extractor. Se verifica su contenido antes de reutilizarla. Cada hook recibe
-una copia editable en `cache/work/install_stack/<perfil>/<hash-destino>/`.
-Dos destinos diferentes no comparten el workspace mutable.
+una copia editable en `cache/work/install_stack/<perfil>/<componente>/`.
+Las instalaciones que comparten un directorio de trabajo por perfil lo usan
+de forma serializada.
 
 Los hooks siguen recibiendo los cuatro argumentos históricos. Todos los alias de
 destino apuntan al candidato, fuera del árbol operativo. No editar manualmente
@@ -116,12 +117,13 @@ producido por las capas anteriores. Los timestamps no forman parte de la clave.
 Cambiar una capa anterior puede invalidar capas posteriores: es necesario cuando
 sus modificaciones dependen de lo previamente instalado.
 
-La salida preparada vive en `cache/prepared/<componente>/<clave>/`: contiene
-**solo archivos cambiados y borrados declarados por el resultado del hook**, con
-hashes, permisos y recibos de exclusión. No duplica todo el candidato por cada
-componente. Un acierto reproduce esos efectos en orden y omite copia del
-workspace, extracción y ejecución del hook. Las exclusiones se imprimen también
-al reutilizar la salida, identificadas con `[prepared cache]`.
+La salida preparada vive en `cache/prepared/<perfil>/<componente>/`. Su
+manifiesto guarda la huella de las entradas, los archivos modificados y los
+borrados, los permisos y las exclusiones del hook. Una huella distinta
+reemplaza la entrada del componente. Un acierto reproduce esos efectos en orden
+y omite la copia del workspace, la extracción y la ejecución del hook. Las
+exclusiones se imprimen también al reutilizar la salida, identificadas con
+`[prepared cache]`.
 
 Una caché incompleta o corrupta se reconstruye; se verifican todos sus archivos
 antes de aplicar el primer efecto. Un error de E/S durante su reproducción
