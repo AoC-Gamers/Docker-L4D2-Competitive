@@ -33,6 +33,32 @@ is_l4d2_updater_enabled() {
   esac
 }
 
+# Switch only the Valve launchers managed by this bootstrap. Leave site-specific
+# executables and the other LinuxGSM settings in the volume intact.
+configure_lgsm_executable() {
+  local executable="$1"
+  local cfg="${LGSM_CONFIG}/${GAMESERVER}/common.cfg"
+  local previous="srcds_l4d2"
+  local assignment='^[[:blank:]]*executable[[:blank:]]*=[[:blank:]]*'
+  local quote="([\"']?)"
+  local suffix='([[:blank:]]*|[[:blank:]]+#.*)$'
+
+  if [[ ! -f "$cfg" ]]; then
+    return 0
+  fi
+  if [[ "$executable" == "./srcds_l4d2" ]]; then
+    previous="srcds_run"
+  fi
+
+  if grep -Eq "${assignment}${quote}[.]/${previous}\\1${suffix}" "$cfg"; then
+    sed -E -i --follow-symlinks "s@(${assignment}${quote})[.]/${previous}(\\2${suffix})@\\1${executable}\\3@" "$cfg"
+    printf 'Configured LinuxGSM launcher: %s\n' "$executable"
+  elif [[ "$executable" == "./srcds_l4d2" ]] && ! grep -Eq "$assignment" "$cfg"; then
+    printf '\n## Game Server Directories\nexecutable="%s"\n' "$executable" >> "$cfg"
+    printf 'Configured LinuxGSM launcher: %s\n' "$executable"
+  fi
+}
+
 # Function to install L4D2Updater system
 install_l4d2_updater() {
   echo -e ""
@@ -42,7 +68,6 @@ install_l4d2_updater() {
   local SRCDS_ORIGINAL="${LGSM_SERVERFILES}/srcds_run"
   local SRCDS_L4D2="${LGSM_SERVERFILES}/srcds_l4d2"
   local UPDATE_SCRIPT="${LGSM_SERVERFILES}/update_l4d2.txt"
-  local LGSM_COMMON_CFG="${LGSM_CONFIG}/${GAMESERVER}/common.cfg"
   
   # Check if srcds_run exists (game must be installed first)
   if [ ! -f "${SRCDS_ORIGINAL}" ]; then
@@ -104,28 +129,13 @@ install_l4d2_updater() {
     echo -e "update_l4d2.txt already exists, skipping creation"
   fi
   
-  # Configure LGSM to use srcds_l4d2
-  if [ -f "${LGSM_COMMON_CFG}" ]; then
-    if ! grep -q 'executable="./srcds_l4d2"' "${LGSM_COMMON_CFG}"; then
-      echo -e "Configuring LGSM to use srcds_l4d2..."
-      echo "" >> "${LGSM_COMMON_CFG}"
-      echo "## Game Server Directories" >> "${LGSM_COMMON_CFG}"
-      echo 'executable="./srcds_l4d2"' >> "${LGSM_COMMON_CFG}"
-      echo -e "LGSM configured to use srcds_l4d2"
-    else
-      echo -e "LGSM already configured to use srcds_l4d2"
-    fi
-  else
-    echo -e "Warning: LGSM common.cfg not found at: ${LGSM_COMMON_CFG}"
-    echo -e "   Will be configured when LGSM creates the file"
-  fi
+  configure_lgsm_executable "./srcds_l4d2"
   
   echo -e "L4D2Updater system installation completed."
   echo -e "   The server will now automatically check for updates using Valve's native system."
   echo -e "   Files created:"
   echo -e "   - ${SRCDS_L4D2}"
   echo -e "   - ${UPDATE_SCRIPT}"
-  echo -e "   - Configuration in ${LGSM_COMMON_CFG}"
 }
 
 # Helper function to create anonymous update script
@@ -145,9 +155,8 @@ EOF
 main() {
   # Check if L4D2Updater is disabled
   if ! is_l4d2_updater_enabled; then
-    echo -e ""
-    echo -e "L4D2Updater installation skipped"
-    echo -e "================================="
+    configure_lgsm_executable "./srcds_run"
+    echo "Valve auto-update disabled for the managed LinuxGSM launcher"
     return 0
   fi
   
