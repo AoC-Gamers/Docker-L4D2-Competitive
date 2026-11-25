@@ -30,13 +30,32 @@ app_update 222860
 quit
 ```
 
-## Activacion
+## Activación
 
 Por defecto, el sistema queda activo salvo que se deshabilite con:
 
 ```bash
 L4D2_UPDATER=false
 ```
+
+Al preparar un volumen nuevo o existente, el bootstrap configura `./srcds_run`
+en lugar de `./srcds_l4d2` en la asignación gestionada de `common.cfg`. Los
+arranques posteriores usan el build instalado. Volver a `true` prepara el
+lanzador con SteamCMD y vuelve a seleccionarlo. El cambio conserva los
+lanzadores personalizados y deja los archivos del actualizador disponibles.
+
+Comprueba que las configuraciones por instancia no vuelvan a seleccionar el
+actualizador ni añadan `-autoupdate`, y que `updateonstart` esté en `off` para
+mantener el build instalado. Una instalación inicial o explícita y los comandos
+manuales de actualización siguen pudiendo descargar archivos de Valve.
+
+## Promoción de builds
+
+Usa `./l4d2server check-update` desde `/app` para consultar una actualización
+sin aplicarla. Valida el nuevo motor y sus extensiones en DEV. En PROD,
+aplica la actualización manual una vez por volumen durante una ventana en que
+todas las instancias de ese volumen estén detenidas. Verifica el build, Steam/VAC
+y la carga de las extensiones al volver a iniciar.
 
 ## Archivos implicados
 

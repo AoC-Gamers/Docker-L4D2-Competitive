@@ -23,6 +23,7 @@ services:
           nocopy: true
     environment:
       - L4D2_VALVE_CACHE_VOLUME=${L4D2_VALVE_CACHE_VOLUME:-}
+      - L4D2_UPDATER=${L4D2_UPDATER:-true}
       - SSH_PORT=${SSH_PORT:-422}
       - SSH_KEY=${SSH_KEY}
       - STACK_PROFILE=${STACK_PROFILE:-default}

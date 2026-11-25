@@ -116,7 +116,7 @@ El deploy ya no se limita a "instalar y arrancar". El comportamiento actual es:
 | `L4D2_AUTOSTART` | Controla el inicio automatico del servidor | `true` |
 | `L4D2_ADDITIONAL_INSTANCES` | Cantidad de instancias adicionales a sincronizar | `0` |
 | `L4D2_STACK_AUTOUPDATE` | Con `true`, actualiza el stack antes del arranque; con `false`, omite descarga, preparación y publicación automáticas en instalaciones existentes, incluso tras cambiar la imagen. La instalación inicial y los comandos manuales siguen disponibles | `false` |
-| `L4D2_UPDATER` | Habilita o deshabilita el updater legacy de la base | `true` |
+| `L4D2_UPDATER` | Activa la actualización automática de Valve al arrancar o reintentar SRCDS. Con `false`, LinuxGSM arranca el motor instalado | `true` |
 | `NPM_CONFIG_AUDIT` | Deshabilita por defecto la auditoria interactiva de npm durante comandos LinuxGSM/GameDig | `false` |
 | `STACK_PROFILE` | Perfil de stack a materializar | `default` |
 | `HOST_REPO_RESOURCES_DIR` | Carpeta local montada de forma read-only dentro del contenedor | `./resources` |
